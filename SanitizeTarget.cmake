@@ -1,13 +1,14 @@
 # (C) 2017 Joao Paulo Magalhaes <dev@jpmag.me>
 
 include(CMakeDependentOption)
+include(PrintVar)
 
 #------------------------------------------------------------------------------
 function(setup_sanitize prefix)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
     # option to turn sanitize on/off
-    option(${prefix}_SANITIZE ON)
+    option(${prefix}_SANITIZE "turn on clang sanitizer targets" ON)
 
     # options for individual sanitizers - contingent on sanitize on/off
     cmake_dependent_option(${prefix}_ASAN  "" ON "${prefix}_SANITIZE" OFF)
