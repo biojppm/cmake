@@ -1,6 +1,8 @@
+# (C) 2017 Joao Paulo Magalhaes <dev@jpmag.me>
 
 include(CMakeDependentOption)
 
+#------------------------------------------------------------------------------
 function(setup_sanitize prefix)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
@@ -49,8 +51,9 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 endif()
 endfunction()
 
-
-function(sanitize_get_target_command name prefix which_sanitizer output)
+#------------------------------------------------------------------------------
+function(sanitize_get_target_command name prefix which_sanitizer_ output)
+    string(TOUPPER ${which_sanitizer_} which_sanitizer)
     if("${which_sanitizer}" STREQUAL ASAN)
     elseif("${which_sanitizer}" STREQUAL TSAN)
     elseif("${which_sanitizer}" STREQUAL MSAN)
@@ -58,10 +61,11 @@ function(sanitize_get_target_command name prefix which_sanitizer output)
     else()
         message(FATAL_ERROR "the sanitizer must be one of: ASAN, TSAN, MSAN, UBSAN")
     endif()
-    set(${output} ${${prefix}_${which_sanitizer}_RENV} ${name})
+    separate_arguments(cmd UNIX_COMMAND "${${prefix}_${which_sanitizer}_RENV} ${name}")
+    set(${output} ${cmd} PARENT_SCOPE)
 endfunction()
 
-
+#------------------------------------------------------------------------------
 function(sanitize_target name prefix)
     set(options0arg
         LIBRARY
@@ -76,6 +80,7 @@ function(sanitize_target name prefix)
         LIBS
         LIB_DIRS
     )
+
     cmake_parse_arguments(_c4st "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
 
     if(TARGET sanitize)
@@ -104,6 +109,7 @@ function(sanitize_target name prefix)
     endif()
 
     set(targets)
+
 
     # https://clang.llvm.org/docs/AddressSanitizer.html
     if(${prefix}_ASAN)
@@ -137,7 +143,7 @@ function(sanitize_target name prefix)
             add_executable(${name}-tsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
         endif()
         list(APPEND targets ${name}-tsan)
-        target_include_directories(${prefix}-tsan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-tsan PUBLIC ${_c4st_INC_DIRS})
         set(_real_libs)
         foreach(_l ${_c4st_LIBS})
             if(TARGET ${_l}-tsan)
@@ -161,7 +167,7 @@ function(sanitize_target name prefix)
             add_executable(${name}-msan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
         endif()
         list(APPEND targets ${name}-msan)
-        target_include_directories(${prefix}-msan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-msan PUBLIC ${_c4st_INC_DIRS})
         set(_real_libs)
         foreach(_l ${_c4st_LIBS})
             if(TARGET ${_l}-msan)
@@ -185,7 +191,7 @@ function(sanitize_target name prefix)
             add_executable(${name}-ubsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
         endif()
         list(APPEND targets ${name}-ubsan)
-        target_include_directories(${prefix}-ubsan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-ubsan PUBLIC ${_c4st_INC_DIRS})
         set(_real_libs)
         foreach(_l ${_c4st_LIBS})
             if(TARGET ${_l}-ubsan)
