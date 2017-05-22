@@ -4,14 +4,15 @@
 # subversion: svn diff --patch-compatible > path/to/the/patch.diff
 
 
-function(apply_patch patch where)
-    get_patch_cmd(patch_cmd)
-    get_filename_component(basename ${patch} NAME)
-    set(mark "${CMAKE_CURRENT_BINARY_DIR}/${basename}.patch.done")
+function(apply_patch patch where mark)
     if(NOT EXISTS "${mark}")
+        create_patch_cmd(patch_cmd)
+        file(TO_NATIVE_PATH ${patch} patch)
+        file(TO_NATIVE_PATH ${where} where)
+        file(TO_NATIVE_PATH ${mark} mark)
         execute_process(COMMAND "${patch_cmd}" "${where}" "${patch}" "${mark}"
             RESULT_VARIABLE status)
-        if(NOT "${RESULT_VARIABLE}" STREQUAL "1")
+        if(NOT status STREQUAL "1")
             message(FATAL_ERROR "could not apply patch: ${patch} ---> ${where}")
         endif()
     endif()
