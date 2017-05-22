@@ -24,12 +24,19 @@ function(create_patch_cmd filename_output)
     if(WIN32)
         set(filename ${CMAKE_BINARY_DIR}/apply_patch.bat)
         file(WRITE ${filename} "
+echo on
 set srcdir=%1
 set patch=%2
 set mark=%3
 set prev=%cd%
 set stat=0
 if not exist %mark% (
+    if not exist %patch% (
+        exit /b 1
+    )
+    if not exist %srcdir% (
+        exit /b 1
+    )
     cd %srcdir%
     patch -p0 < %patch%
     set stat=%ERRORLEVEL%
@@ -46,6 +53,10 @@ srcdir=$1
 patch=$2
 mark=$3
 if [ ! -f $mark ] ; then
+    if [ ! -f $patch ] ; then
+        echo \"ERROR: patch not found: $patch\"
+        exit 1
+    fi
     cd $srcdir || exit 1
     patch -p0 < $patch || exit 1
     cd -
