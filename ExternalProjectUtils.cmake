@@ -6,6 +6,7 @@
 #   ExternalProject_GetFwdArgs(output_var
 #       [NO_DEFAULTS]
 #       [VARS var1 var2 ...]
+#       [EXCLUDE xvar1 xvar2 ...]
 #       [QUIET]
 #   )
 #
@@ -52,13 +53,17 @@ function(ExternalProject_GetFwdArgs output_var)
         )
     set(optionsnarg
         VARS
+        EXCLUDE
         )
     cmake_parse_arguments(_epgfa "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
     if(NOT _epfga_NO_DEFAULTS)
         ExternalProject_GetFwdVarNames(_fwd_names)
     endif()
-    if(_epfga_vars)
-        list(APPEND ${_epfga_VARS})
+    if(_epgfa_VARS)
+        list(APPEND _fwd_names ${_epgfa_VARS})
+    endif()
+    if(_epgfa_EXCLUDE)
+        list(REMOVE_ITEM _fwd_names ${_epgfa_EXCLUDE})
     endif()
     set(_epgfa_args)
     foreach(_f ${_fwd_names})
