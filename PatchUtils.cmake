@@ -3,6 +3,21 @@
 # to generate a patch:
 # subversion: svn diff --patch-compatible > path/to/the/patch.diff
 
+
+function(apply_patch patch where)
+    get_patch_cmd(patch_cmd)
+    get_filename_component(basename ${patch} NAME)
+    set(mark "${CMAKE_CURRENT_BINARY_DIR}/${basename}.patch.done")
+    if(NOT EXISTS "${mark}")
+        execute_process(COMMAND "${patch_cmd}" "${where}" "${patch}" "${mark}"
+            RESULT_VARIABLE status)
+        if(NOT "${RESULT_VARIABLE}" STREQUAL "1")
+            message(FATAL_ERROR "could not apply patch: ${patch} ---> ${where}")
+        endif()
+    endif()
+endfunction()
+
+
 function(create_patch_cmd filename_output)
     if(WIN32)
         set(filename ${CMAKE_BINARY_DIR}/apply_patch.bat)
@@ -11,12 +26,15 @@ set srcdir=%1
 set patch=%2
 set mark=%3
 set prev=%cd%
+set stat=0
 if not exist %mark% (
     cd %srcdir%
     patch -p0 < %patch%
+    set stat=%ERRORLEVEL%
     cd %prev%
     echo done > %mark%
 )
+exit /b %stat%
 ")
     else()
         set(filename ${CMAKE_BINARY_DIR}/apply_patch.sh)
@@ -26,11 +44,12 @@ srcdir=$1
 patch=$2
 mark=$3
 if [ ! -f $mark ] ; then
-    cd $srcdir
-    patch -p0 < $patch
+    cd $srcdir || exit 1
+    patch -p0 < $patch || exit 1
     cd -
     echo done > $mark
 fi
+exit 0
 ")
     endif()
     set(${filename_output} ${filename} PARENT_SCOPE)
