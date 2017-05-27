@@ -126,6 +126,10 @@ function(sanitize_target name prefix)
 
     set(targets)
 
+    if(${oprefix}ASAN OR ${oprefix}MSAN OR ${oprefix}TSAN OR ${oprefix}UBSAN)
+        add_custom_target(${name}-sanitize-all)
+    endif()
+
     # https://clang.llvm.org/docs/AddressSanitizer.html
     if(${oprefix}ASAN)
         if(${_c4st_LIBRARY})
@@ -149,6 +153,7 @@ function(sanitize_target name prefix)
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-asan PUBLIC ${${prefix}ASAN_LFLAGS_SEP})
         add_dependencies(${prefix}asan-all ${name}-asan)
+        add_dependencies(${name}-sanitize-all ${name}-asan)
     endif()
 
     # https://clang.llvm.org/docs/ThreadSanitizer.html
@@ -174,6 +179,7 @@ function(sanitize_target name prefix)
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-tsan PUBLIC ${${prefix}TSAN_LFLAGS_SEP})
         add_dependencies(${prefix}tsan-all ${name}-tsan)
+        add_dependencies(${name}-sanitize-all ${name}-tsan)
     endif()
 
     # https://clang.llvm.org/docs/MemorySanitizer.html
@@ -199,6 +205,7 @@ function(sanitize_target name prefix)
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-msan PUBLIC ${${prefix}MSAN_LFLAGS_SEP})
         add_dependencies(${prefix}msan-all ${name}-msan)
+        add_dependencies(${name}-sanitize-all ${name}-msan)
     endif()
 
     # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
@@ -224,6 +231,7 @@ function(sanitize_target name prefix)
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-ubsan PUBLIC ${${prefix}UBSAN_LFLAGS_SEP})
         add_dependencies(${prefix}ubsan-all ${name}-ubsan)
+        add_dependencies(${name}-sanitize-all ${name}-ubsan)
     endif()
 
     if(_c4st_OUTPUT_TARGET_NAMES)
