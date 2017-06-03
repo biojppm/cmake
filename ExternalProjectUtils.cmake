@@ -1,5 +1,7 @@
 # (C) 2017 Joao Paulo Magalhaes <dev@jpmag.me>
 
+include(CMakeParseArguments)
+
 #------------------------------------------------------------------------------
 # Usage:
 #
