@@ -16,40 +16,53 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     cmake_dependent_option(${prefix}_MSAN  "" ON "${prefix}_SANITIZE" OFF)
     cmake_dependent_option(${prefix}_UBSAN "" ON "${prefix}_SANITIZE" OFF)
 
-    # compile flags
-    set(${prefix}_ASAN_CFLAGS "-O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
-    set(${prefix}_TSAN_CFLAGS "-O1 -g -fsanitize=thread -fno-omit-frame-pointer" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
-    set(${prefix}_MSAN_CFLAGS "-O1 -g -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
-    set(${prefix}_UBSAN_CFLAGS "-g -fsanitize=undefined" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
-    # the flags are strings; we need to separate them into a list
-    # to prevent cmake from quoting them when passing to the targets
-    separate_arguments(${prefix}_ASAN_CFLAGS_SEP  UNIX_COMMAND ${${prefix}_ASAN_CFLAGS})
-    separate_arguments(${prefix}_TSAN_CFLAGS_SEP  UNIX_COMMAND ${${prefix}_TSAN_CFLAGS})
-    separate_arguments(${prefix}_MSAN_CFLAGS_SEP  UNIX_COMMAND ${${prefix}_MSAN_CFLAGS})
-    separate_arguments(${prefix}_UBSAN_CFLAGS_SEP UNIX_COMMAND ${${prefix}_UBSAN_CFLAGS})
+    if(${prefix}_SANITIZE)
+        string(REGEX REPLACE "([0-9]+\\.[0-9]+).*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
+        find_program(LLVM_SYMBOLIZER llvm-symbolizer
+            NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer
+            DOC "symbolizer to use in sanitize tools")
 
-    # linker flags
-    set(${prefix}_ASAN_LFLAGS "-g -fsanitize=address" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
-    set(${prefix}_TSAN_LFLAGS "-g -fsanitize=thread" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
-    set(${prefix}_MSAN_LFLAGS "-g -fsanitize=memory" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
-    set(${prefix}_UBSAN_LFLAGS "-g -fsanitize=undefined" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
-    # the flags are strings; we need to separate them into a list
-    # to prevent cmake from quoting them when passing to the targets
-    separate_arguments(${prefix}_ASAN_LFLAGS_SEP  UNIX_COMMAND ${${prefix}_ASAN_LFLAGS})
-    separate_arguments(${prefix}_TSAN_LFLAGS_SEP  UNIX_COMMAND ${${prefix}_TSAN_LFLAGS})
-    separate_arguments(${prefix}_MSAN_LFLAGS_SEP  UNIX_COMMAND ${${prefix}_MSAN_LFLAGS})
-    separate_arguments(${prefix}_UBSAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_UBSAN_LFLAGS})
+        if(${prefix}_ASAN)
+            message(STATUS "${prefix}_SANITIZE: enabling ASAN")
+            set(${prefix}_ASAN_CFLAGS "-O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
+            set(${prefix}_ASAN_LFLAGS "-g -fsanitize=address" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
+            set(${prefix}_ASAN_RENV  "env ASAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} ASAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
+            # the flags are strings; we need to separate them into a list
+            # to prevent cmake from quoting them when passing to the targets
+            separate_arguments(${prefix}_ASAN_CFLAGS_SEP UNIX_COMMAND ${${prefix}_ASAN_CFLAGS})
+            separate_arguments(${prefix}_ASAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_ASAN_LFLAGS})
+        endif()
 
-    # run environment
-    string(REGEX REPLACE "([0-9]+\\.[0-9]+).*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
-    find_program(LLVM_SYMBOLIZER llvm-symbolizer
-        NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer
-        DOC "symbolizer to use in sanitize tools")
-    set(${prefix}_ASAN_RENV  "env ASAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} ASAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
-    set(${prefix}_TSAN_RENV  "env TSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} TSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
-    set(${prefix}_MSAN_RENV  "env MSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} MSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
-    set(${prefix}_UBSAN_RENV "env UBSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} UBSAN_OPTIONS='symbolize=1 print_stacktrace=1'" CACHE STRING "run environment for clang address sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
-endif()
+        if(${prefix}_TSAN)
+            message(STATUS "${prefix}_SANITIZE: enabling TSAN")
+            set(${prefix}_TSAN_CFLAGS "-O1 -g -fsanitize=thread -fno-omit-frame-pointer" CACHE STRING "compile flags for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
+            set(${prefix}_TSAN_LFLAGS "-g -fsanitize=thread" CACHE STRING "linker flags for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
+            set(${prefix}_TSAN_RENV  "env TSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} TSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
+            separate_arguments(${prefix}_TSAN_CFLAGS_SEP UNIX_COMMAND ${${prefix}_TSAN_CFLAGS})
+            separate_arguments(${prefix}_TSAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_TSAN_LFLAGS})
+        endif()
+
+        if(${prefix}_MSAN)
+            message(STATUS "${prefix}_SANITIZE: enabling MSAN")
+            set(${prefix}_MSAN_CFLAGS "-O1 -g -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
+            set(${prefix}_MSAN_LFLAGS "-g -fsanitize=memory" CACHE STRING "linker flags for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
+            set(${prefix}_MSAN_RENV  "env MSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} MSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
+            separate_arguments(${prefix}_MSAN_CFLAGS_SEP UNIX_COMMAND ${${prefix}_MSAN_CFLAGS})
+            separate_arguments(${prefix}_MSAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_MSAN_LFLAGS})
+        endif()
+
+        if(${prefix}_UBSAN)
+            message(STATUS "${prefix}_SANITIZE: enabling UBSAN")
+            set(${prefix}_UBSAN_CFLAGS "-g -fsanitize=undefined" CACHE STRING "compile flags for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
+            set(${prefix}_UBSAN_LFLAGS "-g -fsanitize=undefined" CACHE STRING "linker flags for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
+            set(${prefix}_UBSAN_RENV "env UBSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} UBSAN_OPTIONS='symbolize=1 print_stacktrace=1'" CACHE STRING "run environment for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
+            separate_arguments(${prefix}_UBSAN_CFLAGS_SEP UNIX_COMMAND ${${prefix}_UBSAN_CFLAGS})
+            separate_arguments(${prefix}_UBSAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_UBSAN_LFLAGS})
+        endif()
+
+    endif() # ${prefix}_SANITIZE
+
+endif() # clang
 endfunction()
 
 #------------------------------------------------------------------------------
