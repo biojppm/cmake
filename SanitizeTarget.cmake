@@ -105,6 +105,10 @@ function(sanitize_target name prefix)
 
     cmake_parse_arguments(_c4st "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
 
+    if((NOT _c4st_LIBRARY) AND (NOT _c4st_EXECUTABLE))
+        message(FATAL_ERROR "either LIBRARY or EXECUTABLE must be specified")
+    endif()
+
     if(prefix)
         string(TOUPPER ${prefix} oprefix)
         set(oprefix ${oprefix}_)
