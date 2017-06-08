@@ -137,11 +137,11 @@ function(sanitize_target name prefix)
         _sanitize_set_target_folder(${prefix}ubsan-all ${_c4st_FOLDER})
     endif()
 
-    set(targets)
-
     if(${oprefix}ASAN OR ${oprefix}MSAN OR ${oprefix}TSAN OR ${oprefix}UBSAN)
         add_custom_target(${name}-sanitize-all)
     endif()
+
+    set(targets)
 
     # https://clang.llvm.org/docs/AddressSanitizer.html
     if(${oprefix}ASAN)
