@@ -4,11 +4,14 @@ include(CMakeDependentOption)
 include(PrintVar)
 
 #------------------------------------------------------------------------------
-function(setup_sanitize prefix)
+function(setup_sanitize prefix initially_on_or_off)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-
     # option to turn sanitize on/off
-    option(${prefix}_SANITIZE "turn on clang sanitizer targets" ON)
+    option(${prefix}_SANITIZE "turn on clang sanitizer targets" ${initially_on_or_off})
+    # clients can use this when adding their targets
+    option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" OFF)
+endif()
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
     # options for individual sanitizers - contingent on sanitize on/off
     cmake_dependent_option(${prefix}_ASAN  "" ON "${prefix}_SANITIZE" OFF)
@@ -17,6 +20,8 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     cmake_dependent_option(${prefix}_UBSAN "" ON "${prefix}_SANITIZE" OFF)
 
     if(${prefix}_SANITIZE)
+        message(STATUS "${prefix}: enabling clang sanitizers")
+
         string(REGEX REPLACE "([0-9]+\\.[0-9]+).*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
         find_program(LLVM_SYMBOLIZER llvm-symbolizer
             NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer

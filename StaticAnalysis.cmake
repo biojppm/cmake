@@ -3,17 +3,24 @@ include(GetFlags)
 include(GetTargetPropertyRecursive)
 
 
-function(setup_static_analysis prefix)
+function(setup_static_analysis prefix initially_on_or_off)
     if(prefix)
         set(prefix "${prefix}_")
     endif()
     # option to turn sanitize on/off
-    option(${prefix}LINT "turn on static analyzers" OFF)
+    option(${prefix}LINT "turn on static analyzers" ${initially_on_or_off})
     # options for individual sanitizers - contingent on sanitize on/off
     cmake_dependent_option(${prefix}LINT_CLANG_TIDY "use the clang-tidy static analyzer" ON "${prefix}LINT" OFF)
     cmake_dependent_option(${prefix}LINT_PVS_STUDIO "use the PVS-Studio static analyzer https://www.viva64.com/en/b/0457/" ON "${prefix}LINT" OFF)
     if(${prefix}LINT_PVS_STUDIO)
         set(${prefix}LINT_PVS_STUDIO_FORMAT "errorfile" CACHE STRING "PVS-Studio output format. Choices: xml,csv,errorfile(like gcc/clang),tasklist(qtcreator)")
+    endif()
+    #
+    if(${prefix}LINT_PVS_STUDIO)
+        message(STATUS "Enabling static analysis with PVS-Studio")
+    endif()
+    if(${prefix}LINT_CLANG_TIDY)
+        message(STATUS "Enabling static analysis with clang-tidy")
     endif()
 endfunction()
 
@@ -38,16 +45,16 @@ function(static_analysis_target prefix target_name folder)
         if(${uprefix}LINT_CLANG_TIDY)
             static_analysis_clang_tidy(${target_name}
                 ${target_name}-lint-clang-tidy
-                ${lprefix}lint-clang-tidy
+                ${lprefix}lint-all-clang-tidy
                 "${folder}")
-            add_dependencies(${lprefix}lint-all ${lprefix}lint-clang-tidy)
+            add_dependencies(${lprefix}lint-all ${lprefix}lint-all-clang-tidy)
         endif()
         if(${uprefix}LINT_PVS_STUDIO)
             static_analysis_pvs_studio(${target_name}
                 ${target_name}-lint-pvs-studio
-                ${lprefix}lint-pvs-studio
+                ${lprefix}lint-all-pvs-studio
                 "${folder}")
-            add_dependencies(${lprefix}lint-all ${lprefix}lint-pvs-studio)
+            add_dependencies(${lprefix}lint-all ${lprefix}lint-all-pvs-studio)
         endif()
     endif()
 endfunction()
@@ -65,6 +72,7 @@ function(static_analysis_clang_tidy subj_target lint_target umbrella_target fold
     separate_arguments(_clt_incs UNIX_COMMAND "${_clt_incs}")
     add_custom_target(${lint_target}
         COMMAND clang-tidy ${_clt_srcs} --config='' -- ${_clt_incs} ${_clt_opts}
+        COMMENT "clang-tidy: analyzing sources of ${subj_target}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     if(folder)
         set_target_properties(${lint_target} PROPERTIES FOLDER "${folder}")
