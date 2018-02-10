@@ -25,7 +25,7 @@ function(setup_static_analysis prefix initially_on_or_off)
 endfunction()
 
 
-function(static_analysis_target prefix target_name folder)
+function(static_analysis_target prefix target_name folder generated_targets)
     string(TOUPPER ${prefix} uprefix)
     if(uprefix)
         set(uprefix "${uprefix}_")
@@ -34,11 +34,20 @@ function(static_analysis_target prefix target_name folder)
     if(lprefix)
         set(lprefix "${lprefix}-")
     endif()
-    if(${uprefix}LINT AND (${uprefix}LINT_CLANG_TIDY OR ${uprefix}LINT_PVS_STUDIO))
-        if(NOT TARGET ${lprefix}lint-all)
+    set(any_linter OFF)
+    set(several_linters OFF)
+    if(${uprefix}LINT_CLANG_TIDY OR ${uprefix}LINT_PVS_STUDIO)
+        set(any_linter ON)
+    endif()
+    if(${uprefix}LINT_CLANG_TIDY AND ${uprefix}LINT_PVS_STUDIO)
+        set(several_linters ON)
+    endif()
+    if(${uprefix}LINT AND any_linter)
+        # umbrella target for running all linters for this particular target
+        if(any_linter AND NOT TARGET ${lprefix}lint-all)
             add_custom_target(${lprefix}lint-all)
             if(folder)
-                message(STATUS "${target_name}: folder=${folder}")
+                #message(STATUS "${target_name}: folder=${folder}")
                 set_target_properties(${lprefix}lint-all PROPERTIES FOLDER "${folder}")
             endif()
         endif()
@@ -47,6 +56,7 @@ function(static_analysis_target prefix target_name folder)
                 ${target_name}-lint-clang-tidy
                 ${lprefix}lint-all-clang-tidy
                 "${folder}")
+            list(APPEND ${generated_targets} ${lprefix}lint-clang-tidy)
             add_dependencies(${lprefix}lint-all ${lprefix}lint-all-clang-tidy)
         endif()
         if(${uprefix}LINT_PVS_STUDIO)
@@ -54,24 +64,35 @@ function(static_analysis_target prefix target_name folder)
                 ${target_name}-lint-pvs-studio
                 ${lprefix}lint-all-pvs-studio
                 "${folder}")
+            list(APPEND ${generated_targets} ${lprefix}lint-pvs-studio)
             add_dependencies(${lprefix}lint-all ${lprefix}lint-all-pvs-studio)
         endif()
     endif()
 endfunction()
 
 
-function(static_analysis_clang_tidy subj_target lint_target umbrella_target folder)
-    get_target_property(_clt_srcs ${subj_target} SOURCES)
-    get_target_property(_clt_opts ${subj_target} COMPILE_OPTIONS)
-    get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
-    get_include_flags(_clt_incs ${_clt_incs})
-    if(NOT _clt_opts)
-        set(_clt_opts)
+function(static_analysis_add_tests prefix target_name)
+    string(TOUPPER ${prefix} uprefix)
+    if(uprefix)
+        set(uprefix "${uprefix}_")
     endif()
-    separate_arguments(_clt_opts UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${_clt_opts}")
-    separate_arguments(_clt_incs UNIX_COMMAND "${_clt_incs}")
+    if(${uprefix}LINT_CLANG_TIDY)
+        static_analysis_clang_tidy_get_cmd(${target_name} ${target_name}-lint-clang-tidy cmd)
+        message(STATUS "caralho: ${cmd}")
+        add_test(${target_name}-lint-clang-tidy-run COMMAND ${cmd})
+    endif()
+    if(${uprefix}LINT_PVS_STUDIO)
+        static_analysis_pvs_studio_get_cmd(${target_name} ${target_name}-lint-pvs-studio cmd)
+        add_test(${target_name}-lint-pvs-studio-run COMMAND ${cmd})
+    endif()
+endfunction()
+
+
+#------------------------------------------------------------------------------
+function(static_analysis_clang_tidy subj_target lint_target umbrella_target folder)
+    static_analysis_clang_tidy_get_cmd(${subj_target} ${lint_target} cmd)
     add_custom_target(${lint_target}
-        COMMAND clang-tidy ${_clt_srcs} --config='' -- ${_clt_incs} ${_clt_opts}
+        COMMAND ${cmd}
         COMMENT "clang-tidy: analyzing sources of ${subj_target}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     if(folder)
@@ -83,7 +104,21 @@ function(static_analysis_clang_tidy subj_target lint_target umbrella_target fold
     add_dependencies(${umbrella_target} ${lint_target})
 endfunction()
 
+function(static_analysis_clang_tidy_get_cmd subj_target lint_target cmd)
+    get_target_property(_clt_srcs ${subj_target} SOURCES)
+    get_target_property(_clt_opts ${subj_target} COMPILE_OPTIONS)
+    get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
+    get_include_flags(_clt_incs ${_clt_incs})
+    if(NOT _clt_opts)
+        set(_clt_opts)
+    endif()
+    separate_arguments(_clt_opts UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${_clt_opts}")
+    separate_arguments(_clt_incs UNIX_COMMAND "${_clt_incs}")
+    set(${cmd} clang-tidy ${_clt_srcs} --config='' -- ${_clt_incs} ${_clt_opts} PARENT_SCOPE)
+endfunction()
 
+
+#------------------------------------------------------------------------------
 function(static_analysis_pvs_studio subj_target lint_target umbrella_target folder)
     get_target_property_recursive(_c4al_pvs_incs ${subj_target} INCLUDE_DIRECTORIES)
     get_include_flags(_c4al_pvs_incs ${_c4al_pvs_incs})
@@ -106,4 +141,8 @@ function(static_analysis_pvs_studio subj_target lint_target umbrella_target fold
         add_custom_target(${umbrella_target})
     endif()
     add_dependencies(${umbrella_target} ${lint_target})
+endfunction()
+
+function(static_analysis_pvs_studio_get_cmd subj_target lint_target cmd)
+    set(${cmd} $<RULE_LAUNCH_CUSTOM:${subj_target}> PARENT_SCOPE)
 endfunction()

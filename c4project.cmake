@@ -21,8 +21,8 @@ function(c4_add_target prefix name)
         SANITIZE
     )
     set(options1arg
-        SANITIZED_TARGETS
         FOLDER
+        SANITIZERS  # outputs the list of sanitize targets in this var
     )
     set(optionsnarg
         SOURCES
@@ -55,7 +55,7 @@ function(c4_add_target prefix name)
         endif()
     endif()
     if(${uprefix}LINT)
-        static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}")
+        static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
     endif()
     if(_c4al_SANITIZE AND ${uprefix}SANITIZE)
         sanitize_target(${name} ${lcprefix}
@@ -63,21 +63,22 @@ function(c4_add_target prefix name)
             SOURCES ${_c4al_SOURCES}
             INC_DIRS ${_c4al_INC_DIRS}
             LIBS ${_c4al_LIBS}
-            OUTPUT_TARGET_NAMES targets
+            OUTPUT_TARGET_NAMES san_targets
             FOLDER "${_c4al_FOLDER}"
             )
     endif()
     if(NOT ${uprefix}SANITIZE_ONLY)
-        list(INSERT targets 0 ${name})
+        list(INSERT san_targets 0 ${name})
     endif()
-    if(_c4al_SANITIZED_TARGETS)
-        set(${_c4al_SANITIZED_TARGETS} ${targets} PARENT_SCOPE)
+    if(_c4al_SANITIZERS)
+        set(${_c4al_SANITIZERS} ${san_targets} PARENT_SCOPE)
     endif()
 endfunction() # add_target
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
+
 function(c4_setup_sanitize prefix initial_value)
     setup_sanitize(${prefix} ${initial_value})
 endfunction(c4_setup_sanitize)
@@ -90,27 +91,31 @@ endfunction(c4_setup_static_analysis)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 function(c4_setup_testing prefix initial_value)
-    _c4_handle_prefix(${prefix})
-    # umbrella target for building test binaries
-    add_custom_target(${lprefix}test-build)
-    set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
-    # umbrella target for running tests
-    add_custom_target(${lprefix}test
-        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E echo CMD=${CMAKE_CTEST_COMMAND} -C $<CONFIG>
-        COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
-        COMMAND ${CMAKE_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        DEPENDS ${lprefix}test-build
-        )
-    set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
+    if(initial_value)
+        _c4_handle_prefix(${prefix})
+        # umbrella target for building test binaries
+        add_custom_target(${lprefix}test-build)
+        set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
+        # umbrella target for running tests
+        add_custom_target(${lprefix}test
+            ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
+            COMMAND ${CMAKE_COMMAND} -E echo CMD=${CMAKE_CTEST_COMMAND} -C $<CONFIG>
+            COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
+            COMMAND ${CMAKE_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            DEPENDS ${lprefix}test-build
+            )
+        set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
+    endif()
 endfunction(c4_setup_testing)
 
 
 function(c4_add_test prefix target sanitized_targets)
     _c4_handle_prefix(${prefix})
     add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}>)
-    c4_add_valgrind(${prefix} ${target})
+    if(${uprefix}LINT)
+        static_analysis_add_tests(${ucprefix} ${target})
+    endif()
     if(sanitized_targets)
         add_custom_target(${target}-all)
         add_dependencies(${target}-all ${target})
@@ -121,10 +126,14 @@ function(c4_add_test prefix target sanitized_targets)
             if(TARGET ${t})
                 add_dependencies(${target}-all ${t})
                 sanitize_get_target_command($<TARGET_FILE:${t}> ${ucprefix} ${s} cmd)
+                message(STATUS "adding test: ${t}-run")
                 add_test(NAME ${t}-run COMMAND ${cmd})
             endif()
         endforeach()
+    else()
+        add_dependencies(${lprefix}test-build ${target})
     endif()
+    c4_add_valgrind(${prefix} ${target})
 endfunction(c4_add_test)
 
 
