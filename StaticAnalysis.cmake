@@ -3,13 +3,15 @@ include(GetFlags)
 include(GetTargetPropertyRecursive)
 
 
-function(setup_static_analysis prefix initially_on_or_off)
+function(setup_static_analysis pfx initially_on_or_off)
+    set(prefix pfx)
     if(prefix)
         set(prefix "${prefix}_")
     endif()
-    # option to turn sanitize on/off
-    option(${prefix}LINT "turn on static analyzers" ${initially_on_or_off})
-    # options for individual sanitizers - contingent on sanitize on/off
+    # option to turn lints on/off
+    option(${prefix}LINT "add static analyzer targets" ${initially_on_or_off})
+    option(${prefix}LINT_TESTS "add tests to run static analyzer targets" OFF)
+    # options for individual lints - contingent on linting on/off
     cmake_dependent_option(${prefix}LINT_CLANG_TIDY "use the clang-tidy static analyzer" ON "${prefix}LINT" OFF)
     cmake_dependent_option(${prefix}LINT_PVS_STUDIO "use the PVS-Studio static analyzer https://www.viva64.com/en/b/0457/" ON "${prefix}LINT" OFF)
     if(${prefix}LINT_PVS_STUDIO)
@@ -17,10 +19,10 @@ function(setup_static_analysis prefix initially_on_or_off)
     endif()
     #
     if(${prefix}LINT_PVS_STUDIO)
-        message(STATUS "Enabling static analysis with PVS-Studio")
+        message(STATUS "${pfx}: Enabling static analysis with PVS-Studio")
     endif()
     if(${prefix}LINT_CLANG_TIDY)
-        message(STATUS "Enabling static analysis with clang-tidy")
+        message(STATUS "${pfx}: Enabling static analysis with clang-tidy")
     endif()
 endfunction()
 
@@ -76,14 +78,15 @@ function(static_analysis_add_tests prefix target_name)
     if(uprefix)
         set(uprefix "${uprefix}_")
     endif()
-    if(${uprefix}LINT_CLANG_TIDY)
-        static_analysis_clang_tidy_get_cmd(${target_name} ${target_name}-lint-clang-tidy cmd)
-        message(STATUS "caralho: ${cmd}")
-        add_test(${target_name}-lint-clang-tidy-run COMMAND ${cmd})
+    if(${uprefix}LINT_CLANG_TIDY AND ${uprefix}LINT_TESTS)
+        add_test(NAME ${target_name}-lint-clang-tidy-run
+            COMMAND
+            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-clang-tidy)
     endif()
-    if(${uprefix}LINT_PVS_STUDIO)
-        static_analysis_pvs_studio_get_cmd(${target_name} ${target_name}-lint-pvs-studio cmd)
-        add_test(${target_name}-lint-pvs-studio-run COMMAND ${cmd})
+    if(${uprefix}LINT_PVS_STUDIO AND ${uprefix}LINT_TESTS)
+        add_test(NAME ${target_name}-lint-pvs-studio-run
+            COMMAND
+            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-pvs-studio)
     endif()
 endfunction()
 
