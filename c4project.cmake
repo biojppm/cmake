@@ -56,10 +56,11 @@ function(c4_add_target prefix name)
         if(${uprefix}CXX_FLAGS)
             set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS})
         endif()
+        if(${uprefix}LINT)
+            static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
+        endif()
     endif()
-    if(${uprefix}LINT)
-        static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
-    endif()
+
     if(_c4al_SANITIZE AND ${uprefix}SANITIZE)
         sanitize_target(${name} ${lcprefix}
             ${_what}
