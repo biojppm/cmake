@@ -1,3 +1,8 @@
+if(NOT _c4_project_included)
+set(_c4_project_included ON)
+
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 include(ConfigurationTypes)
 include(CreateSourceGroup)
@@ -5,8 +10,88 @@ include(SanitizeTarget)
 include(StaticAnalysis)
 include(PrintVar)
 
-set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+macro(_c4_handle_prefix prefix)
+    string(TOUPPER "${prefix}" ucprefix)
+    string(TOLOWER "${prefix}" lcprefix)
+    set(uprefix ${ucprefix})
+    set(lprefix ${lcprefix})
+    if(uprefix)
+        set(uprefix "${uprefix}_")
+    endif()
+    if(lprefix)
+        set(lprefix "${lprefix}-")
+    endif()
+endmacro(_c4_handle_prefix)
 
+macro(_show_pfx_vars)
+    print_var(prefix)
+    print_var(ucprefix)
+    print_var(lcprefix)
+    print_var(uprefix)
+    print_var(lprefix)
+endmacro()
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(c4_declare_project prefix)
+    _c4_handle_prefix(${prefix})
+    option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
+    cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
+    cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
+    setup_sanitize(C4CORE ${uprefix}DEV)
+    setup_static_analysis(C4CORE ${uprefix}DEV)
+
+    # these are default compilation flags
+    set(f "")
+    if(NOT MSVC)
+        set(f "${f} -std=c++11")
+    endif()
+    set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
+
+    # these are optional compilation flags
+    cmake_dependent_option(${uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${uprefix}DEV OFF)
+    cmake_dependent_option(${uprefix}PEDANTIC "Compile in pedantic mode" ON ${uprefix}DEV OFF)
+    cmake_dependent_option(${uprefix}WERROR "Compile with warnings as errors" ON ${uprefix}DEV OFF)
+
+    if(${uprefix}STRICT_ALIASING)
+        if(NOT MSVC)
+            set(of "${of} -fstrict-aliasing")
+        endif()
+    endif()
+    if(${uprefix}PEDANTIC)
+        if(MSVC)
+            set(of "${of} /W4")
+        else()
+            set(of "${of} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal -fstrict-aliasing")
+        endif()
+    endif()
+    if(${uprefix}WERROR)
+        if(MSVC)
+            set(of "${of} /WX")
+        else()
+            set(of "${of} -Werror -pedantic-errors")
+        endif()
+    endif()
+    set(${uprefix}CXX_FLAGS "${${uprefix}CXX_FLAGS} ${of}")
+
+endfunction(c4_declare_project)
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(c4_add_library prefix name)
+    c4_add_target(${prefix} ${name} LIBRARY ${ARGN})
+endfunction(c4_add_library)
+
+function(c4_add_executable prefix name)
+    c4_add_target(${prefix} ${name} ${ARGN})
+endfunction(c4_add_executable)
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -38,6 +123,7 @@ function(c4_add_target prefix name)
     endif()
 
     create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${_c4al_SOURCES}")
+
     if(NOT ${uprefix}SANITIZE_ONLY)
         if(${_c4al_LIBRARY})
             add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
@@ -54,6 +140,7 @@ function(c4_add_target prefix name)
             set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
         endif()
         if(${uprefix}CXX_FLAGS)
+            print_var(${uprefix}CXX_FLAGS)
             set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS})
         endif()
         if(${uprefix}LINT)
@@ -71,12 +158,15 @@ function(c4_add_target prefix name)
             FOLDER "${_c4al_FOLDER}"
             )
     endif()
+
     if(NOT ${uprefix}SANITIZE_ONLY)
         list(INSERT san_targets 0 ${name})
     endif()
+
     if(_c4al_SANITIZERS)
         set(${_c4al_SANITIZERS} ${san_targets} PARENT_SCOPE)
     endif()
+
 endfunction() # add_target
 
 #------------------------------------------------------------------------------
@@ -245,26 +335,4 @@ function(c4_setup_coverage prefix initial_value)
 endfunction(c4_setup_coverage)
 
 
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-macro(_c4_handle_prefix prefix)
-    string(TOUPPER "${prefix}" ucprefix)
-    string(TOLOWER "${prefix}" lcprefix)
-    set(uprefix ${ucprefix})
-    set(lprefix ${lcprefix})
-    if(uprefix)
-        set(uprefix "${uprefix}_")
-    endif()
-    if(lprefix)
-        set(lprefix "${lprefix}-")
-    endif()
-endmacro(_c4_handle_prefix)
-
-macro(_show_pfx_vars)
-    print_var(prefix)
-    print_var(ucprefix)
-    print_var(lcprefix)
-    print_var(uprefix)
-    print_var(lprefix)
-endmacro()
+endif() # NOT _c4_project_included

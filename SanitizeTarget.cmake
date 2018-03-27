@@ -4,12 +4,10 @@ include(CMakeDependentOption)
 include(PrintVar)
 
 #------------------------------------------------------------------------------
-function(setup_sanitize prefix initially_on_or_off)
+function(setup_sanitize prefix umbrella_option)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
-    # option to turn sanitize on/off
-    option(${prefix}_SANITIZE "turn on clang sanitizer targets" ${initially_on_or_off})
-    # clients can use this when adding their targets
-    option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" OFF)
+    cmake_dependent_option(${prefix}_SANITIZE "turn on clang sanitizer targets" ON ${umbrella_option} OFF)
+    cmake_dependent_option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" ON ${umbrella_option} OFF)
 endif()
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
@@ -20,15 +18,16 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     cmake_dependent_option(${prefix}_UBSAN "" ON "${prefix}_SANITIZE" OFF)
 
     if(${prefix}_SANITIZE)
-        message(STATUS "${prefix}: enabling clang sanitizers")
 
         string(REGEX REPLACE "([0-9]+\\.[0-9]+).*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
         find_program(LLVM_SYMBOLIZER llvm-symbolizer
             NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer
             DOC "symbolizer to use in sanitize tools")
 
+        set(ss) # string to report enabled sanitizers
+
         if(${prefix}_ASAN)
-            message(STATUS "${prefix}_SANITIZE: enabling ASAN")
+            set(ss "asan")
             set(${prefix}_ASAN_CFLAGS "-O1 -g -fsanitize=address -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
             set(${prefix}_ASAN_LFLAGS "-g -fsanitize=address" CACHE STRING "linker flags for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
             set(${prefix}_ASAN_RENV  "env ASAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} ASAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang address sanitizer: https://clang.llvm.org/docs/AddressSanitizer.html")
@@ -39,7 +38,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         endif()
 
         if(${prefix}_TSAN)
-            message(STATUS "${prefix}_SANITIZE: enabling TSAN")
+            set(ss "${ss} tsan")
             set(${prefix}_TSAN_CFLAGS "-O1 -g -fsanitize=thread -fno-omit-frame-pointer" CACHE STRING "compile flags for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
             set(${prefix}_TSAN_LFLAGS "-g -fsanitize=thread" CACHE STRING "linker flags for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
             set(${prefix}_TSAN_RENV  "env TSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} TSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang thread sanitizer: https://clang.llvm.org/docs/ThreadSanitizer.html")
@@ -48,7 +47,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         endif()
 
         if(${prefix}_MSAN)
-            message(STATUS "${prefix}_SANITIZE: enabling MSAN")
+            set(ss "${ss} msan")
             set(${prefix}_MSAN_CFLAGS "-O1 -g -fsanitize=memory -fsanitize-memory-track-origins -fno-omit-frame-pointer -fno-optimize-sibling-calls" CACHE STRING "compile flags for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
             set(${prefix}_MSAN_LFLAGS "-g -fsanitize=memory" CACHE STRING "linker flags for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
             set(${prefix}_MSAN_RENV  "env MSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} MSAN_OPTIONS=symbolize=1" CACHE STRING "run environment for clang memory sanitizer: https://clang.llvm.org/docs/MemorySanitizer.html")
@@ -57,7 +56,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         endif()
 
         if(${prefix}_UBSAN)
-            message(STATUS "${prefix}_SANITIZE: enabling UBSAN")
+            set(ss "${ss} ubsan")
             set(${prefix}_UBSAN_CFLAGS "-g -fsanitize=undefined" CACHE STRING "compile flags for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
             set(${prefix}_UBSAN_LFLAGS "-g -fsanitize=undefined" CACHE STRING "linker flags for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
             set(${prefix}_UBSAN_RENV "env UBSAN_SYMBOLIZER_PATH=${LLVM_SYMBOLIZER} UBSAN_OPTIONS='symbolize=1 print_stacktrace=1'" CACHE STRING "run environment for clang undefined behaviour sanitizer: https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html")
@@ -65,6 +64,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
             separate_arguments(${prefix}_UBSAN_LFLAGS_SEP UNIX_COMMAND ${${prefix}_UBSAN_LFLAGS})
         endif()
 
+        message(STATUS "${prefix}: enabled clang sanitizers: ${ss}")
     endif() # ${prefix}_SANITIZE
 
 endif() # clang

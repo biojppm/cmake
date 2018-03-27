@@ -3,14 +3,14 @@ include(GetFlags)
 include(GetTargetPropertyRecursive)
 
 
-function(setup_static_analysis pfx initially_on_or_off)
-    set(prefix pfx)
+function(setup_static_analysis pfx umbrella_option)
+    set(prefix ${pfx})
     if(prefix)
         set(prefix "${prefix}_")
     endif()
     # option to turn lints on/off
-    option(${prefix}LINT "add static analyzer targets" ${initially_on_or_off})
-    option(${prefix}LINT_TESTS "add tests to run static analyzer targets" OFF)
+    cmake_dependent_option(${prefix}LINT "add static analyzer targets" ON ${umbrella_option} OFF)
+    cmake_dependent_option(${prefix}LINT_TESTS "add tests to run static analyzer targets" ON ${umbrella_option} OFF)
     # options for individual lints - contingent on linting on/off
     cmake_dependent_option(${prefix}LINT_CLANG_TIDY "use the clang-tidy static analyzer" ON "${prefix}LINT" OFF)
     cmake_dependent_option(${prefix}LINT_PVS_STUDIO "use the PVS-Studio static analyzer https://www.viva64.com/en/b/0457/" ON "${prefix}LINT" OFF)
@@ -18,12 +18,14 @@ function(setup_static_analysis pfx initially_on_or_off)
         set(${prefix}LINT_PVS_STUDIO_FORMAT "errorfile" CACHE STRING "PVS-Studio output format. Choices: xml,csv,errorfile(like gcc/clang),tasklist(qtcreator)")
     endif()
     #
+    set(sa)
     if(${prefix}LINT_CLANG_TIDY)
-        message(STATUS "${pfx}: Enabling static analysis with clang-tidy")
+        set(sa "clang_tidy")
     endif()
     if(${prefix}LINT_PVS_STUDIO)
-        message(STATUS "${pfx}: Enabling static analysis with PVS-Studio")
+        set(sa "${sa} PVS-Studio")
     endif()
+    message(STATUS "${pfx}: enabled static analyzers: ${sa}")
 endfunction()
 
 
