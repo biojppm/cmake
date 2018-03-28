@@ -90,7 +90,7 @@ function(c4_add_library prefix name)
 endfunction(c4_add_library)
 
 function(c4_add_executable prefix name)
-    c4_add_target(${prefix} ${name} ${ARGN})
+    c4_add_target(${prefix} ${name} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
 #------------------------------------------------------------------------------
@@ -99,6 +99,7 @@ endfunction(c4_add_executable)
 
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
 function(c4_add_target prefix name)
+    #message(STATUS "${prefix}: adding target: ${name}: ${ARGN}")
     _c4_handle_prefix(${prefix})
     set(options0arg
         LIBRARY
@@ -140,7 +141,7 @@ function(c4_add_target prefix name)
             set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
         endif()
         if(${uprefix}CXX_FLAGS)
-            print_var(${uprefix}CXX_FLAGS)
+            #print_var(${uprefix}CXX_FLAGS)
             set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS})
         endif()
         if(${uprefix}LINT)
@@ -200,6 +201,41 @@ function(c4_setup_testing prefix initial_value)
             DEPENDS ${lprefix}test-build
             )
         set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
+
+        set(gtest_dir ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest)
+        if(NOT EXISTS ${gtest_dir}/CMakeLists.txt)
+            message(STATUS "downloading googletest...")
+            # download external libs while running cmake:
+            # https://crascit.com/2015/07/25/cmake-gtest/
+            # (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
+            file(WRITE ${gtest_dir}/CMakeLists.txt "
+cmake_minimum_required(VERSION 2.8.2)
+project(c4-gtest-extern-download NONE)
+
+# this project only downloads gtest
+# (ie, no configure, build or install step)
+include(ExternalProject)
+
+ExternalProject_Add(googletest-dl
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG release-1.8.0
+    SOURCE_DIR \"${gtest_dir}/src\"
+    BINARY_DIR \"${gtest_dir}/build\"
+    CONFIGURE_COMMAND \"\"
+    BUILD_COMMAND \"\"
+    INSTALL_COMMAND \"\"
+    TEST_COMMAND \"\"
+)
+")
+            execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${gtest_dir})
+            execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${gtest_dir})
+        endif()
+        set(BUILD_GTEST ON CACHE BOOL "" FORCE)
+        set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+        set(gtest_build_samples OFF CACHE BOOL "" FORCE)
+        set(gtest_build_tests OFF CACHE BOOL "" FORCE)
+        add_subdirectory(${gtest_dir}/src ${gtest_dir}/build)
     endif()
 endfunction(c4_setup_testing)
 

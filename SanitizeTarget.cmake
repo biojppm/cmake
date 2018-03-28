@@ -7,7 +7,7 @@ include(PrintVar)
 function(setup_sanitize prefix umbrella_option)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     cmake_dependent_option(${prefix}_SANITIZE "turn on clang sanitizer targets" ON ${umbrella_option} OFF)
-    cmake_dependent_option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" ON ${umbrella_option} OFF)
+    cmake_dependent_option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" OFF ${umbrella_option} OFF)
 endif()
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
