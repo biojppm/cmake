@@ -68,8 +68,6 @@ function(c4_declare_project prefix)
     if(${uprefix}PEDANTIC)
         if(MSVC)
             set(of "${of} /W4")
-            # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-            set(of "${of} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
         else()
             set(of "${of} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal -fstrict-aliasing")
         endif()
@@ -248,6 +246,10 @@ function(c4_setup_testing prefix initial_value)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
         set(gtest_build_samples OFF CACHE BOOL "" FORCE)
         set(gtest_build_tests OFF CACHE BOOL "" FORCE)
+        if(MSVC)
+            # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
+            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
+        endif()
         c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
             GIT_REPOSITORY https://github.com/google/googletest.git
             GIT_TAG release-1.8.0
