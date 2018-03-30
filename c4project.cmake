@@ -43,8 +43,10 @@ function(c4_declare_project prefix)
     option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
-    setup_sanitize(C4CORE ${uprefix}DEV)
-    setup_static_analysis(C4CORE ${uprefix}DEV)
+    c4_setup_coverage(${ucprefix})
+    c4_setup_valgrind(${ucprefix} ${uprefix}DEV)
+    setup_sanitize(${ucprefix} ${uprefix}DEV)
+    setup_static_analysis(${ucprefix} ${uprefix}DEV)
 
     # these are default compilation flags
     set(f "")
@@ -54,9 +56,9 @@ function(c4_declare_project prefix)
     set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
 
     # these are optional compilation flags
-    cmake_dependent_option(${uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}PEDANTIC "Compile in pedantic mode" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}WERROR "Compile with warnings as errors" ON ${uprefix}DEV OFF)
+    cmake_dependent_option(${uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${uprefix}DEV OFF)
 
     if(${uprefix}STRICT_ALIASING)
         if(NOT MSVC)
@@ -149,7 +151,7 @@ function(c4_add_target prefix name)
         endif()
     endif()
 
-    if(_c4al_SANITIZE AND ${uprefix}SANITIZE)
+    if(_c4al_SANITIZE OR ${uprefix}SANITIZE)
         sanitize_target(${name} ${lcprefix}
             ${_what}
             SOURCES ${_c4al_SOURCES}
@@ -182,12 +184,49 @@ function(c4_setup_static_analysis prefix initial_value)
     setup_static_analysis(${prefix} ${initial_value})
 endfunction(c4_setup_static_analysis)
 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# download external libs while running cmake:
+# https://crascit.com/2015/07/25/cmake-gtest/
+# (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
+function(c4_import_remote_proj prefix name dir)
+    if(NOT EXISTS ${dir}/dl/CMakeLists.txt)
+        _c4_handle_prefix(${prefix})
+        message(STATUS "${lcprefix}: downloading remote project ${name}...")
+        file(WRITE ${dir}/dl/CMakeLists.txt "
+cmake_minimum_required(VERSION 2.8.2)
+project(${lcprefix}-download-${name} NONE)
+
+# this project only downloads ${name}
+# (ie, no configure, build or install step)
+include(ExternalProject)
+
+ExternalProject_Add(${name}-dl
+    ${ARGN}
+    SOURCE_DIR \"${dir}/src\"
+    BINARY_DIR \"${dir}/build\"
+    CONFIGURE_COMMAND \"\"
+    BUILD_COMMAND \"\"
+    INSTALL_COMMAND \"\"
+    TEST_COMMAND \"\"
+)
+")
+        execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
+        execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+    endif()
+    add_subdirectory(${dir}/src ${dir}/build)
+endfunction()
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 function(c4_setup_testing prefix initial_value)
     if(initial_value)
         _c4_handle_prefix(${prefix})
+        message(STATUS "${lcprefix}: enabling tests")
         # umbrella target for building test binaries
         add_custom_target(${lprefix}test-build)
         set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
@@ -202,54 +241,45 @@ function(c4_setup_testing prefix initial_value)
             )
         set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
 
-        set(gtest_dir ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest)
-        if(NOT EXISTS ${gtest_dir}/CMakeLists.txt)
-            message(STATUS "downloading googletest...")
-            # download external libs while running cmake:
-            # https://crascit.com/2015/07/25/cmake-gtest/
-            # (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
-            file(WRITE ${gtest_dir}/CMakeLists.txt "
-cmake_minimum_required(VERSION 2.8.2)
-project(c4-gtest-extern-download NONE)
-
-# this project only downloads gtest
-# (ie, no configure, build or install step)
-include(ExternalProject)
-
-ExternalProject_Add(googletest-dl
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG release-1.8.0
-    SOURCE_DIR \"${gtest_dir}/src\"
-    BINARY_DIR \"${gtest_dir}/build\"
-    CONFIGURE_COMMAND \"\"
-    BUILD_COMMAND \"\"
-    INSTALL_COMMAND \"\"
-    TEST_COMMAND \"\"
-)
-")
-            execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${gtest_dir})
-            execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${gtest_dir})
-        endif()
         set(BUILD_GTEST ON CACHE BOOL "" FORCE)
         set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
         set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
         set(gtest_build_samples OFF CACHE BOOL "" FORCE)
         set(gtest_build_tests OFF CACHE BOOL "" FORCE)
-        add_subdirectory(${gtest_dir}/src ${gtest_dir}/build)
+        c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG release-1.8.0
+            )
     endif()
 endfunction(c4_setup_testing)
 
 
-function(c4_add_test prefix target sanitized_targets)
+function(c4_add_test prefix target)
     _c4_handle_prefix(${prefix})
     if(NOT ${uprefix}SANITIZE_ONLY)
         add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}>)
     endif()
+    if(NOT ${CMAKE_BUILD_TYPE} STREQUAL "Coverage")
+        set(sanitized_targets)
+        foreach(s asan msan tsan ubsan)
+            set(t ${target}-${s})
+            if(TARGET ${t})
+                list(APPEND sanitized_targets ${s})
+            endif()
+        endforeach()
+        if(sanitized_targets)
+            add_custom_target(${target}-all)
+            add_dependencies(${target}-all ${target})
+            add_dependencies(${lprefix}test-build ${target}-all)
+            set_target_properties(${target}-all PROPERTIES FOLDER ${lprefix}test/${target})
+        else()
+            add_dependencies(${lprefix}test-build ${target})
+        endif()
+    else()
+        add_dependencies(${lprefix}test-build ${target})
+        return()
+    endif()
     if(sanitized_targets)
-        add_custom_target(${target}-all)
-        add_dependencies(${target}-all ${target})
-        add_dependencies(${lprefix}test-build ${target}-all)
-        set_target_properties(${target}-all PROPERTIES FOLDER ${lprefix}test/${target})
         foreach(s asan msan tsan ubsan)
             set(t ${target}-${s})
             if(TARGET ${t})
@@ -259,8 +289,6 @@ function(c4_add_test prefix target sanitized_targets)
                 add_test(NAME ${t}-run COMMAND ${cmd})
             endif()
         endforeach()
-    else()
-        add_dependencies(${lprefix}test-build ${target})
     endif()
     if(NOT ${uprefix}SANITIZE_ONLY)
         c4_add_valgrind(${prefix} ${target})
@@ -271,14 +299,15 @@ function(c4_add_test prefix target sanitized_targets)
 endfunction(c4_add_test)
 
 
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_valgrind prefix initial_value)
-    _c4_handle_prefix(${prefix})
-    if(UNIX AND NOT COVERAGE_BUILD)
-        option(${uprefix}VALGRIND "enable valgrind tests" ${initial_value})
-        option(${uprefix}VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool" ${initial_value})
+function(c4_setup_valgrind prefix umbrella_option)
+    if(UNIX AND (NOT ${CMAKE_BUILD_TYPE} STREQUAL "Coverage"))
+        _c4_handle_prefix(${prefix})
+        cmake_dependent_option(${uprefix}VALGRIND "enable valgrind tests" ON ${umbrella_option} OFF)
+        cmake_dependent_option(${uprefix}VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool" OFF ${umbrella_option} OFF)
         set(${uprefix}VALGRIND_OPTIONS "--gen-suppressions=all --error-exitcode=10101" CACHE STRING "options for valgrind tests")
     endif()
 endfunction(c4_setup_valgrind)
@@ -305,51 +334,64 @@ endfunction(c4_add_valgrind)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_coverage prefix initial_value)
+function(c4_setup_coverage prefix)
     _c4_handle_prefix(${prefix})
-    set(${uprefix}COVERAGE_AVAILABLE ${initial_value})
+    set(_covok ON)
     if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
         if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
-	    message(STATUS "Coverage: clang version must be 3.0.0 or greater. No coverage available.")
-            set(${uprefix}COVERAGE_AVAILABLE OFF)
+	    message(STATUS "${prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
+            set(_covok OFF)
         endif()
     elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
-        message(STATUS "Coverage: compiler is not GNUCXX. No coverage available.")
-        set(${uprefix}COVERAGE_AVAILABLE OFF)
+        message(STATUS "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+        set(_covok OFF)
     endif()
-    if(${uprefix}COVERAGE_AVAILABLE)
-        set(covflags "-g -O0 --coverage -fprofile-arcs -ftest-coverage")
+    if(NOT _covok)
+        return()
+    endif()
+    set(_covon OFF)
+    if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+        set(_covon ON)
+    endif()
+    option(${uprefix}COVERAGE "enable coverage targets" ${_covon})
+    cmake_dependent_option(${uprefix}COVERAGE_CODECOV "enable coverage with codecov" ON ${uprefix}COVERAGE OFF)
+    cmake_dependent_option(${uprefix}COVERAGE_COVERALLS "enable coverage with coveralls" ON ${uprefix}COVERAGE OFF)
+    if(${uprefix}COVERAGE)
+        set(covflags "-g -O0 -fprofile-arcs -ftest-coverage --coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+        #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
         add_configuration_type(Coverage
             DEFAULT_FROM DEBUG
             C_FLAGS ${covflags}
             CXX_FLAGS ${covflags}
             )
-        if(CMAKE_BUILD_TYPE)
-            string(TOLOWER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_LOWER)
-        endif()
-        if(${CMAKE_BUILD_TYPE_LOWER} MATCHES "coverage")
-            set(COVERAGE_BUILD ON)
+        if(${CMAKE_BUILD_TYPE} STREQUAL "Coverage")
+            if(${uprefix}COVERAGE_CODECOV)
+                #include(CodeCoverage)
+            endif()
+            if(${uprefix}COVERAGE_COVERALLS)
+                #include(Coveralls)
+                #coveralls_turn_on_coverage() # NOT NEEDED, we're doing this manually.
+            endif()
             find_program(GCOV gcov)
             find_program(LCOV lcov)
             find_program(GENHTML genhtml)
             find_program(CTEST ctest)
-            if (GCOV AND LCOV AND GENHTML AND CTEST)
-                add_custom_command(
-                    OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
-                    COMMAND ${LCOV} -q -z -d .
-                    COMMAND ${LCOV} -q --no-external -c -b "${CMAKE_SOURCE_DIR}" -d . -o before.lcov -i
+            if(GCOV AND LCOV AND GENHTML AND CTEST)
+                add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
+                    COMMAND ${LCOV} -q --zerocounters --directory .
+                    COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
                     COMMAND ${CTEST} --force-new-ctest-process
-                    COMMAND ${LCOV} -q --no-external -c -b "${CMAKE_SOURCE_DIR}" -d . -o after.lcov
-                    COMMAND ${LCOV} -q -a before.lcov -a after.lcov --output-file final.lcov
-                    COMMAND ${LCOV} -q -r final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" -o final.lcov
-                    COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t benchmark
+                    COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
+                    COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
+                    COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'/usr/*'" "'*/extern/*'" --output-file final.lcov
+                    COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${lcprefix}
                     DEPENDS ${lprefix}test
                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                    COMMENT "Running LCOV"
+                    COMMENT "${prefix} coverage: Running LCOV"
                     )
                 add_custom_target(${lprefix}coverage
                     DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
-                    COMMENT "LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+                    COMMENT "${lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                     )
                 message(STATUS "Coverage command added")
             else()
