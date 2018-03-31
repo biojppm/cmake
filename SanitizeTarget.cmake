@@ -5,11 +5,14 @@ include(PrintVar)
 
 #------------------------------------------------------------------------------
 function(setup_sanitize prefix umbrella_option)
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+    if(${CMAKE_BUILD_TYPE} STREQUAL "Coverage")
+        return()
+    endif()
+    if(NOT ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
+        return()
+    endif()
     cmake_dependent_option(${prefix}_SANITIZE "turn on clang sanitizer targets" ON ${umbrella_option} OFF)
     cmake_dependent_option(${prefix}_SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" OFF ${umbrella_option} OFF)
-endif()
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
 
     # options for individual sanitizers - contingent on sanitize on/off
     cmake_dependent_option(${prefix}_ASAN  "" ON "${prefix}_SANITIZE" OFF)
@@ -67,7 +70,6 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
         message(STATUS "${prefix}: enabled clang sanitizers: ${ss}")
     endif() # ${prefix}_SANITIZE
 
-endif() # clang
 endfunction()
 
 #------------------------------------------------------------------------------
