@@ -1,11 +1,47 @@
-if(NOT _c4catsources_included)
-set(_c4catsources_included ON)
+if(NOT _c4CatSourcesIncluded)
+set(_c4CatSourcesIncluded ON)
 
 # concatenate the source files to an output file, adding preprocessor adjustment
 # for correct file/line reporting
 function(c4_cat_sources prefix files output)
 
     _c4_handle_prefix(${prefix})
+
+    _c4_cat_sources_create_cat(cat)
+
+    c4_to_full_path("${files}" full_files) # we must work with full paths
+    c4_separate_list("${full_files}" sepfiles) # and use a string instead of a list
+
+    print_var(output)
+    if(NOT EXISTS "${output}")
+        # the cat command is executed at build time, but we need the output
+        # file to exist to be able to create the target. so to bootstrap, just
+        # run the command now
+        message(STATUS "creating ${output} for the first time")
+        execute_process(
+            COMMAND ${cat} "${sepfiles}" "${output}"
+            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+            )
+    else()
+        message(STATUS "output exists: ${output}")
+    endif()
+
+    # add a custom command invoking our cat script for the input files
+    add_custom_command(OUTPUT ${output}
+        COMMAND ${cat} "${sepfiles}" "${output}"
+        DEPENDS ${files}
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "concatenating sources to ${output}")
+
+    if(NOT TARGET ${lprefix}cat)
+        add_custom_target(${lprefix}cat DEPENDS ${output} ${files})
+    endif()
+
+endfunction(c4_cat_sources)
+
+#------------------------------------------------------------------------------
+# get a cat script
+function(_c4_cat_sources_create_cat catfile)
 
     # create a script to concatenate the sources
     if(WIN32)
@@ -15,6 +51,8 @@ function(c4_cat_sources prefix files output)
         set(cat ${CMAKE_BINARY_DIR}/_c4catfiles.sh)
         set(cattmp ${CMAKE_BINARY_DIR}/${CMAKE_FILES_DIRECTORY}/_c4catfiles.sh)
     endif()
+    set(${catfile} ${cat} PARENT_SCOPE)
+
     if(NOT EXISTS ${cat})
         if(WIN32)
             file(WRITE ${cattmp} "
@@ -59,6 +97,7 @@ done
 echo \"Wrote output to $out_file\"
 ")
         endif()
+
         # add execute permissions
         get_filename_component(catdir ${cat} DIRECTORY)
         file(COPY ${cattmp} DESTINATION ${catdir}
@@ -69,31 +108,6 @@ echo \"Wrote output to $out_file\"
             )
     endif()
 
-    c4_to_full_path("${files}" full_files) # we must work with full paths
-    c4_separate_list("${full_files}" sepfiles) # and string instead of list
+endfunction()
 
-    # add a custom command invoking our cat script for the input files
-    add_custom_command(OUTPUT ${output}
-        COMMAND ${cat} "${sepfiles}" "${output}"
-        DEPENDS ${files}
-        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-        COMMENT "concatenating sources to ${output}")
-
-    if(NOT EXISTS ${output})
-        # the command above is executed only at build time.
-        # but we need the output file to exist to be able to create the target
-        # so to bootstrap, just run the command now
-        message(STATUS "creating ${output} for the first time")
-        execute_process(
-            COMMAND ${cat} "${sepfiles}" "${output}"
-            WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
-            )
-    endif()
-
-    if(NOT TARGET ${lprefix}cat)
-        add_custom_target(${lprefix}cat DEPENDS ${output})
-    endif()
-
-endfunction(c4_cat_sources)
-
-endif(NOT _c4catsources_included)
+endif(NOT _c4CatSourcesIncluded)

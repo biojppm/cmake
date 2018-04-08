@@ -195,6 +195,7 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+# given a list of source files, return a list with full paths
 function(c4_to_full_path source_list source_list_with_full_paths)
     set(l)
     foreach(f ${source_list})
@@ -207,6 +208,7 @@ function(c4_to_full_path source_list source_list_with_full_paths)
     set(${source_list_with_full_paths} ${l} PARENT_SCOPE)
 endfunction()
 
+# convert a list to a string separated with spaces
 function(c4_separate_list input_list output_string)
     set(s)
     foreach(e ${input_list})
@@ -258,12 +260,15 @@ function(c4_add_target prefix name)
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_SRCOUT_EXT} out)
                 c4_cat_sources(${prefix} "${l}" "${out}")
                 add_executable(${name} ${out} ${_c4al_MORE_ARGS})
+                add_dependencies(${name} ${out})
+                add_dependencies(${name} ${lprefix}cat)
             else()
                 add_executable(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
             endif()
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_c4al_LIBRARY})
+
             # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
             if(BUILD_LIBRARY_TYPE STREQUAL "headers")
                 # header-only library - cat sources to a header file, leave other headers as is
@@ -272,36 +277,48 @@ function(c4_add_target prefix name)
                 _c4cat_get_outname(${prefix} ${name} "src" ${BUILD_HDROUT_EXT} out)
                 c4_cat_sources(${prefix} "${c}" "${out}")
                 add_library(${name} INTERFACE)
+                add_dependencies(${name} ${out})
+                add_dependencies(${name} ${lprefix}cat)
                 set(tgt_type INTERFACE)
                 target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${h};${out}> $<BUILD_INTERFACE:${h};${out}>)
                 target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
                 list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+
             elseif(BUILD_LIBRARY_TYPE STREQUAL "single_header")
                 # header-only library, in a single header
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_HDROUT_EXT} out)
                 _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
                 c4_cat_sources(${prefix} "${ch}" "${out}")
                 add_library(${name} INTERFACE)
+                add_dependencies(${name} ${out})
+                add_dependencies(${name} ${lprefix}cat)
                 set(tgt_type INTERFACE)
                 target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${out}> $<BUILD_INTERFACE:${out}>)
                 target_compile_definitions(${name} INTERFACE ${uprefix}SINGLE_HEADER)
                 list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
+
             elseif(BUILD_LIBRARY_TYPE STREQUAL "scu_iface")
-                # single compilation unit, source exposed as interface
-                _c4cat_filter_srcs("${_c4al_SOURCES}" l)
+                # single compilation unit, source (.cpp) file exposed as interface
+                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources(${prefix} "${l}" "${scu}")
+                c4_cat_sources(${prefix} "${c}" "${scu}")
                 add_library(${name} INTERFACE)
+                add_dependencies(${name} ${scu})
+                add_dependencies(${name} ${lprefix}cat)
                 set(tgt_type INTERFACE)
                 target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${scu}> $<BUILD_INTERFACE:${scu}>)
+
             elseif(BUILD_LIBRARY_TYPE STREQUAL "scu")
                 # single compilation unit, as if using LTO
-                _c4cat_filter_srcs("${_c4al_SOURCES}" l)
+                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources(${prefix} "${l}" "${scu}")
+                c4_cat_sources(${prefix} "${c}" "${scu}")
                 add_library(${name} ${scu} ${_c4al_MORE_ARGS})
+                add_dependencies(${name} ${scu})
+                add_dependencies(${name} ${lprefix}cat)
                 set(tgt_type PUBLIC)
                 #target_sources(${name} PUBLIC ${_c4al_SOURCES})
+
             else()
                 # obey BUILD_SHARED_LIBS (ie, either static or shared library)
                 add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
