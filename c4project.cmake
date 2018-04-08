@@ -157,6 +157,11 @@ function(_c4cat_filter_hdrs in out)
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
+function(_c4cat_filter_srcs_hdrs in out)
+    _c4cat_filter_extensions("${in}" "${BUILD_HDR_EXTS};${BUILD_SRC_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
 function(_c4cat_filter_extensions in filter out)
     set(l)
     foreach(fn ${in})
@@ -184,6 +189,32 @@ function(_c4cat_one_of ext candidates out)
     endforeach()
     set(${out} NO PARENT_SCOPE)
 endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(c4_to_full_path source_list source_list_with_full_paths)
+    set(l)
+    foreach(f ${source_list})
+        if(IS_ABSOLUTE "${f}")
+            list(APPEND l "${f}")
+        else()
+            list(APPEND l "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
+        endif()
+    endforeach()
+    set(${source_list_with_full_paths} ${l} PARENT_SCOPE)
+endfunction()
+
+function(c4_separate_list input_list output_string)
+    set(s)
+    foreach(e ${input_list})
+        set(s "${s} ${e}")
+    endforeach()
+    set(${output_string} ${s} PARENT_SCOPE)
+endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -216,99 +247,117 @@ function(c4_add_target prefix name)
         set(_what EXECUTABLE)
     endif()
 
+    c4_to_full_path("${_c4al_SOURCES}" fullsrc)
+    set(_c4al_SOURCES "${fullsrc}")
+
     create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${_c4al_SOURCES}")
 
     if(NOT ${uprefix}SANITIZE_ONLY)
         if(${_c4al_EXECUTABLE})
             if(BUILD_EXECUTABLE_TYPE STREQUAL "scu")
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_SRCOUT_EXT} out)
-                c4_cat_sources("${l}" "${out}")
+                c4_cat_sources(${prefix} "${l}" "${out}")
                 add_executable(${name} ${out} ${_c4al_MORE_ARGS})
             else()
                 add_executable(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
             endif()
+            set(tgt_type PUBLIC)
+            set(compiled_target ON)
         elseif(${_c4al_LIBRARY})
             # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
             if(BUILD_LIBRARY_TYPE STREQUAL "headers")
-                # header-only library - cat sources to a header file
+                # header-only library - cat sources to a header file, leave other headers as is
                 _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_filter_hdrs("${_c4al_SOURCES}" h)
                 _c4cat_get_outname(${prefix} ${name} "src" ${BUILD_HDROUT_EXT} out)
-                c4_cat_sources("${c}" "${out}")
+                c4_cat_sources(${prefix} "${c}" "${out}")
                 add_library(${name} INTERFACE)
-                set(lib_type INTERFACE)
-                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${h};${out}>)
+                set(tgt_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${h};${out}> $<BUILD_INTERFACE:${h};${out}>)
                 target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
+                list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
             elseif(BUILD_LIBRARY_TYPE STREQUAL "single_header")
                 # header-only library, in a single header
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_HDROUT_EXT} out)
-                c4_cat_sources("${_c4al_SOURCES}" "${out}")
+                _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
+                c4_cat_sources(${prefix} "${ch}" "${out}")
                 add_library(${name} INTERFACE)
-                set(lib_type INTERFACE)
-                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${out}>)
-                target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
+                set(tgt_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${out}> $<BUILD_INTERFACE:${out}>)
+                target_compile_definitions(${name} INTERFACE ${uprefix}SINGLE_HEADER)
+                list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
             elseif(BUILD_LIBRARY_TYPE STREQUAL "scu_iface")
                 # single compilation unit, source exposed as interface
                 _c4cat_filter_srcs("${_c4al_SOURCES}" l)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources("${l}" "${scu}")
+                c4_cat_sources(${prefix} "${l}" "${scu}")
                 add_library(${name} INTERFACE)
-                set(lib_type INTERFACE)
-                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${scu}>)
+                set(tgt_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${scu}> $<BUILD_INTERFACE:${scu}>)
             elseif(BUILD_LIBRARY_TYPE STREQUAL "scu")
                 # single compilation unit, as if using LTO
                 _c4cat_filter_srcs("${_c4al_SOURCES}" l)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources("${l}" "${scu}")
+                c4_cat_sources(${prefix} "${l}" "${scu}")
                 add_library(${name} ${scu} ${_c4al_MORE_ARGS})
-                set(lib_type PUBLIC)
+                set(tgt_type PUBLIC)
                 #target_sources(${name} PUBLIC ${_c4al_SOURCES})
             else()
                 # obey BUILD_SHARED_LIBS (ie, either static or shared library)
                 add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
-                set(lib_type PUBLIC)
+                set(tgt_type PUBLIC)
             endif()
         endif()
+        if(tgt_type STREQUAL INTERFACE)
+            set(compiled_target OFF)
+        else()
+            set(compiled_target ON)
+        endif()
         if(_c4al_INC_DIRS)
-            target_include_directories(${name} ${lib_type} ${_c4al_INC_DIRS})
+            target_include_directories(${name} ${tgt_type} ${_c4al_INC_DIRS})
         endif()
         if(_c4al_LIBS)
-            target_link_libraries(${name} ${lib_type} ${_c4al_LIBS})
+            target_link_libraries(${name} ${tgt_type} ${_c4al_LIBS})
         endif()
-        if(_c4al_FOLDER)
-            set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
-        endif()
-        if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS AND (NOT lib_type STREQUAL INTERFACE))
-            #print_var(${uprefix}CXX_FLAGS)
-            set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
-        endif()
-        if(${uprefix}LINT)
-            static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
+        if(compiled_target)
+            if(_c4al_FOLDER)
+                set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
+            endif()
+            if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS)
+                #print_var(${uprefix}CXX_FLAGS)
+                set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
+            endif()
+            if(${uprefix}LINT)
+                static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
+            endif()
         endif()
     endif()
 
-    if(_c4al_SANITIZE OR ${uprefix}SANITIZE)
-        sanitize_target(${name} ${lcprefix}
-            ${_what}
-            SOURCES ${_c4al_SOURCES}
-            INC_DIRS ${_c4al_INC_DIRS}
-            LIBS ${_c4al_LIBS}
-            OUTPUT_TARGET_NAMES san_targets
-            FOLDER "${_c4al_FOLDER}"
-            )
-    endif()
+    if(compiled_target)
+        if(_c4al_SANITIZE OR ${uprefix}SANITIZE)
+            sanitize_target(${name} ${lcprefix}
+                ${_what}   # LIBRARY or EXECUTABLE
+                SOURCES ${_c4al_SOURCES}
+                INC_DIRS ${_c4al_INC_DIRS}
+                LIBS ${_c4al_LIBS}
+                OUTPUT_TARGET_NAMES san_targets
+                FOLDER "${_c4al_FOLDER}"
+                )
+        endif()
 
-    if(NOT ${uprefix}SANITIZE_ONLY)
-        list(INSERT san_targets 0 ${name})
-    endif()
+        if(NOT ${uprefix}SANITIZE_ONLY)
+            list(INSERT san_targets 0 ${name})
+        endif()
 
-    if(_c4al_SANITIZERS)
-        set(${_c4al_SANITIZERS} ${san_targets} PARENT_SCOPE)
+        if(_c4al_SANITIZERS)
+            set(${_c4al_SANITIZERS} ${san_targets} PARENT_SCOPE)
+        endif()
     endif()
 
 endfunction() # add_target
 
 
+# TODO
 function(c4_install_library prefix name)
     install(DIRECTORY
         example_lib/library
@@ -456,7 +505,7 @@ function(c4_add_test prefix target)
             if(TARGET ${t})
                 add_dependencies(${target}-all ${t})
                 sanitize_get_target_command($<TARGET_FILE:${t}> ${ucprefix} ${s} cmd)
-                message(STATUS "adding test: ${t}-run")
+                #message(STATUS "adding test: ${t}-run")
                 add_test(NAME ${t}-run COMMAND ${cmd})
             endif()
         endforeach()

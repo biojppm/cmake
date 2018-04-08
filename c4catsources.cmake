@@ -3,7 +3,9 @@ set(_c4catsources_included ON)
 
 # concatenate the source files to an output file, adding preprocessor adjustment
 # for correct file/line reporting
-function(c4_cat_sources files output)
+function(c4_cat_sources prefix files output)
+
+    _c4_handle_prefix(${prefix})
 
     # create a script to concatenate the sources
     if(WIN32)
@@ -67,15 +69,8 @@ echo \"Wrote output to $out_file\"
             )
     endif()
 
-    # we must work with full paths
-    set(sepfiles)
-    foreach(f ${files})
-        if(IS_ABSOLUTE ${f})
-            set(sepfiles "${sepfiles} ${f}")
-        else()
-            set(sepfiles "${sepfiles} ${CMAKE_CURRENT_SOURCE_DIR}/${f}")
-        endif()
-    endforeach()
+    c4_to_full_path("${files}" full_files) # we must work with full paths
+    c4_separate_list("${full_files}" sepfiles) # and string instead of list
 
     # add a custom command invoking our cat script for the input files
     add_custom_command(OUTPUT ${output}
@@ -93,6 +88,10 @@ echo \"Wrote output to $out_file\"
             COMMAND ${cat} "${sepfiles}" "${output}"
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             )
+    endif()
+
+    if(NOT TARGET ${lprefix}cat)
+        add_custom_target(${lprefix}cat DEPENDS ${output})
     endif()
 
 endfunction(c4_cat_sources)
