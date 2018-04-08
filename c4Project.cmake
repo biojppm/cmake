@@ -9,7 +9,8 @@ include(CreateSourceGroup)
 include(SanitizeTarget)
 include(StaticAnalysis)
 include(PrintVar)
-include(c4catsources)
+include(c4CatSources)
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -34,6 +35,7 @@ macro(_show_pfx_vars)
     print_var(uprefix)
     print_var(lprefix)
 endmacro()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
