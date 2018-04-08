@@ -9,6 +9,7 @@ include(CreateSourceGroup)
 include(SanitizeTarget)
 include(StaticAnalysis)
 include(PrintVar)
+include(c4catsources)
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -97,6 +98,93 @@ function(c4_add_executable prefix name)
     c4_add_target(${prefix} ${name} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(c4_set_default var val)
+    if(${var} STREQUAL "")
+        set(${var} ${val} PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(c4_set_cache_default var val)
+    if(${var} STREQUAL "")
+        set(${var} ${val} ${ARGN})
+    endif()
+endfunction()
+
+# document this variable
+c4_set_default(BUILD_LIBRARY_TYPE static)
+set(BUILD_LIBRARY_TYPE "${BUILD_LIBRARY_TYPE}" CACHE STRING "specify how to build libraries: must be one of default,scu,scu_iface,headers,single_header.
+default: defaults to BUILD_SHARED_LIBS behaviour
+scu: concatenate all compilation unit files into a single compilation unit, compile it as if using LTO
+scu_iface: concatenate all compilation unit files into a single compilation unit, expose it as the target's public interface to be consumed by clients
+headers: concatenate all compilation unit files into a single header file
+single_header: concatenate all files into a single header file.
+
+This variable overrides BUILD_SHARED_LIBS behaviour.")
+
+# document this variable
+c4_set_default(BUILD_EXECUTABLE_TYPE default)
+set(BUILD_EXECUTABLE_TYPE "${BUILD_EXECUTABLE_TYPE}" CACHE STRING "specify how to build executables: must be one of mcu,scu.
+default: multiple compilation units (traditional compiler behaviour)
+scu: single compilation unit")
+
+set(BUILD_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
+set(BUILD_SRC_EXTS "c;cpp;cc;c++;cxx;cu" CACHE STRING "list of compilation unit extensions for determining which files are sources")
+set(BUILD_SRCOUT_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
+set(BUILD_HDROUT_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
+
+function(_c4cat_get_outname prefix target id ext out)
+    _c4_handle_prefix(${prefix})
+    if(lcprefix STREQUAL target)
+        set(p "${target}")
+    else()
+        set(p "${lcprefix}.${target}")
+    endif()
+    set(${out} "${CMAKE_CURRENT_BINARY_DIR}/${p}.${id}.${ext}" PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_srcs in out)
+    _c4cat_filter_extensions("${in}" "${BUILD_SRC_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_hdrs in out)
+    _c4cat_filter_extensions("${in}" "${BUILD_HDR_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_extensions in filter out)
+    set(l)
+    foreach(fn ${in})
+        _c4cat_get_file_ext(${fn} ext)
+        _c4cat_one_of(${ext} "${filter}" yes)
+        if(${yes})
+            list(APPEND l ${fn})
+        endif()
+    endforeach()
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_get_file_ext in out)
+    # https://stackoverflow.com/questions/30049180/strip-filename-shortest-extension-by-cmake-get-filename-removing-the-last-ext
+    string(REGEX MATCH "^.*\\.([^.]*)$" dummy ${in})
+    set(${out} ${CMAKE_MATCH_1} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_one_of ext candidates out)
+    foreach(e ${candidates})
+        if(ext STREQUAL ${e})
+            set(${out} YES PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    set(${out} NO PARENT_SCOPE)
+endfunction()
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -106,8 +194,8 @@ function(c4_add_target prefix name)
     #message(STATUS "${prefix}: adding target: ${name}: ${ARGN}")
     _c4_handle_prefix(${prefix})
     set(options0arg
-        LIBRARY
         EXECUTABLE
+        LIBRARY
         SANITIZE
     )
     set(options1arg
@@ -116,6 +204,7 @@ function(c4_add_target prefix name)
     )
     set(optionsnarg
         SOURCES
+        HEADERS
         INC_DIRS
         LIBS
         MORE_ARGS
@@ -130,23 +219,68 @@ function(c4_add_target prefix name)
     create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${_c4al_SOURCES}")
 
     if(NOT ${uprefix}SANITIZE_ONLY)
-        if(${_c4al_LIBRARY})
-            add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
-        elseif(${_c4al_EXECUTABLE})
-            add_executable(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
+        if(${_c4al_EXECUTABLE})
+            if(BUILD_EXECUTABLE_TYPE STREQUAL "scu")
+                _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_SRCOUT_EXT} out)
+                c4_cat_sources("${l}" "${out}")
+                add_executable(${name} ${out} ${_c4al_MORE_ARGS})
+            else()
+                add_executable(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
+            endif()
+        elseif(${_c4al_LIBRARY})
+            # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
+            if(BUILD_LIBRARY_TYPE STREQUAL "headers")
+                # header-only library - cat sources to a header file
+                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
+                _c4cat_filter_hdrs("${_c4al_SOURCES}" h)
+                _c4cat_get_outname(${prefix} ${name} "src" ${BUILD_HDROUT_EXT} out)
+                c4_cat_sources("${c}" "${out}")
+                add_library(${name} INTERFACE)
+                set(lib_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${h};${out}>)
+                target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
+            elseif(BUILD_LIBRARY_TYPE STREQUAL "single_header")
+                # header-only library, in a single header
+                _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_HDROUT_EXT} out)
+                c4_cat_sources("${_c4al_SOURCES}" "${out}")
+                add_library(${name} INTERFACE)
+                set(lib_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${out}>)
+                target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
+            elseif(BUILD_LIBRARY_TYPE STREQUAL "scu_iface")
+                # single compilation unit, source exposed as interface
+                _c4cat_filter_srcs("${_c4al_SOURCES}" l)
+                _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
+                c4_cat_sources("${l}" "${scu}")
+                add_library(${name} INTERFACE)
+                set(lib_type INTERFACE)
+                target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${scu}>)
+            elseif(BUILD_LIBRARY_TYPE STREQUAL "scu")
+                # single compilation unit, as if using LTO
+                _c4cat_filter_srcs("${_c4al_SOURCES}" l)
+                _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
+                c4_cat_sources("${l}" "${scu}")
+                add_library(${name} ${scu} ${_c4al_MORE_ARGS})
+                set(lib_type PUBLIC)
+                #target_sources(${name} PUBLIC ${_c4al_SOURCES})
+            else()
+                # obey BUILD_SHARED_LIBS (ie, either static or shared library)
+                add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
+                set(lib_type PUBLIC)
+            endif()
         endif()
         if(_c4al_INC_DIRS)
-            target_include_directories(${name} PUBLIC ${_c4al_INC_DIRS})
+            target_include_directories(${name} ${lib_type} ${_c4al_INC_DIRS})
         endif()
         if(_c4al_LIBS)
-            target_link_libraries(${name} PUBLIC ${_c4al_LIBS})
+            target_link_libraries(${name} ${lib_type} ${_c4al_LIBS})
         endif()
         if(_c4al_FOLDER)
             set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
         endif()
-        if(${uprefix}CXX_FLAGS)
+        if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS AND (NOT lib_type STREQUAL INTERFACE))
             #print_var(${uprefix}CXX_FLAGS)
-            set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS})
+            set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
         endif()
         if(${uprefix}LINT)
             static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
@@ -173,6 +307,37 @@ function(c4_add_target prefix name)
     endif()
 
 endfunction() # add_target
+
+
+function(c4_install_library prefix name)
+    install(DIRECTORY
+        example_lib/library
+        DESTINATION
+        include/example_lib
+        )
+
+    # install and export the library
+    install(FILES
+        example_lib/library.hpp
+        example_lib/api.hpp
+        DESTINATION
+        include/example_lib
+        )
+    install(TARGETS ${name}
+        EXPORT ${name}_targets
+        RUNTIME DESTINATION bin
+        ARCHIVE DESTINATION lib
+        LIBRARY DESTINATION lib
+        INCLUDES DESTINATION include
+        )
+    install(EXPORT ${name}_targets
+        NAMESPACE ${name}::
+        DESTINATION lib/cmake/${name}
+        )
+    install(FILES example_lib-config.cmake
+        DESTINATION lib/cmake/${name}
+        )
+endfunction()
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
