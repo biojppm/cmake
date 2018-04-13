@@ -12,7 +12,7 @@ function(setup_static_analysis pfx umbrella_option)
         message(STATUS "${pfx}: no static analyzer available in WIN32")
         return()
     endif()
-    if(${CMAKE_BUILD_TYPE} STREQUAL "Coverage")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
         return()
     endif()
     # option to turn lints on/off
