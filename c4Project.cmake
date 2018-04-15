@@ -471,10 +471,14 @@ endfunction(c4_setup_static_analysis)
 # pass the needed arguments after dir.
 # These arguments will be forwarded to ExternalProject_Add()
 function(c4_import_remote_proj prefix name dir)
+    c4_download_remote_proj(${prefix} ${name} ${dir} ${ARGN})
+    add_subdirectory(${dir}/src ${dir}/build)
+endfunction()
+
+function(c4_download_remote_proj prefix name dir)
     if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
-        message(STATUS "${prefix}: downloading ${name}: ${dir}/dl/CMakeLists.txt")
         _c4_handle_prefix(${prefix})
-        message(STATUS "${lcprefix}: downloading remote project ${name}...")
+        message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
         file(WRITE ${dir}/dl/CMakeLists.txt "
 cmake_minimum_required(VERSION 2.8.2)
 project(${lcprefix}-download-${name} NONE)
@@ -496,13 +500,15 @@ ExternalProject_Add(${name}-dl
         execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
         execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
     endif()
-    add_subdirectory(${dir}/src ${dir}/build)
 endfunction()
+
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 function(c4_setup_testing prefix)
+    #include(GoogleTest) # this module requires at least cmake 3.9
     _c4_handle_prefix(${prefix})
     message(STATUS "${lcprefix}: enabling tests")
     # umbrella target for building test binaries
