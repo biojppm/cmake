@@ -88,6 +88,38 @@ function(c4_declare_project prefix)
 
 endfunction(c4_declare_project)
 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+# type can be one of:
+#  DIR:  the module is located in the given directory name and
+#        will be added via add_subdirectory()
+#  REMOTE: the module is located in a remote repo/url
+#          and will be added via c4_import_remote_proj()
+function(c4_require_module prefix module_name type)
+    _c4_handle_prefix(${prefix})
+    list(APPEND _${uprefix}_deps ${module_name})
+    set(_${uprefix}_deps ${_${uprefix}_deps} PARENT_SCOPE)
+    if(NOT _${module_name}_available)
+        set(_${module_name}_available ON PARENT_SCOPE)
+        if("${type}" STREQUAL "REMOTE")
+            set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+            c4_import_remote_proj(${prefix} ${module_name} ${_r} ${ARGN})
+            set(${uprefix}${module_name}_SRC_DIR ${_r}/src PARENT_SCOPE)
+            set(${uprefix}${module_name}_BIN_DIR ${_r}/build PARENT_SCOPE)
+        elseif("${type}" STREQUAL "SUBDIRECTORY")
+            set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+            add_subdirectory(${ARGN} ${_r}/build)
+            set(${uprefix}${module_name}_SRC_DIR ${ARGN} PARENT_SCOPE)
+            set(${uprefix}${module_name}_BIN_DIR ${_r}/build PARENT_SCOPE)
+        else()
+            message(FATAL_ERROR "module type must be either REMOTE or SUBDIRECTORY")
+        endif()
+    endif()
+endfunction(c4_require_module)
+
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -240,8 +272,8 @@ function(c4_add_target prefix name)
     set(optionsnarg
         SOURCES
         HEADERS
-        INC_DIRS
-        LIBS
+        INC_DIRS PRIVATE_INC_DIRS
+        LIBS PRIVATE_LIBS
         MORE_ARGS
     )
     cmake_parse_arguments(_c4al "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
@@ -271,6 +303,7 @@ function(c4_add_target prefix name)
             set(compiled_target ON)
         elseif(${_c4al_LIBRARY})
 
+            # https://rix0r.nl/blog/2015/08/13/cmake-guide/
             # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
             if(BUILD_LIBRARY_TYPE STREQUAL "headers")
                 # header-only library - cat sources to a header file, leave other headers as is
@@ -335,8 +368,14 @@ function(c4_add_target prefix name)
         if(_c4al_INC_DIRS)
             target_include_directories(${name} ${tgt_type} ${_c4al_INC_DIRS})
         endif()
+        if(_c4al_PRIVATE_INC_DIRS)
+            target_include_directories(${name} PRIVATE ${_c4al_PRIVATE_INC_DIRS})
+        endif()
         if(_c4al_LIBS)
             target_link_libraries(${name} ${tgt_type} ${_c4al_LIBS})
+        endif()
+        if(_c4al_PRIVATE_LIBS)
+            target_link_libraries(${name} PRIVATE ${_c4al_PRIVATE_LIBS})
         endif()
         if(compiled_target)
             if(_c4al_FOLDER)
@@ -427,6 +466,9 @@ endfunction(c4_setup_static_analysis)
 # download external libs while running cmake:
 # https://crascit.com/2015/07/25/cmake-gtest/
 # (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
+#
+# to specify url, repo, tag, or branch, pass the needed arguments
+# after dir
 function(c4_import_remote_proj prefix name dir)
     if(NOT EXISTS ${dir}/dl/CMakeLists.txt)
         _c4_handle_prefix(${prefix})
