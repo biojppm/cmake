@@ -5,7 +5,7 @@ include(PrintVar)
 
 #------------------------------------------------------------------------------
 function(setup_sanitize prefix umbrella_option)
-    if(${CMAKE_BUILD_TYPE} STREQUAL "Coverage")
+    if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
         return()
     endif()
     if(NOT ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))

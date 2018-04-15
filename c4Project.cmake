@@ -467,10 +467,12 @@ endfunction(c4_setup_static_analysis)
 # https://crascit.com/2015/07/25/cmake-gtest/
 # (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
 #
-# to specify url, repo, tag, or branch, pass the needed arguments
-# after dir
+# to specify url, repo, tag, or branch,
+# pass the needed arguments after dir.
+# These arguments will be forwarded to ExternalProject_Add()
 function(c4_import_remote_proj prefix name dir)
-    if(NOT EXISTS ${dir}/dl/CMakeLists.txt)
+    if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
+        message(STATUS "${prefix}: downloading ${name}: ${dir}/dl/CMakeLists.txt")
         _c4_handle_prefix(${prefix})
         message(STATUS "${lcprefix}: downloading remote project ${name}...")
         file(WRITE ${dir}/dl/CMakeLists.txt "
@@ -500,38 +502,36 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_testing prefix initial_value)
-    if(initial_value)
-        _c4_handle_prefix(${prefix})
-        message(STATUS "${lcprefix}: enabling tests")
-        # umbrella target for building test binaries
-        add_custom_target(${lprefix}test-build)
-        set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
-        # umbrella target for running tests
-        add_custom_target(${lprefix}test
-            ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-            COMMAND ${CMAKE_COMMAND} -E echo CMD=${CMAKE_CTEST_COMMAND} -C $<CONFIG>
-            COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
-            COMMAND ${CMAKE_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>
-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-            DEPENDS ${lprefix}test-build
-            )
-        set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
+function(c4_setup_testing prefix)
+    _c4_handle_prefix(${prefix})
+    message(STATUS "${lcprefix}: enabling tests")
+    # umbrella target for building test binaries
+    add_custom_target(${lprefix}test-build)
+    set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
+    # umbrella target for running tests
+    add_custom_target(${lprefix}test
+        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND} -E echo CMD=${CMAKE_CTEST_COMMAND} -C $<CONFIG>
+        COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
+        COMMAND ${CMAKE_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        DEPENDS ${lprefix}test-build
+        )
+    set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
 
-        set(BUILD_GTEST ON CACHE BOOL "" FORCE)
-        set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-        set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-        set(gtest_build_samples OFF CACHE BOOL "" FORCE)
-        set(gtest_build_tests OFF CACHE BOOL "" FORCE)
-        if(MSVC)
-            # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
-        endif()
-        c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            GIT_TAG release-1.8.0
-            )
+    set(BUILD_GTEST ON CACHE BOOL "" FORCE)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    set(gtest_build_samples OFF CACHE BOOL "" FORCE)
+    set(gtest_build_tests OFF CACHE BOOL "" FORCE)
+    if(MSVC)
+        # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
     endif()
+    c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG release-1.8.0
+        )
 endfunction(c4_setup_testing)
 
 
