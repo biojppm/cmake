@@ -93,10 +93,21 @@ endfunction(c4_declare_project)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 # type can be one of:
-#  DIR:  the module is located in the given directory name and
-#        will be added via add_subdirectory()
+#  SUBDIRECTORY: the module is located in the given directory name and
+#               will be added via add_subdirectory()
 #  REMOTE: the module is located in a remote repo/url
 #          and will be added via c4_import_remote_proj()
+# examples:
+#
+# c4_require_module(c4opt
+#     c4core
+#     SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core
+#     )
+#
+# c4_require_module(c4opt
+#     c4core
+#     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
+#     )
 function(c4_require_module prefix module_name type)
     _c4_handle_prefix(${prefix})
     list(APPEND _${uprefix}_deps ${module_name})
@@ -167,7 +178,7 @@ default: multiple compilation units (traditional compiler behaviour)
 scu: single compilation unit")
 
 set(BUILD_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
-set(BUILD_SRC_EXTS "c;cpp;cc;c++;cxx;cu" CACHE STRING "list of compilation unit extensions for determining which files are sources")
+set(BUILD_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
 set(BUILD_SRCOUT_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(BUILD_HDROUT_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
 
@@ -267,7 +278,9 @@ function(c4_add_target prefix name)
     )
     set(options1arg
         FOLDER
-        SANITIZERS  # outputs the list of sanitize targets in this var
+        SANITIZERS      # outputs the list of sanitize targets in this var
+        LIBRARY_TYPE    # override global setting for BUILD_LIBRARY_TYPE
+        EXECUTABLE_TYPE # override global setting for BUILD_EXECUTABLE_TYPE
     )
     set(optionsnarg
         SOURCES
@@ -290,7 +303,11 @@ function(c4_add_target prefix name)
 
     if(NOT ${uprefix}SANITIZE_ONLY)
         if(${_c4al_EXECUTABLE})
-            if(BUILD_EXECUTABLE_TYPE STREQUAL "scu")
+            set(_bet ${BUILD_EXECUTABLE_TYPE})
+            if(${_c4al_EXECUTABLE_TYPE})
+                set(_bet ${_c4al_EXECUTABLE_TYPE})
+            endif()
+            if(_bet STREQUAL "scu")
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_SRCOUT_EXT} out)
                 c4_cat_sources(${prefix} "${l}" "${out}")
                 add_executable(${name} ${out} ${_c4al_MORE_ARGS})
@@ -302,10 +319,12 @@ function(c4_add_target prefix name)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_c4al_LIBRARY})
-
-            # https://rix0r.nl/blog/2015/08/13/cmake-guide/
+            set(_blt ${BUILD_LIBRARY_TYPE})
+            if(NOT _c4al_LIBRARY_TYPE STREQUAL "")
+                set(_blt ${_c4al_LIBRARY_TYPE})
+            endif()
             # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
-            if(BUILD_LIBRARY_TYPE STREQUAL "headers")
+            if(_blt STREQUAL "headers")
                 # header-only library - cat sources to a header file, leave other headers as is
                 _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_filter_hdrs("${_c4al_SOURCES}" h)
@@ -319,7 +338,7 @@ function(c4_add_target prefix name)
                 target_compile_definitions(${name} INTERFACE ${uprefix}HEADER_ONLY)
                 list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 
-            elseif(BUILD_LIBRARY_TYPE STREQUAL "single_header")
+            elseif(_blt STREQUAL "single_header")
                 # header-only library, in a single header
                 _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_HDROUT_EXT} out)
                 _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
@@ -332,7 +351,7 @@ function(c4_add_target prefix name)
                 target_compile_definitions(${name} INTERFACE ${uprefix}SINGLE_HEADER)
                 list(APPEND _c4al_INC_DIRS  $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
 
-            elseif(BUILD_LIBRARY_TYPE STREQUAL "scu_iface")
+            elseif(_blt STREQUAL "scu_iface")
                 # single compilation unit, source (.cpp) file exposed as interface
                 _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
@@ -343,7 +362,7 @@ function(c4_add_target prefix name)
                 set(tgt_type INTERFACE)
                 target_sources(${name} INTERFACE $<INSTALL_INTERFACE:${scu}> $<BUILD_INTERFACE:${scu}>)
 
-            elseif(BUILD_LIBRARY_TYPE STREQUAL "scu")
+            elseif(_blt STREQUAL "scu")
                 # single compilation unit, as if using LTO
                 _c4cat_filter_srcs("${_c4al_SOURCES}" c)
                 _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
@@ -415,7 +434,7 @@ function(c4_add_target prefix name)
 endfunction() # add_target
 
 
-# TODO
+# TODO (still incomplete)
 function(c4_install_library prefix name)
     install(DIRECTORY
         example_lib/library
