@@ -286,7 +286,7 @@ function(c4_add_target prefix name)
         SOURCES
         HEADERS
         INC_DIRS PRIVATE_INC_DIRS
-        LIBS PRIVATE_LIBS
+        LIBS PRIVATE_LIBS INTERFACES
         MORE_ARGS
     )
     cmake_parse_arguments(_c4al "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
@@ -395,6 +395,9 @@ function(c4_add_target prefix name)
         endif()
         if(_c4al_PRIVATE_LIBS)
             target_link_libraries(${name} PRIVATE ${_c4al_PRIVATE_LIBS})
+        endif()
+        if(_c4al_INTERFACES)
+            target_link_libraries(${name} INTERFACE ${_c4al_INTERFACES})
         endif()
         if(compiled_target)
             if(_c4al_FOLDER)
