@@ -1,6 +1,8 @@
 if(NOT _c4CatSourcesIncluded)
 set(_c4CatSourcesIncluded ON)
 
+
+#------------------------------------------------------------------------------
 # concatenate the source files to an output file, adding preprocessor adjustment
 # for correct file/line reporting
 function(c4_cat_sources prefix files output)
@@ -38,6 +40,7 @@ function(c4_cat_sources prefix files output)
     endif()
 
 endfunction(c4_cat_sources)
+
 
 #------------------------------------------------------------------------------
 # get a cat script
