@@ -323,6 +323,7 @@ function(c4_add_target prefix name)
         HEADERS
         INC_DIRS PRIVATE_INC_DIRS
         LIBS PRIVATE_LIBS INTERFACES
+        DLLS
         MORE_ARGS
     )
     cmake_parse_arguments(_c4al "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
@@ -503,6 +504,21 @@ function(c4_add_target prefix name)
         endif()
     endif()
 
+    if(_c4al_DLLS)
+        c4_setg(_${uprefix}_${name}_DLLS ${_c4al_DLLS}) # save these for installing
+        foreach(_dll ${_c4al_DLLS})
+            if(_dll)
+                _c4_log("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${name}>")
+                add_custom_command(TARGET ${name} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${name}>
+                    COMMENT "${name}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${name}"
+                )
+            else()
+                message(WARNING "dll required by ${prefix}/${name} was not found, so cannot copy: ${_dll}")
+            endif()
+        endforeach()
+    endif()
+
 endfunction() # add_target
 
 
@@ -535,6 +551,8 @@ function(c4_install_library prefix name)
     install(FILES example_lib-config.cmake
         DESTINATION lib/cmake/${name}
         )
+
+    # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
 endfunction()
 
 #------------------------------------------------------------------------------
