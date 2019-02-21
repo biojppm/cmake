@@ -289,6 +289,7 @@ function(c4_to_full_path source_list source_list_with_full_paths)
     set(${source_list_with_full_paths} ${l} PARENT_SCOPE)
 endfunction()
 
+
 # convert a list to a string separated with spaces
 function(c4_separate_list input_list output_string)
     set(s)
@@ -305,7 +306,7 @@ endfunction()
 
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
 function(c4_add_target prefix name)
-    #message(STATUS "${prefix}: adding target: ${name}: ${ARGN}")
+    _c4_log("${prefix}: adding target: ${name}: ${ARGN}")
     _c4_handle_prefix(${prefix})
     set(options0arg
         EXECUTABLE
@@ -505,18 +506,24 @@ function(c4_add_target prefix name)
     endif()
 
     if(_c4al_DLLS)
-        c4_setg(_${uprefix}_${name}_DLLS ${_c4al_DLLS}) # save these for installing
-        foreach(_dll ${_c4al_DLLS})
-            if(_dll)
-                _c4_log("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${name}>")
-                add_custom_command(TARGET ${name} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${name}>
-                    COMMENT "${name}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${name}"
-                )
-            else()
-                message(WARNING "dll required by ${prefix}/${name} was not found, so cannot copy: ${_dll}")
-            endif()
-        endforeach()
+        c4_set_transitive_property(${name} _C4_DLLS "${_c4al_DLLS}")
+        get_target_property(vd ${name} _C4_DLLS)
+    endif()
+    if(${_c4al_EXECUTABLE})
+        if(WIN32)
+            c4_get_transitive_property(${name} _C4_DLLS transitive_dlls)
+            foreach(_dll ${transitive_dlls})
+                if(_dll)
+                    _c4_log("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${name}>")
+                    add_custom_command(TARGET ${name} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${name}>
+                        COMMENT "${name}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${name}"
+                        )
+                else()
+                    message(WARNING "dll required by ${prefix}/${name} was not found, so cannot copy: ${_dll}")
+                endif()
+            endforeach()
+        endif()
     endif()
 
 endfunction() # add_target
@@ -807,6 +814,114 @@ function(c4_setup_coverage prefix)
         endif()
     endif()
 endfunction(c4_setup_coverage)
+
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
+function(c4_set_transitive_property target prop_name prop_value)
+    set_target_properties(${target} PROPERTIES ${prop_name} ${prop_value})
+endfunction()
+
+function(c4_get_transitive_property target prop_name out)
+    if(NOT TARGET ${target})
+        return()
+    endif()
+    # these will be the names of the variables we'll use to cache the result
+    set(_trval _C4_TRANSITIVE_${prop_name})
+    set(_trmark _C4_TRANSITIVE_${prop_name}_DONE)
+    #
+    get_target_property(cached ${target} ${_trmark})  # is it cached already
+    if(cached)
+        get_target_property(p ${target} _C4_TRANSITIVE_${prop_name})
+        set(${out} ${p} PARENT_SCOPE)
+        #_c4_log("${target}: c4_get_transitive_property ${target} ${prop_name}: cached='${p}'")
+    else()
+        #_c4_log("${target}: gathering transitive property: ${prop_name}...")
+        set(interleaved)
+        get_target_property(lv ${target} ${prop_name})
+        if(lv)
+            list(APPEND interleaved ${lv})
+        endif()
+        c4_get_transitive_libraries(${target} LINK_LIBRARIES libs)
+        c4_get_transitive_libraries(${target} INTERFACE_LINK_LIBRARIES ilibs)
+        list(APPEND libs ${ilibs})
+        foreach(lib ${libs})
+            #_c4_log("${target}: considering ${lib}...")
+            if(NOT lib)
+                #_c4_log("${target}: considering ${lib}: not found, skipping...")
+                continue()
+            endif()
+            if(NOT TARGET ${lib})
+                #_c4_log("${target}: considering ${lib}: not a target, skipping...")
+                continue()
+            endif()
+            get_target_property(lv ${lib} ${prop_name})
+            if(lv)
+                list(APPEND interleaved ${lv})
+            endif()
+            c4_get_transitive_property(${lib} ${prop_name} v)
+            if(v)
+                list(APPEND interleaved ${v})
+            endif()
+            #_c4_log("${target}: considering ${lib}---${interleaved}")
+        endforeach()
+        #_c4_log("${target}: gathering transitive property: ${prop_name}: ${interleaved}")
+        set(${out} ${interleaved} PARENT_SCOPE)
+        set_target_properties(${target} PROPERTIES
+            ${_trmark} ON
+            ${_trval} "${interleaved}")
+    endif()
+endfunction()
+
+
+function(c4_get_transitive_libraries target prop_name out)
+    if(NOT TARGET ${target})
+        return()
+    endif()
+    # these will be the names of the variables we'll use to cache the result
+    set(_trval _C4_TRANSITIVE_${prop_name})
+    set(_trmark _C4_TRANSITIVE_${prop_name}_DONE)
+    #
+    get_target_property(cached ${target} ${_trmark})
+    if(cached)
+        get_target_property(p ${target} ${_trval})
+        set(${out} ${p} PARENT_SCOPE)
+        #_c4_log("${target}: c4_get_transitive_libraries ${target} ${prop_name}: cached='${p}'")
+    else()
+        #_c4_log("${target}: gathering transitive libraries: ${prop_name}...")
+        get_target_property(target_type ${target} TYPE)
+        set(interleaved)
+        if(NOT ("${target_type}" STREQUAL "INTERFACE_LIBRARY") AND "${prop_name}" STREQUAL LINK_LIBRARIES)
+            get_target_property(l ${target} ${prop_name})
+            foreach(ll ${l})
+                #_c4_log("${target}: considering ${ll}...")
+                if(NOT ll)
+                    #_c4_log("${target}: considering ${ll}: not found, skipping...")
+                    continue()
+                endif()
+                if(NOT ll)
+                    #_c4_log("${target}: considering ${ll}: not a target, skipping...")
+                    continue()
+                endif()
+                list(APPEND interleaved ${ll})
+                c4_get_transitive_libraries(${ll} ${prop_name} v)
+                if(v)
+                    list(APPEND interleaved ${v})
+                endif()
+                #_c4_log("${target}: considering ${ll}---${interleaved}")
+            endforeach()
+        endif()
+        #_c4_log("${target}: gathering transitive libraries: ${prop_name}: result='${interleaved}'")
+        set(${out} ${interleaved} PARENT_SCOPE)
+        set_target_properties(${target} PROPERTIES
+            ${_trmark} ON
+            ${_trval} "${interleaved}")
+    endif()
+endfunction()
 
 
 endif() # NOT _c4_project_included
