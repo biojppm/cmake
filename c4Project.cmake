@@ -652,7 +652,7 @@ function(c4_setup_testing prefix)
     endif()
     c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG release-1.8.0
+        #GIT_TAG release-1.8.0
         )
 endfunction(c4_setup_testing)
 
