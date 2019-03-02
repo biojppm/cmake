@@ -64,6 +64,7 @@ function(add_configuration_type name)
 
     set(options0arg
         PREPEND  # when defaulting to a config, prepend to it instead of appending to it
+        SET_MAIN_FLAGS # eg, set CMAKE_CXX_FLAGS from CMAKE_CXX_FLAGS_${name}
     )
     set(options1arg
         DEFAULT_FROM # take the initial value of the flags from this config
@@ -90,14 +91,16 @@ function(add_configuration_type name)
         if(CMAKE_CONFIGURATION_TYPES) # multiconfig generator?
             set(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES};${name}" CACHE STRING "" FORCE)
         else() # single-config generator
-            set_property(CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING "Choose the type of build")
-            set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${CMAKE_CONFIGURATION_TYPES};${name}")
+            set_property(CACHE CMAKE_BUILD_TYPE PROPERTY HELPSTRING "Choose the type of build" FORCE)
+            set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${CMAKE_BUILD_TYPES};${name}" FORCE)
             # set the valid options for cmake-gui drop-down list
         endif()
 
         # now set up the configuration
+        message(STATUS "config: CMAKE_${f}_${UNAME} --- ${val}")
         foreach(f ${flag_vars})
             set(val ${_act_${f}})
+            message(STATUS "config: ${name}: ${f} --- ${val}")
             if(_act_DEFAULT_FROM)
                 if(_act_PREPEND)
                     set(val "${val} ${CMAKE_${f}_${_act_DEFAULT_FROM}}")
@@ -105,8 +108,12 @@ function(add_configuration_type name)
                     set(val "${CMAKE_${f}_${_act_DEFAULT_FROM}} ${val}")
                 endif()
             endif()
-            set(CMAKE_${f}_${UNAME} "${val}" CACHE STRING "")
+            message(STATUS "config: CMAKE_${f}_${UNAME} --- ${val}")
+            set(CMAKE_${f}_${UNAME} "${val}" CACHE STRING "" FORCE)
             mark_as_advanced(CMAKE_${f}_${UNAME})
+            if(_act_SET_MAIN_FLAGS)
+                set(CMAKE_${f} "${CMAKE_${f}_${UNAME}}" CACHE STRING "" FORCE)
+            endif()
         endforeach()
     endif()
 

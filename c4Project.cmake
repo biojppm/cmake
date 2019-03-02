@@ -455,12 +455,14 @@ function(c4_add_target prefix name)
         else()
             set(compiled_target ON)
         endif()
+        #
         if(_c4al_INC_DIRS)
             target_include_directories(${name} ${tgt_type} ${_c4al_INC_DIRS})
         endif()
         if(_c4al_PRIVATE_INC_DIRS)
             target_include_directories(${name} PRIVATE ${_c4al_PRIVATE_INC_DIRS})
         endif()
+        #
         if(_c4al_LIBS)
             target_link_libraries(${name} ${tgt_type} ${_c4al_LIBS})
         endif()
@@ -470,13 +472,16 @@ function(c4_add_target prefix name)
         if(_c4al_INTERFACES)
             target_link_libraries(${name} INTERFACE ${_c4al_INTERFACES})
         endif()
+        #
         if(_c4al_FOLDER)
             set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
         endif()
+        #
         if(compiled_target)
             if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS)
                 #print_var(${uprefix}CXX_FLAGS)
-                set_target_properties(${name} PROPERTIES COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
+                set_target_properties(${name} PROPERTIES
+                    COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
             endif()
             if(${uprefix}LINT)
                 static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
@@ -505,6 +510,7 @@ function(c4_add_target prefix name)
         endif()
     endif()
 
+    # gather dlls so that they can be automatically copied to the target directory
     if(_c4al_DLLS)
         c4_set_transitive_property(${name} _C4_DLLS "${_c4al_DLLS}")
         get_target_property(vd ${name} _C4_DLLS)
@@ -528,7 +534,9 @@ function(c4_add_target prefix name)
 
 endfunction() # add_target
 
-
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # TODO (still incomplete)
 function(c4_install_library prefix name)
     install(DIRECTORY
@@ -536,7 +544,6 @@ function(c4_install_library prefix name)
         DESTINATION
         include/example_lib
         )
-
     # install and export the library
     install(FILES
         example_lib/library.hpp
@@ -745,7 +752,7 @@ function(c4_setup_coverage prefix)
 	    message(STATUS "${prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
             set(_covok OFF)
         endif()
-    elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
+      elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
         message(STATUS "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
         set(_covok OFF)
     endif()
@@ -760,8 +767,11 @@ function(c4_setup_coverage prefix)
     cmake_dependent_option(${uprefix}COVERAGE_CODECOV "enable coverage with codecov" ON ${uprefix}COVERAGE OFF)
     cmake_dependent_option(${uprefix}COVERAGE_COVERALLS "enable coverage with coveralls" ON ${uprefix}COVERAGE OFF)
     if(${uprefix}COVERAGE)
-        set(covflags "-g -O0 -fprofile-arcs -ftest-coverage --coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
         #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
+        set(covflags "-g -O0 --coverage")
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+            set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+        endif()
         add_configuration_type(Coverage
             DEFAULT_FROM DEBUG
             C_FLAGS ${covflags}
@@ -779,25 +789,7 @@ function(c4_setup_coverage prefix)
             find_program(LCOV lcov)
             find_program(GENHTML genhtml)
             find_program(CTEST ctest)
-            if(GCOV AND LCOV AND GENHTML AND CTEST)
-                add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
-                    COMMAND ${LCOV} -q --zerocounters --directory .
-                    COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
-                    COMMAND ${CTEST} --force-new-ctest-process
-                    COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
-                    COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-                    COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'/usr/*'" "'*/extern/*'" --output-file final.lcov
-                    COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${lcprefix}
-                    DEPENDS ${lprefix}test
-                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                    COMMENT "${prefix} coverage: Running LCOV"
-                    )
-                add_custom_target(${lprefix}coverage
-                    DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
-                    COMMENT "${lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
-                    )
-                message(STATUS "Coverage command added")
-            else()
+            if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
                 if (HAVE_CXX_FLAG_COVERAGE)
                     set(CXX_FLAG_COVERAGE_MESSAGE supported)
                 else()
@@ -811,6 +803,23 @@ function(c4_setup_coverage prefix)
                     "  ctest: ${CTEST}\n"
                     "  --coverage flag: ${CXX_FLAG_COVERAGE_MESSAGE}")
             endif()
+            add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
+                COMMAND ${LCOV} -q --zerocounters --directory .
+                COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
+                COMMAND ${CTEST} --force-new-ctest-process
+                COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
+                COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
+                COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'/usr/*'" "'*/extern/*'" --output-file final.lcov
+                COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${lcprefix}
+                #DEPENDS ${lprefix}test
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                COMMENT "${prefix} coverage: Running LCOV"
+                )
+            add_custom_target(${lprefix}coverage
+                DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
+                COMMENT "${lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+                )
+            message(STATUS "Coverage command added")
         endif()
     endif()
 endfunction(c4_setup_coverage)
@@ -826,6 +835,8 @@ function(c4_set_transitive_property target prop_name prop_value)
     set_target_properties(${target} PROPERTIES ${prop_name} ${prop_value})
 endfunction()
 
+
+# TODO: maybe we can use get_target_property_recursive()?
 function(c4_get_transitive_property target prop_name out)
     if(NOT TARGET ${target})
         return()
