@@ -935,4 +935,55 @@ function(c4_get_transitive_libraries target prop_name out)
 endfunction()
 
 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+function(c4_setup_benchmarks prefix)
+    _c4_handle_prefix(${prefix})
+    message(STATUS "${lcprefix}: enabling benchmarks: ${lprefix}benchmark-build")
+    # umbrella target for building test binaries
+    add_custom_target(${lprefix}benchmark-build)
+    # umbrella target for running benchmarks
+    add_custom_target(${lprefix}benchmark
+        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
+        DEPENDS ${lprefix}benchmark-build
+        )
+    set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
+    set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
+    # download google benchmark
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_LTO OFF CACHE BOOL "" FORCE)
+    c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        )
+endfunction()
+
+
+function(c4_add_benchmark prefix target case work_dir comment)
+    message(STATUS "aqui 1 ::${ARGN}::")
+    print_var(target)
+    print_var(case)
+    print_var(work_dir)
+    print_var(comment)
+    print_var(ARGN)
+    _c4_handle_prefix(${prefix})
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "target ${target} does not exist...")
+    endif()
+    add_custom_target(${case}
+        COMMAND $<TARGET_FILE:${target}> ${ARGN}
+        WORKING_DIRECTORY ${work_dir}
+        DEPENDS ${target}
+        COMMENT "${comment}"
+        )
+    add_dependencies(${lprefix}benchmark-build ${target})
+    add_dependencies(${lprefix}benchmark ${case})
+    set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
+endfunction()
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 endif() # NOT _c4_project_included
