@@ -935,7 +935,6 @@ function(c4_get_transitive_libraries target prop_name out)
 endfunction()
 
 
-
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -962,26 +961,24 @@ endfunction()
 
 
 function(c4_add_benchmark prefix target case work_dir comment)
-    message(STATUS "aqui 1 ::${ARGN}::")
-    print_var(target)
-    print_var(case)
-    print_var(work_dir)
-    print_var(comment)
-    print_var(ARGN)
     _c4_handle_prefix(${prefix})
     if(NOT TARGET ${target})
         message(FATAL_ERROR "target ${target} does not exist...")
+    endif()
+    if(comment)
+        set(comment COMMENT "${comment}")
     endif()
     add_custom_target(${case}
         COMMAND $<TARGET_FILE:${target}> ${ARGN}
         WORKING_DIRECTORY ${work_dir}
         DEPENDS ${target}
-        COMMENT "${comment}"
+        ${comment}
         )
     add_dependencies(${lprefix}benchmark-build ${target})
     add_dependencies(${lprefix}benchmark ${case})
     set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
 endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
