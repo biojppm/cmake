@@ -17,6 +17,32 @@ include(c4CatSources)
 #------------------------------------------------------------------------------
 
 
+set(C4_PROJ_LOG_ENABLED ON CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
+set(C4_PROJ_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
+set(C4_PROJ_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
+set(C4_PROJ_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
+set(C4_PROJ_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
+set(C4_PROJ_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
+set(C4_PROJ_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
+
+print_var(C4_PROJ_LOG_ENABLED)
+print_var(C4_PROJ_LIBRARY_TYPE)
+function(c4_set_var_tmp var value)
+    _c4_log("tmp-setting ${var} to ${value} (was ${${value}})")
+    set(_c4_old_val_${var} ${${var}})
+    set(${var} ${value} PARENT_SCOPE)
+endfunction()
+
+function(c4_clean_var_tmp var)
+    _c4_log("cleaning ${var} to ${_c4_old_val_${var}} (tmp was ${${var}})")
+    set(${var} ${_c4_old_val_${var}} PARENT_SCOPE)
+endfunction()
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
 macro(_c4_log)
     if(C4_PROJ_LOG_ENABLED)
         message(STATUS "c4: ${ARGN}")
@@ -113,18 +139,33 @@ endfunction(c4_declare_project)
 #               will be added via add_subdirectory()
 #  REMOTE: the module is located in a remote repo/url
 #          and will be added via c4_import_remote_proj()
+#
 # examples:
 #
+# # c4opt requires module c4core, as a subdirectory. c4core will be used
+# # as a separate library
 # c4_require_module(c4opt
 #     c4core
 #     SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core
 #     )
 #
+# # c4opt requires module c4core, as a remote proj
 # c4_require_module(c4opt
 #     c4core
 #     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
 #     )
-function(c4_require_module prefix module_name module_type)
+function(c4_require_module prefix module_name)
+    set(options0arg
+        INTERFACE
+    )
+    set(options1arg
+        SUBDIRECTORY
+    )
+    set(optionsnarg
+        REMOTE
+    )
+    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
+    #
     _c4_handle_prefix(${prefix})
     list(APPEND _${uprefix}_deps ${module_name})
     c4_setg(_${uprefix}_deps ${_${uprefix}_deps})
@@ -136,11 +177,13 @@ function(c4_require_module prefix module_name module_type)
         _c4_log("${lcprefix}: module ${module_name} was already imported by ${_${module_name}_importer}: ${_${module_name}_src}...")
 
     else() #elseif(NOT _${module_name}_available)
+        if(_INTERFACE)
+            c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
+        endif()
         c4_setg(_${module_name}_available ON)
         c4_setg(_${module_name}_importer ${lcprefix})
-
-        if("${module_type}" STREQUAL "REMOTE")
-            set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+        set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+        if(_REMOTE)
             _c4_log("${lcprefix}: importing module ${module_name} (REMOTE)...")
             c4_import_remote_proj(${prefix} ${module_name} ${_r} ${ARGN})
             c4_setg(${uprefix}${module_name}_SRC_DIR ${_r}/src)
@@ -148,24 +191,67 @@ function(c4_require_module prefix module_name module_type)
             c4_setg(_${module_name}_src ${_r}/src)
             c4_setg(_${module_name}_bin ${_r}/build)
             _c4_log("${lcprefix}: finished importing module ${module_name} (REMOTE=${${uprefix}${module_name}_SRC_DIR}).")
-
-        elseif("${module_type}" STREQUAL "SUBDIRECTORY")
-            set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+        elseif(_SUBDIRECTORY)
             _c4_log("${lcprefix}: importing module ${module_name} (SUBDIRECTORY)...")
-            add_subdirectory(${ARGN} ${_r}/build)
-            c4_setg(${uprefix}${module_name}_SRC_DIR ${ARGN})
+            add_subdirectory(${_SUBDIRECTORY} ${_r}/build)
+            c4_setg(${uprefix}${module_name}_SRC_DIR ${_SUBDIRECTORY})
             c4_setg(${uprefix}${module_name}_BIN_DIR ${_r}/build)
-            c4_setg(_${module_name}_src ${ARGN})
+            c4_setg(_${module_name}_src ${_SUBDIRECTORY})
             c4_setg(_${module_name}_bin ${_r}/build)
             _c4_log("${lcprefix}: finished importing module ${module_name} (SUBDIRECTORY=${${uprefix}${module_name}_SRC_DIR}).")
-
-        else()
+        else(_SUBDIRECTORY)
             message(FATAL_ERROR "module type must be either REMOTE or SUBDIRECTORY")
+        endif(_REMOTE)
+        if(_INTERFACE)
+            c4_clean_var_tmp(C4_PROJ_LIBRARY_TYPE)
         endif()
-
     endif()
 
 endfunction(c4_require_module)
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# download external libs while running cmake:
+# https://crascit.com/2015/07/25/cmake-gtest/
+# (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
+#
+# to specify url, repo, tag, or branch,
+# pass the needed arguments after dir.
+# These arguments will be forwarded to ExternalProject_Add()
+function(c4_import_remote_proj prefix name dir)
+    c4_download_remote_proj(${prefix} ${name} ${dir} ${ARGN})
+    add_subdirectory(${dir}/src ${dir}/build)
+endfunction()
+
+function(c4_download_remote_proj prefix name dir)
+    if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
+        _c4_handle_prefix(${prefix})
+        message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
+        file(WRITE ${dir}/dl/CMakeLists.txt "
+cmake_minimum_required(VERSION 2.8.2)
+project(${lcprefix}-download-${name} NONE)
+
+# this project only downloads ${name}
+# (ie, no configure, build or install step)
+include(ExternalProject)
+
+ExternalProject_Add(${name}-dl
+    ${ARGN}
+    SOURCE_DIR \"${dir}/src\"
+    BINARY_DIR \"${dir}/build\"
+    CONFIGURE_COMMAND \"\"
+    BUILD_COMMAND \"\"
+    INSTALL_COMMAND \"\"
+    TEST_COMMAND \"\"
+)
+")
+        execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
+        execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+    endif()
+endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -184,126 +270,6 @@ endfunction(c4_add_executable)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-function(c4_set_default var val)
-    if(${var} STREQUAL "")
-        set(${var} ${val} PARENT_SCOPE)
-    endif()
-endfunction()
-
-function(c4_set_cache_default var val)
-    if(${var} STREQUAL "")
-        set(${var} ${val} ${ARGN})
-    endif()
-endfunction()
-
-# document this variable
-c4_set_default(BUILD_LIBRARY_TYPE static)
-set(BUILD_LIBRARY_TYPE "${BUILD_LIBRARY_TYPE}" CACHE STRING "specify how to build libraries: must be one of default,scu,scu_iface,headers,single_header.
-default: defaults to BUILD_SHARED_LIBS behaviour
-scu: (Single Compilation Unity, AKA unity build) concatenate all compilation unit files into a single compilation unit, compile it as if using LTO
-scu_iface: as above, but expose the compilation unit as the target's public interface to be consumed by clients
-headers: header-only distribution; cat source files to a single header file, leave existing headers as is
-single_header: concatenate all files into a single header file.
-
-This variable overrides BUILD_SHARED_LIBS behaviour.")
-
-# document this variable
-c4_set_default(BUILD_EXECUTABLE_TYPE default)
-set(BUILD_EXECUTABLE_TYPE "${BUILD_EXECUTABLE_TYPE}" CACHE STRING "specify how to build executables: must be one of mcu,scu.
-default: multiple compilation units (traditional compiler behaviour)
-scu: single compilation unit")
-
-set(BUILD_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
-set(BUILD_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
-set(BUILD_SRCOUT_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
-set(BUILD_HDROUT_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
-
-function(_c4cat_get_outname prefix target id ext out)
-    _c4_handle_prefix(${prefix})
-    if("${lcprefix}" STREQUAL "${target}")
-        set(p "${target}")
-    else()
-        set(p "${lcprefix}.${target}")
-    endif()
-    set(${out} "${CMAKE_CURRENT_BINARY_DIR}/${p}.${id}.${ext}" PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_filter_srcs in out)
-    _c4cat_filter_extensions("${in}" "${BUILD_SRC_EXTS}" l)
-    set(${out} ${l} PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_filter_hdrs in out)
-    _c4cat_filter_extensions("${in}" "${BUILD_HDR_EXTS}" l)
-    set(${out} ${l} PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_filter_srcs_hdrs in out)
-    _c4cat_filter_extensions("${in}" "${BUILD_HDR_EXTS};${BUILD_SRC_EXTS}" l)
-    set(${out} ${l} PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_filter_extensions in filter out)
-    set(l)
-    foreach(fn ${in})
-        _c4cat_get_file_ext(${fn} ext)
-        _c4cat_one_of(${ext} "${filter}" yes)
-        if(${yes})
-            list(APPEND l ${fn})
-        endif()
-    endforeach()
-    set(${out} ${l} PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_get_file_ext in out)
-    # https://stackoverflow.com/questions/30049180/strip-filename-shortest-extension-by-cmake-get-filename-removing-the-last-ext
-    string(REGEX MATCH "^.*\\.([^.]*)$" dummy ${in})
-    set(${out} ${CMAKE_MATCH_1} PARENT_SCOPE)
-endfunction()
-
-function(_c4cat_one_of ext candidates out)
-    foreach(e ${candidates})
-        if(ext STREQUAL ${e})
-            set(${out} YES PARENT_SCOPE)
-            return()
-        endif()
-    endforeach()
-    set(${out} NO PARENT_SCOPE)
-endfunction()
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-# given a list of source files, return a list with full paths
-function(c4_to_full_path source_list source_list_with_full_paths)
-    set(l)
-    foreach(f ${source_list})
-        if(IS_ABSOLUTE "${f}")
-            list(APPEND l "${f}")
-        else()
-            list(APPEND l "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
-        endif()
-    endforeach()
-    set(${source_list_with_full_paths} ${l} PARENT_SCOPE)
-endfunction()
-
-
-# convert a list to a string separated with spaces
-function(c4_separate_list input_list output_string)
-    set(s)
-    foreach(e ${input_list})
-        set(s "${s} ${e}")
-    endforeach()
-    set(${output_string} ${s} PARENT_SCOPE)
-endfunction()
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
 function(c4_add_target prefix name)
     _c4_log("${prefix}: adding target: ${name}: ${ARGN}")
@@ -314,16 +280,17 @@ function(c4_add_target prefix name)
         SANITIZE
     )
     set(options1arg
+        SOURCE_TRANSFORM
         FOLDER
         SANITIZERS      # outputs the list of sanitize targets in this var
-        LIBRARY_TYPE    # override global setting for BUILD_LIBRARY_TYPE
-        EXECUTABLE_TYPE # override global setting for BUILD_EXECUTABLE_TYPE
+        LIBRARY_TYPE    # override global setting for C4_PROJ_LIBRARY_TYPE
     )
     set(optionsnarg
         SOURCES
         HEADERS
         INC_DIRS PRIVATE_INC_DIRS
-        LIBS PRIVATE_LIBS INTERFACES
+        LIBS PRIVATE_LIBS
+        INTERFACES
         DLLS
         MORE_ARGS
     )
@@ -332,6 +299,8 @@ function(c4_add_target prefix name)
         set(_what LIBRARY)
     elseif(${_c4al_EXECUTABLE})
         set(_what EXECUTABLE)
+    else()
+        message(FATAL_ERROR "must be either LIBRARY or EXECUTABLE")
     endif()
 
     c4_to_full_path("${_c4al_SOURCES}" fullsrc)
@@ -341,119 +310,42 @@ function(c4_add_target prefix name)
 
     if(NOT ${uprefix}SANITIZE_ONLY)
 
-        # ---------------------------------------------------------------
-        # ---------------------------------------------------------------
-        # ---------------------------------------------------------------
         if(${_c4al_EXECUTABLE})
+            #
             _c4_log("${lcprefix}: adding executable: ${name}")
-            set(_bet ${BUILD_EXECUTABLE_TYPE})
-            if(${_c4al_EXECUTABLE_TYPE})
-                set(_bet ${_c4al_EXECUTABLE_TYPE})
-            endif()
-            if(_bet STREQUAL "scu")
-                _c4_log("${lcprefix}: adding executable: ${name}: mode=scu (single compilation unit, AKA unity build)")
-                _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_SRCOUT_EXT} out)
-                c4_cat_sources(${prefix} "${l}" "${out}")
-                add_executable(${name} ${out} ${_c4al_MORE_ARGS})
-                add_dependencies(${name} ${out})
-                add_dependencies(${name} ${lprefix}cat)
-            else()
-                _c4_log("${lcprefix}: adding executable: ${name}: mode=default (separate compilation units)")
-                add_executable(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
-            endif()
+            add_executable(${name} ${_c4al_MORE_ARGS})
+            c4_set_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
             set(tgt_type PUBLIC)
             set(compiled_target ON)
-
-        # ---------------------------------------------------------------
-        # ---------------------------------------------------------------
-        # ---------------------------------------------------------------
+            #
         elseif(${_c4al_LIBRARY})
-
+            #
             _c4_log("${lcprefix}: adding library: ${name}")
-
-            set(_blt ${BUILD_LIBRARY_TYPE})
-            if(NOT _c4al_LIBRARY_TYPE STREQUAL "")
+            set(_blt ${C4_PROJ_LIBRARY_TYPE})
+            if(NOT "${_c4al_LIBRARY_TYPE}" STREQUAL "")
                 set(_blt ${_c4al_LIBRARY_TYPE})
             endif()
-
-            # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
-            if(_blt STREQUAL "headers")
-                # header-only library - cat sources to a header file, leave other headers as is
-                _c4_log("${lcprefix}: adding library ${name}: mode=headers (header-only library: leave existing headers as is, and cat existing sources to a header file)")
-                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
-                _c4cat_filter_hdrs("${_c4al_SOURCES}" h)
+            #
+            if("${_blt}" STREQUAL "INTERFACE")
+                _c4_log("${lcprefix}: adding interface library ${name}")
                 add_library(${name} INTERFACE)
+                c4_set_target_sources(${prefix} ${name} INTERFACE ${_c4al_SOURCES})
                 set(tgt_type INTERFACE)
-                if(c)
-                    _c4cat_get_outname(${prefix} ${name} "src" ${BUILD_HDROUT_EXT} out)
-                    _c4_log("${lcprefix}: adding library ${name}: output header: ${out}")
-                    c4_cat_sources(${prefix} "${c}" "${out}")
-                    add_dependencies(${name} ${out})
-                    add_dependencies(${name} ${lprefix}cat)
-                endif()
-                target_sources(${name} INTERFACE
-                    $<INSTALL_INTERFACE:${h};${out}>
-                    $<BUILD_INTERFACE:${h};${out}>)
-                target_compile_definitions(${name} INTERFACE
-                    ${uprefix}HEADER_ONLY)
-                list(APPEND _c4al_INC_DIRS
-                    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
-
-            elseif(_blt STREQUAL "single_header")
-                # header-only library, in a single header
-                _c4_log("${lcprefix}: adding library ${name}: mode=single_header (header-only library, in a single header)")
-                _c4cat_get_outname(${prefix} ${name} "all" ${BUILD_HDROUT_EXT} out)
-                _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
-                c4_cat_sources(${prefix} "${ch}" "${out}")
-                add_library(${name} INTERFACE)
-                add_dependencies(${name} ${out})
-                add_dependencies(${name} ${lprefix}cat)
-                set(tgt_type INTERFACE)
-                target_sources(${name} INTERFACE
-                    $<INSTALL_INTERFACE:${out}>
-                    $<BUILD_INTERFACE:${out}>)
-                target_compile_definitions(${name} INTERFACE
-                    ${uprefix}SINGLE_HEADER)
-                list(APPEND _c4al_INC_DIRS
-                    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>)
-
-            elseif(_blt STREQUAL "scu_iface")
-                # single compilation unit, source (.cpp) file exposed as interface
-                _c4_log("${lcprefix}: adding library ${name}: mode=scu_iface (single compilation unit, source (.cpp) file exposed as interface)")
-                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
-                _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources(${prefix} "${c}" "${scu}")
-                add_library(${name} INTERFACE)
-                add_dependencies(${name} ${scu})
-                add_dependencies(${name} ${lprefix}cat)
-                set(tgt_type INTERFACE)
-                target_sources(${name} INTERFACE
-                    $<INSTALL_INTERFACE:${scu}>
-                    $<BUILD_INTERFACE:${scu}>)
-
-            elseif(_blt STREQUAL "scu")
-                # single compilation unit, as if using LTO
-                _c4_log("${lcprefix}: adding library ${name}: mode=scu (single compilation unit, as if using LTO)")
-                _c4cat_filter_srcs("${_c4al_SOURCES}" c)
-                _c4cat_get_outname(${prefix} ${name} "scu" ${BUILD_SRCOUT_EXT} scu)
-                c4_cat_sources(${prefix} "${c}" "${scu}")
-                add_library(${name} ${scu} ${_c4al_MORE_ARGS})
-                add_dependencies(${name} ${scu})
-                add_dependencies(${name} ${lprefix}cat)
-                set(tgt_type PUBLIC)
-                #target_sources(${name} PUBLIC ${_c4al_SOURCES})
-
+                set(compiled_target OFF)
             else()
-                # obey BUILD_SHARED_LIBS (ie, either static or shared library)
-                _c4_log("${lcprefix}: adding library ${name}: mode=default (obey BUILD_SHARED_LIBS, ie, either static or shared library))")
-                add_library(${name} ${_c4al_SOURCES} ${_c4al_MORE_ARGS})
+                if(NOT ("${_blt}" STREQUAL ""))
+                    _c4_log("${lcprefix}: adding library ${name} with type ${_blt}")
+                    add_library(${name} ${_blt} ${_c4al_MORE_ARGS})
+                else()
+                    # obey BUILD_SHARED_LIBS (ie, either static or shared library)
+                    _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS})")
+                    add_library(${name} ${_c4al_MORE_ARGS})
+                endif()
+                c4_set_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
                 set(tgt_type PUBLIC)
+                set(compiled_target ON)
             endif()
-        endif()
-        if(tgt_type STREQUAL INTERFACE)
-            set(compiled_target OFF)
-        else()
-            set(compiled_target ON)
+            #
         endif()
         #
         if(_c4al_INC_DIRS)
@@ -580,51 +472,6 @@ endfunction(c4_setup_sanitize)
 function(c4_setup_static_analysis prefix initial_value)
     setup_static_analysis(${prefix} ${initial_value})
 endfunction(c4_setup_static_analysis)
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-# download external libs while running cmake:
-# https://crascit.com/2015/07/25/cmake-gtest/
-# (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
-#
-# to specify url, repo, tag, or branch,
-# pass the needed arguments after dir.
-# These arguments will be forwarded to ExternalProject_Add()
-function(c4_import_remote_proj prefix name dir)
-    c4_download_remote_proj(${prefix} ${name} ${dir} ${ARGN})
-    add_subdirectory(${dir}/src ${dir}/build)
-endfunction()
-
-function(c4_download_remote_proj prefix name dir)
-    if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
-        _c4_handle_prefix(${prefix})
-        message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
-        file(WRITE ${dir}/dl/CMakeLists.txt "
-cmake_minimum_required(VERSION 2.8.2)
-project(${lcprefix}-download-${name} NONE)
-
-# this project only downloads ${name}
-# (ie, no configure, build or install step)
-include(ExternalProject)
-
-ExternalProject_Add(${name}-dl
-    ${ARGN}
-    SOURCE_DIR \"${dir}/src\"
-    BINARY_DIR \"${dir}/build\"
-    CONFIGURE_COMMAND \"\"
-    BUILD_COMMAND \"\"
-    INSTALL_COMMAND \"\"
-    TEST_COMMAND \"\"
-)
-")
-        execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
-        execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
-    endif()
-endfunction()
-
 
 
 #------------------------------------------------------------------------------
@@ -825,6 +672,285 @@ function(c4_setup_coverage prefix)
 endfunction(c4_setup_coverage)
 
 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+function(c4_setup_benchmarks prefix)
+    _c4_handle_prefix(${prefix})
+    message(STATUS "${lcprefix}: enabling benchmarks: ${lprefix}benchmark-build")
+    # umbrella target for building test binaries
+    add_custom_target(${lprefix}benchmark-build)
+    # umbrella target for running benchmarks
+    add_custom_target(${lprefix}benchmark
+        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
+        DEPENDS ${lprefix}benchmark-build
+        )
+    set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
+    set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
+    # download google benchmark
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_LTO OFF CACHE BOOL "" FORCE)
+    c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
+        GIT_REPOSITORY https://github.com/google/benchmark.git
+        )
+endfunction()
+
+
+function(c4_add_benchmark prefix target case work_dir comment)
+    _c4_handle_prefix(${prefix})
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR "target ${target} does not exist...")
+    endif()
+    if(comment)
+        set(comment COMMENT "${comment}")
+    endif()
+    add_custom_target(${case}
+        COMMAND $<TARGET_FILE:${target}> ${ARGN}
+        WORKING_DIRECTORY ${work_dir}
+        DEPENDS ${target}
+        ${comment}
+        )
+    add_dependencies(${lprefix}benchmark-build ${target})
+    add_dependencies(${lprefix}benchmark ${case})
+    set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#
+
+#
+# https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
+#
+# Transform types:
+#   * NONE
+#   * UNITY
+#   * UNITY_HDR
+#   * SINGLE_HDR
+#   * SINGLE_UNIT
+function(c4_set_target_sources prefix target)
+    _c4_handle_prefix(${prefix})
+    set(options0arg
+        APPEND
+    )
+    set(options1arg
+        TRANSFORM
+    )
+    set(optionsnarg
+        PUBLIC
+        INTERFACE
+        PRIVATE
+    )
+    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
+    if(("${_TRANSFORM}" STREQUAL "GLOBAL") OR ("${_TRANSFORM}" STREQUAL ""))
+        set(_TRANSFORM ${C4_PROJ_SOURCE_TRANSFORM})
+    endif()
+    if("${_TRANSFORM}" STREQUAL "")
+        set(_TRANSFORM NONE)
+    endif()
+    #
+    # is this target an interface?
+    set(_is_iface FALSE)
+    get_target_property(target_type ${target} TYPE)
+    if("${target_type}" STREQUAL "INTERFACE_LIBRARY")
+        set(_is_iface TRUE)
+    elseif("${prop_name}" STREQUAL "LINK_LIBRARIES")
+        set(_is_iface TRUE)
+    endif()
+    #
+    set(out)
+    set(umbrella ${lprefix}transform-src)
+    #
+    if("${_TRANSFORM}" STREQUAL "NONE")
+        _c4_log("${lcprefix}: source transform: NONE!")
+        #
+        # do not transform the sources
+        #
+        if(_PUBLIC)
+            target_sources(${target} PUBLIC ${_PUBLIC})
+        endif()
+        if(_INTERFACE)
+            target_sources(${target} INTERFACE ${_INTERFACE})
+        endif()
+        if(_PRIVATE)
+            target_sources(${target} PRIVATE ${_PRIVATE})
+        endif()
+        #
+    elseif("${_TRANSFORM}" STREQUAL "UNITY")
+        _c4_log("${lcprefix}: source transform: UNITY!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate all compilation unit files (excluding interface)
+        # into a single compilation unit
+        #
+        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
+        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
+        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
+        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
+        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
+        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
+        if(cpublic OR cinterface OR cprivate)
+            _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_SRC_EXT} out)
+            _c4_log("${lcprefix}: ${target}: output unit: ${out}")
+            c4_cat_sources(${prefix} "${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
+            add_dependencies(${target} ${out})
+        endif()
+        if(_PUBLIC)
+            target_sources(${target} PUBLIC
+                $<BUILD_INTERFACE:${hpublic};${out}>
+                $<INSTALL_INTERFACE:${hpublic};${out}>)
+        endif()
+        if(_INTERFACE)
+            target_sources(${target} INTERFACE
+                $<BUILD_INTERFACE:${hinterface}>
+                $<INSTALL_INTERFACE:${hinterface}>)
+        endif()
+        if(_PRIVATE)
+            target_sources(${target} PRIVATE
+                $<BUILD_INTERFACE:${hprivate}>
+                $<INSTALL_INTERFACE:${hprivate}>)
+        endif()
+        #
+    elseif("${_TRANSFORM}" STREQUAL "UNITY_HDR")
+        _c4_log("${lcprefix}: source transform: UNITY_HDR!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # like unity, but concatenate compilation units into
+        # a header file, leaving other header files untouched
+        #
+        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
+        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
+        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
+        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
+        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
+        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
+        if(c)
+            _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_HDR_EXT} out)
+            _c4_log("${lcprefix}: ${target}: output hdr: ${out}")
+            _c4cat_filter_srcs_hdrs("${_PUBLIC}" c_h)
+            c4_cat_sources(${prefix} "${c}" "${out}" ${umbrella})
+            add_dependencies(${target} ${out})
+            add_dependencies(${target} ${lprefix}cat)
+        endif()
+        set(${src} ${out} PARENT_SCOPE)
+        set(${hdr} ${h} PARENT_SCOPE)
+        #
+    elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
+        _c4_log("${lcprefix}: source transform: SINGLE_HDR!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate everything into a single header file
+        #
+        _c4cat_get_outname(${prefix} ${target} "all" ${C4_PROJ_GEN_HDR_EXT} out)
+        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
+        c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
+        #
+    elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
+        _c4_log("${lcprefix}: source transform: SINGLE_HDR!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate:
+        #  * all compilation unit into a single compilation unit
+        #  * all headers into a single header
+        #
+        _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${prefix} ${target} "hdr" ${C4_PROJ_GEN_SRC_EXT} out)
+        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
+        c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
+    else()
+        message(FATAL_ERROR "unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
+    endif()
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(_c4cat_get_outname prefix target id ext out)
+    _c4_handle_prefix(${prefix})
+    if("${lcprefix}" STREQUAL "${target}")
+        set(p "${target}")
+    else()
+        set(p "${lcprefix}.${target}")
+    endif()
+    set(${out} "${CMAKE_CURRENT_BINARY_DIR}/${p}.${id}.${ext}" PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_srcs in out)
+    _c4cat_filter_extensions("${in}" "${C4_PROJ_SRC_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_hdrs in out)
+    _c4cat_filter_extensions("${in}" "${C4_PROJ_HDR_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_srcs_hdrs in out)
+    _c4cat_filter_extensions("${in}" "${C4_PROJ_HDR_EXTS};${C4_PROJ_SRC_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_extensions in filter out)
+    set(l)
+    foreach(fn ${in})
+        _c4cat_get_file_ext(${fn} ext)
+        _c4cat_one_of(${ext} "${filter}" yes)
+        if(${yes})
+            list(APPEND l ${fn})
+        endif()
+    endforeach()
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_get_file_ext in out)
+    # https://stackoverflow.com/questions/30049180/strip-filename-shortest-extension-by-cmake-get-filename-removing-the-last-ext
+    string(REGEX MATCH "^.*\\.([^.]*)$" dummy ${in})
+    set(${out} ${CMAKE_MATCH_1} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_one_of ext candidates out)
+    foreach(e ${candidates})
+        if(ext STREQUAL ${e})
+            set(${out} YES PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    set(${out} NO PARENT_SCOPE)
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# given a list of source files, return a list with full paths
+function(c4_to_full_path source_list source_list_with_full_paths)
+    set(l)
+    foreach(f ${source_list})
+        if(IS_ABSOLUTE "${f}")
+            list(APPEND l "${f}")
+        else()
+            list(APPEND l "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
+        endif()
+    endforeach()
+    set(${source_list_with_full_paths} ${l} PARENT_SCOPE)
+endfunction()
+
+
+# convert a list to a string separated with spaces
+function(c4_separate_list input_list output_string)
+    set(s)
+    foreach(e ${input_list})
+        set(s "${s} ${e}")
+    endforeach()
+    set(${output_string} ${s} PARENT_SCOPE)
+endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -932,51 +1058,6 @@ function(c4_get_transitive_libraries target prop_name out)
             ${_trmark} ON
             ${_trval} "${interleaved}")
     endif()
-endfunction()
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-function(c4_setup_benchmarks prefix)
-    _c4_handle_prefix(${prefix})
-    message(STATUS "${lcprefix}: enabling benchmarks: ${lprefix}benchmark-build")
-    # umbrella target for building test binaries
-    add_custom_target(${lprefix}benchmark-build)
-    # umbrella target for running benchmarks
-    add_custom_target(${lprefix}benchmark
-        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        DEPENDS ${lprefix}benchmark-build
-        )
-    set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
-    set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
-    # download google benchmark
-    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_LTO OFF CACHE BOOL "" FORCE)
-    c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        )
-endfunction()
-
-
-function(c4_add_benchmark prefix target case work_dir comment)
-    _c4_handle_prefix(${prefix})
-    if(NOT TARGET ${target})
-        message(FATAL_ERROR "target ${target} does not exist...")
-    endif()
-    if(comment)
-        set(comment COMMENT "${comment}")
-    endif()
-    add_custom_target(${case}
-        COMMAND $<TARGET_FILE:${target}> ${ARGN}
-        WORKING_DIRECTORY ${work_dir}
-        DEPENDS ${target}
-        ${comment}
-        )
-    add_dependencies(${lprefix}benchmark-build ${target})
-    add_dependencies(${lprefix}benchmark ${case})
-    set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
 endfunction()
 
 
