@@ -1,6 +1,8 @@
 if(NOT _c4_project_included)
 set(_c4_project_included ON)
 
+cmake_minimum_required(VERSION 3.10 FATAL_ERROR)
+
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -85,6 +87,7 @@ endmacro()
 
 function(c4_declare_project prefix)
     _c4_handle_prefix(${prefix})
+
     option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
@@ -314,7 +317,7 @@ function(c4_add_target prefix name)
             #
             _c4_log("${lcprefix}: adding executable: ${name}")
             add_executable(${name} ${_c4al_MORE_ARGS})
-            c4_set_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
+            c4_add_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
             set(tgt_type PUBLIC)
             set(compiled_target ON)
             #
@@ -329,7 +332,7 @@ function(c4_add_target prefix name)
             if("${_blt}" STREQUAL "INTERFACE")
                 _c4_log("${lcprefix}: adding interface library ${name}")
                 add_library(${name} INTERFACE)
-                c4_set_target_sources(${prefix} ${name} INTERFACE ${_c4al_SOURCES})
+                c4_add_target_sources(${prefix} ${name} INTERFACE ${_c4al_SOURCES})
                 set(tgt_type INTERFACE)
                 set(compiled_target OFF)
             else()
@@ -341,7 +344,7 @@ function(c4_add_target prefix name)
                     _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS})")
                     add_library(${name} ${_c4al_MORE_ARGS})
                 endif()
-                c4_set_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
+                c4_add_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
                 set(tgt_type PUBLIC)
                 set(compiled_target ON)
             endif()
@@ -731,10 +734,9 @@ endfunction()
 #   * UNITY_HDR
 #   * SINGLE_HDR
 #   * SINGLE_UNIT
-function(c4_set_target_sources prefix target)
+function(c4_add_target_sources prefix target)
     _c4_handle_prefix(${prefix})
     set(options0arg
-        APPEND
     )
     set(options1arg
         TRANSFORM
