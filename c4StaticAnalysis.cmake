@@ -1,9 +1,9 @@
 include(PVS-Studio)
 include(GetFlags)
-include(GetTargetPropertyRecursive)
+include(c4GetTargetPropertyRecursive)
 
 
-function(setup_static_analysis pfx umbrella_option)
+function(c4_setup_static_analysis pfx umbrella_option)
     set(prefix ${pfx})
     if(prefix)
         set(prefix "${prefix}_")
@@ -38,7 +38,7 @@ function(setup_static_analysis pfx umbrella_option)
 endfunction()
 
 
-function(static_analysis_target prefix target_name folder generated_targets)
+function(c4_static_analysis_target prefix target_name folder generated_targets)
     string(TOUPPER ${prefix} uprefix)
     if(uprefix)
         set(uprefix "${uprefix}_")
@@ -65,7 +65,7 @@ function(static_analysis_target prefix target_name folder generated_targets)
             endif()
         endif()
         if(${uprefix}LINT_CLANG_TIDY)
-            static_analysis_clang_tidy(${target_name}
+            c4_static_analysis_clang_tidy(${target_name}
                 ${target_name}-lint-clang-tidy
                 ${lprefix}lint-all-clang-tidy
                 "${folder}")
@@ -73,7 +73,7 @@ function(static_analysis_target prefix target_name folder generated_targets)
             add_dependencies(${lprefix}lint-all ${lprefix}lint-all-clang-tidy)
         endif()
         if(${uprefix}LINT_PVS_STUDIO)
-            static_analysis_pvs_studio(${target_name}
+            c4_static_analysis_pvs_studio(${target_name}
                 ${target_name}-lint-pvs-studio
                 ${lprefix}lint-all-pvs-studio
                 "${folder}")
@@ -84,7 +84,7 @@ function(static_analysis_target prefix target_name folder generated_targets)
 endfunction()
 
 
-function(static_analysis_add_tests prefix target_name)
+function(c4_static_analysis_add_tests prefix target_name)
     string(TOUPPER ${prefix} uprefix)
     if(uprefix)
         set(uprefix "${uprefix}_")
@@ -103,8 +103,8 @@ endfunction()
 
 
 #------------------------------------------------------------------------------
-function(static_analysis_clang_tidy subj_target lint_target umbrella_target folder)
-    static_analysis_clang_tidy_get_cmd(${subj_target} ${lint_target} cmd)
+function(c4_static_analysis_clang_tidy subj_target lint_target umbrella_target folder)
+    c4_static_analysis_clang_tidy_get_cmd(${subj_target} ${lint_target} cmd)
     add_custom_target(${lint_target}
         COMMAND ${cmd}
         COMMENT "clang-tidy: analyzing sources of ${subj_target}"
@@ -118,10 +118,10 @@ function(static_analysis_clang_tidy subj_target lint_target umbrella_target fold
     add_dependencies(${umbrella_target} ${lint_target})
 endfunction()
 
-function(static_analysis_clang_tidy_get_cmd subj_target lint_target cmd)
+function(c4_static_analysis_clang_tidy_get_cmd subj_target lint_target cmd)
     get_target_property(_clt_srcs ${subj_target} SOURCES)
     get_target_property(_clt_opts ${subj_target} COMPILE_OPTIONS)
-    get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
+    c4_get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
     get_include_flags(_clt_incs ${_clt_incs})
     if(NOT _clt_opts)
         set(_clt_opts)
@@ -133,8 +133,8 @@ endfunction()
 
 
 #------------------------------------------------------------------------------
-function(static_analysis_pvs_studio subj_target lint_target umbrella_target folder)
-    get_target_property_recursive(_c4al_pvs_incs ${subj_target} INCLUDE_DIRECTORIES)
+function(c4_static_analysis_pvs_studio subj_target lint_target umbrella_target folder)
+    c4_get_target_property_recursive(_c4al_pvs_incs ${subj_target} INCLUDE_DIRECTORIES)
     get_include_flags(_c4al_pvs_incs ${_c4al_pvs_incs})
     separate_arguments(_c4al_cxx_flags_sep UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${_c4al_pvs_incs}")
     separate_arguments(_c4al_c_flags_sep UNIX_COMMAND "${CMAKE_C_FLAGS} ${_c4al_pvs_incs}")
@@ -157,6 +157,6 @@ function(static_analysis_pvs_studio subj_target lint_target umbrella_target fold
     add_dependencies(${umbrella_target} ${lint_target})
 endfunction()
 
-function(static_analysis_pvs_studio_get_cmd subj_target lint_target cmd)
+function(c4_static_analysis_pvs_studio_get_cmd subj_target lint_target cmd)
     set(${cmd} $<RULE_LAUNCH_CUSTOM:${subj_target}> PARENT_SCOPE)
 endfunction()

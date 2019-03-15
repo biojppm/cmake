@@ -9,7 +9,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 include(ConfigurationTypes)
 include(CreateSourceGroup)
 include(SanitizeTarget)
-include(StaticAnalysis)
+include(c4StaticAnalysis)
 include(PrintVar)
 include(c4CatSources)
 
@@ -27,8 +27,10 @@ set(C4_PROJ_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation un
 set(C4_PROJ_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(C4_PROJ_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
 
-print_var(C4_PROJ_LOG_ENABLED)
-print_var(C4_PROJ_LIBRARY_TYPE)
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
 function(c4_set_var_tmp var value)
     _c4_log("tmp-setting ${var} to ${value} (was ${${value}})")
     set(_c4_old_val_${var} ${${var}})
@@ -39,6 +41,10 @@ function(c4_clean_var_tmp var)
     _c4_log("cleaning ${var} to ${_c4_old_val_${var}} (tmp was ${${var}})")
     set(${var} ${_c4_old_val_${var}} PARENT_SCOPE)
 endfunction()
+
+macro(c4_override opt val)
+    set(${opt} ${val} CACHE BOOL "" FORCE)
+endmacro()
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -85,16 +91,50 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+macro(_c4_handle_arg uprefix argname default)
+    if("_${argname}" STREQUAL "")
+        set(_${argname} "${${default}}")
+    endif()
+    c4_setg(${uprefix}${argname} "${_${argname}}")
+endmacro()
+
 function(c4_declare_project prefix)
     _c4_handle_prefix(${prefix})
+    set(opt0arg
+        STANDALONE
+    )
+    set(opt1arg
+        DESC
+        AUTHOR
+        MAJOR
+        MINOR
+        RELEASE
+    )
+    set(optNarg
+        AUTHORS
+    )
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    #
+    _c4_handle_arg(${uprefix} DESC "${lcprefix}")
+    _c4_handle_arg(${uprefix} AUTHOR "${lcprefix} author <author@domain.net>")
+    _c4_handle_arg(${uprefix} AUTHORS "${_AUTHOR}")
+    _c4_handle_arg(${uprefix} MAJOR 0)
+    _c4_handle_arg(${uprefix} MINOR 0)
+    _c4_handle_arg(${uprefix} RELEASE 1)
+    c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
+    set(standalone OFF)
+    if(_STANDALONE)
+        set(standalone ON)
+    endif()
 
+    option(${uprefix}STANDALONE "Compile ${lcprefix} in standalone mode (ie, incorporate any dependency)" ${standalone})
     option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
     c4_setup_coverage(${ucprefix})
     c4_setup_valgrind(${ucprefix} ${uprefix}DEV)
     setup_sanitize(${ucprefix} ${uprefix}DEV)
-    setup_static_analysis(${ucprefix} ${uprefix}DEV)
+    c4_setup_static_analysis(${ucprefix} ${uprefix}DEV)
 
     # these are default compilation flags
     set(f "")
@@ -177,7 +217,7 @@ function(c4_require_module prefix module_name)
     _c4_log("${lcprefix}: requires module ${module_name}!")
 
     if(_${module_name}_available)
-        _c4_log("${lcprefix}: module ${module_name} was already imported by ${_${module_name}_importer}: ${_${module_name}_src}...")
+        _c4_log(STATUS "${lcprefix}: required module ${module_name} was already imported by ${_${module_name}_importer}: ${_${module_name}_src}...")
 
     else() #elseif(NOT _${module_name}_available)
         if(_INTERFACE)
@@ -187,7 +227,7 @@ function(c4_require_module prefix module_name)
         c4_setg(_${module_name}_importer ${lcprefix})
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
         if(_REMOTE)
-            _c4_log("${lcprefix}: importing module ${module_name} (REMOTE)...")
+            message(STATUS "${lcprefix}: importing module ${module_name} (REMOTE)... ${ARGN}")
             c4_import_remote_proj(${prefix} ${module_name} ${_r} ${ARGN})
             c4_setg(${uprefix}${module_name}_SRC_DIR ${_r}/src)
             c4_setg(${uprefix}${module_name}_BIN_DIR ${_r}/build)
@@ -195,7 +235,7 @@ function(c4_require_module prefix module_name)
             c4_setg(_${module_name}_bin ${_r}/build)
             _c4_log("${lcprefix}: finished importing module ${module_name} (REMOTE=${${uprefix}${module_name}_SRC_DIR}).")
         elseif(_SUBDIRECTORY)
-            _c4_log("${lcprefix}: importing module ${module_name} (SUBDIRECTORY)...")
+            message(STATUS "${lcprefix}: importing module ${module_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             add_subdirectory(${_SUBDIRECTORY} ${_r}/build)
             c4_setg(${uprefix}${module_name}_SRC_DIR ${_SUBDIRECTORY})
             c4_setg(${uprefix}${module_name}_BIN_DIR ${_r}/build)
@@ -379,7 +419,7 @@ function(c4_add_target prefix name)
                     COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
             endif()
             if(${uprefix}LINT)
-                static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
+                c4_static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
             endif()
         endif()
     endif()
@@ -464,18 +504,6 @@ function(c4_install_library prefix name)
     # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
 endfunction()
 
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-function(c4_setup_sanitize prefix initial_value)
-    setup_sanitize(${prefix} ${initial_value})
-endfunction(c4_setup_sanitize)
-
-function(c4_setup_static_analysis prefix initial_value)
-    setup_static_analysis(${prefix} ${initial_value})
-endfunction(c4_setup_static_analysis)
-
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -488,11 +516,14 @@ function(c4_setup_testing prefix)
     add_custom_target(${lprefix}test-build)
     set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${lprefix}test)
     # umbrella target for running tests
+    set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_custom_target(${lprefix}test
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E echo CMD=${CMAKE_CTEST_COMMAND} -C $<CONFIG>
+        COMMAND ${CMAKE_COMMAND} -E echo
         COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
-        COMMAND ${CMAKE_COMMAND} -E env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>
+        COMMAND ${CMAKE_COMMAND} -E echo ${ctest_cmd}
+        COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
+        COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         DEPENDS ${lprefix}test-build
         )
@@ -554,7 +585,7 @@ function(c4_add_test prefix target)
         c4_add_valgrind(${prefix} ${target})
     endif()
     if(${uprefix}LINT)
-        static_analysis_add_tests(${ucprefix} ${target})
+        c4_static_analysis_add_tests(${ucprefix} ${target})
     endif()
 endfunction(c4_add_test)
 
@@ -976,116 +1007,8 @@ function(c4_separate_list input_list output_string)
 endfunction()
 
 
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-
-function(c4_set_transitive_property target prop_name prop_value)
-    set_target_properties(${target} PROPERTIES ${prop_name} ${prop_value})
-endfunction()
-
-
-# TODO: maybe we can use get_target_property_recursive()?
-function(c4_get_transitive_property target prop_name out)
-    if(NOT TARGET ${target})
-        return()
-    endif()
-    # these will be the names of the variables we'll use to cache the result
-    set(_trval _C4_TRANSITIVE_${prop_name})
-    set(_trmark _C4_TRANSITIVE_${prop_name}_DONE)
-    #
-    get_target_property(cached ${target} ${_trmark})  # is it cached already
-    if(cached)
-        get_target_property(p ${target} _C4_TRANSITIVE_${prop_name})
-        set(${out} ${p} PARENT_SCOPE)
-        #_c4_log("${target}: c4_get_transitive_property ${target} ${prop_name}: cached='${p}'")
-    else()
-        #_c4_log("${target}: gathering transitive property: ${prop_name}...")
-        set(interleaved)
-        get_target_property(lv ${target} ${prop_name})
-        if(lv)
-            list(APPEND interleaved ${lv})
-        endif()
-        c4_get_transitive_libraries(${target} LINK_LIBRARIES libs)
-        c4_get_transitive_libraries(${target} INTERFACE_LINK_LIBRARIES ilibs)
-        list(APPEND libs ${ilibs})
-        foreach(lib ${libs})
-            #_c4_log("${target}: considering ${lib}...")
-            if(NOT lib)
-                #_c4_log("${target}: considering ${lib}: not found, skipping...")
-                continue()
-            endif()
-            if(NOT TARGET ${lib})
-                #_c4_log("${target}: considering ${lib}: not a target, skipping...")
-                continue()
-            endif()
-            get_target_property(lv ${lib} ${prop_name})
-            if(lv)
-                list(APPEND interleaved ${lv})
-            endif()
-            c4_get_transitive_property(${lib} ${prop_name} v)
-            if(v)
-                list(APPEND interleaved ${v})
-            endif()
-            #_c4_log("${target}: considering ${lib}---${interleaved}")
-        endforeach()
-        #_c4_log("${target}: gathering transitive property: ${prop_name}: ${interleaved}")
-        set(${out} ${interleaved} PARENT_SCOPE)
-        set_target_properties(${target} PROPERTIES
-            ${_trmark} ON
-            ${_trval} "${interleaved}")
-    endif()
-endfunction()
-
-
-function(c4_get_transitive_libraries target prop_name out)
-    if(NOT TARGET ${target})
-        return()
-    endif()
-    # these will be the names of the variables we'll use to cache the result
-    set(_trval _C4_TRANSITIVE_${prop_name})
-    set(_trmark _C4_TRANSITIVE_${prop_name}_DONE)
-    #
-    get_target_property(cached ${target} ${_trmark})
-    if(cached)
-        get_target_property(p ${target} ${_trval})
-        set(${out} ${p} PARENT_SCOPE)
-        #_c4_log("${target}: c4_get_transitive_libraries ${target} ${prop_name}: cached='${p}'")
-    else()
-        #_c4_log("${target}: gathering transitive libraries: ${prop_name}...")
-        get_target_property(target_type ${target} TYPE)
-        set(interleaved)
-        if(NOT ("${target_type}" STREQUAL "INTERFACE_LIBRARY") AND "${prop_name}" STREQUAL LINK_LIBRARIES)
-            get_target_property(l ${target} ${prop_name})
-            foreach(ll ${l})
-                #_c4_log("${target}: considering ${ll}...")
-                if(NOT ll)
-                    #_c4_log("${target}: considering ${ll}: not found, skipping...")
-                    continue()
-                endif()
-                if(NOT ll)
-                    #_c4_log("${target}: considering ${ll}: not a target, skipping...")
-                    continue()
-                endif()
-                list(APPEND interleaved ${ll})
-                c4_get_transitive_libraries(${ll} ${prop_name} v)
-                if(v)
-                    list(APPEND interleaved ${v})
-                endif()
-                #_c4_log("${target}: considering ${ll}---${interleaved}")
-            endforeach()
-        endif()
-        #_c4_log("${target}: gathering transitive libraries: ${prop_name}: result='${interleaved}'")
-        set(${out} ${interleaved} PARENT_SCOPE)
-        set_target_properties(${target} PROPERTIES
-            ${_trmark} ON
-            ${_trval} "${interleaved}")
-    endif()
-endfunction()
-
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-endif() # NOT _c4_project_included
+endif(NOT _c4_project_included)
