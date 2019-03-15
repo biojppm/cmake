@@ -19,7 +19,7 @@ include(c4CatSources)
 #------------------------------------------------------------------------------
 
 
-set(C4_PROJ_LOG_ENABLED ON CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
+set(C4_PROJ_LOG_ENABLED OFF CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
 set(C4_PROJ_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
 set(C4_PROJ_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
 set(C4_PROJ_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
@@ -697,6 +697,13 @@ function(c4_setup_benchmarks prefix)
     c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
         GIT_REPOSITORY https://github.com/google/benchmark.git
         )
+    #
+    option(${uprefix}BENCHMARK_CPUPOWER
+        "set the cpu mode to performance before / powersave after the benchmark" OFF)
+    if(${uprefix}BENCHMARK_CPUPOWER)
+        find_program(C4_PROJ_SUDO sudo)
+        find_program(C4_PROJ_CPUPOWER cpupower)
+    endif()
 endfunction()
 
 
@@ -708,8 +715,23 @@ function(c4_add_benchmark prefix target case work_dir comment)
     if(comment)
         set(comment COMMENT "${comment}")
     endif()
+    if(${uprefix}BENCHMARK_CPUPOWER)
+        if(C4_BM_SUDO AND C4_BM_CPUPOWER)
+            set(c ${C4_PROJ_SUDO} ${C4_PROJ_CPUPOWER} frequency-set --governor performance)
+            set(cpupow_before
+                COMMAND echo ${c}
+                COMMAND ${c})
+            set(c ${C4_PROJ_SUDO} ${C4_PROJ_CPUPOWER} frequency-set --governor powersave)
+            set(cpupow_after
+                COMMAND echo ${c}
+                COMMAND ${c})
+        endif()
+    endif()
     add_custom_target(${case}
+        ${cpupow_before}
+        COMMAND echo $<TARGET_FILE:${target}> ${ARGN}
         COMMAND $<TARGET_FILE:${target}> ${ARGN}
+        ${cpupow_after}
         WORKING_DIRECTORY ${work_dir}
         DEPENDS ${target}
         ${comment}
