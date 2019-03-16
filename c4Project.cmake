@@ -17,7 +17,7 @@ include(c4CatSources)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
+# define c4 project settings
 
 set(C4_PROJ_LOG_ENABLED OFF CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
 set(C4_PROJ_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
@@ -249,8 +249,8 @@ function(c4_require_module prefix module_name)
             c4_clean_var_tmp(C4_PROJ_LIBRARY_TYPE)
         endif()
     endif()
-
 endfunction(c4_require_module)
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -324,92 +324,126 @@ function(c4_add_target prefix name)
     )
     set(options1arg
         SOURCE_TRANSFORM
+        SOURCE_ROOT
         FOLDER
         SANITIZERS      # outputs the list of sanitize targets in this var
         LIBRARY_TYPE    # override global setting for C4_PROJ_LIBRARY_TYPE
     )
     set(optionsnarg
-        SOURCES
-        HEADERS
-        INC_DIRS PRIVATE_INC_DIRS
-        LIBS PRIVATE_LIBS
-        INTERFACES
+        SOURCES  PUBLIC_SOURCES  INTERFACE_SOURCES  PRIVATE_SOURCES
+        HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
+        INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
+        LIBS     PUBLIC_LIBS     INTERFACE_LIBS     PRIVATE_LIBS
         DLLS
         MORE_ARGS
     )
-    cmake_parse_arguments(_c4al "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
-    if(${_c4al_LIBRARY})
+    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
+    if(${_LIBRARY})
         set(_what LIBRARY)
-    elseif(${_c4al_EXECUTABLE})
+    elseif(${_EXECUTABLE})
         set(_what EXECUTABLE)
     else()
         message(FATAL_ERROR "must be either LIBRARY or EXECUTABLE")
     endif()
 
-    c4_to_full_path("${_c4al_SOURCES}" fullsrc)
-    set(_c4al_SOURCES "${fullsrc}")
+    function(c4_transform_to_full_path list all)
+        c4_to_full_path("${${list}}" fullsrc)
+        set(${list} "${fullsrc}" PARENT_SCOPE)
+        set(cp ${${all}})
+        list(APPEND cp ${fullsrc})
+        set(${all} ${cp} PARENT_SCOPE)
+    endfunction()
+    c4_transform_to_full_path(          _SOURCES allsrc)
+    c4_transform_to_full_path(          _HEADERS allsrc)
+    c4_transform_to_full_path(   _PUBLIC_SOURCES allsrc)
+    c4_transform_to_full_path(_INTERFACE_SOURCES allsrc)
+    c4_transform_to_full_path(  _PRIVATE_SOURCES allsrc)
+    c4_transform_to_full_path(   _PUBLIC_HEADERS allsrc)
+    c4_transform_to_full_path(_INTERFACE_HEADERS allsrc)
+    c4_transform_to_full_path(  _PRIVATE_HEADERS allsrc)
 
-    create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${_c4al_SOURCES}")
+    create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${allsrc}")
 
     if(NOT ${uprefix}SANITIZE_ONLY)
-
-        if(${_c4al_EXECUTABLE})
-            #
+        if(${_EXECUTABLE})
             _c4_log("${lcprefix}: adding executable: ${name}")
-            add_executable(${name} ${_c4al_MORE_ARGS})
-            c4_add_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
+            add_executable(${name} ${_MORE_ARGS})
+            set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
-            #
-        elseif(${_c4al_LIBRARY})
-            #
+        elseif(${_LIBRARY})
             _c4_log("${lcprefix}: adding library: ${name}")
             set(_blt ${C4_PROJ_LIBRARY_TYPE})
-            if(NOT "${_c4al_LIBRARY_TYPE}" STREQUAL "")
-                set(_blt ${_c4al_LIBRARY_TYPE})
+            if(NOT "${_LIBRARY_TYPE}" STREQUAL "")
+                set(_blt ${_LIBRARY_TYPE})
             endif()
             #
             if("${_blt}" STREQUAL "INTERFACE")
                 _c4_log("${lcprefix}: adding interface library ${name}")
                 add_library(${name} INTERFACE)
-                c4_add_target_sources(${prefix} ${name} INTERFACE ${_c4al_SOURCES})
+                set(src_mode INTERFACE)
                 set(tgt_type INTERFACE)
                 set(compiled_target OFF)
             else()
                 if(NOT ("${_blt}" STREQUAL ""))
                     _c4_log("${lcprefix}: adding library ${name} with type ${_blt}")
-                    add_library(${name} ${_blt} ${_c4al_MORE_ARGS})
+                    add_library(${name} ${_blt} ${_MORE_ARGS})
                 else()
                     # obey BUILD_SHARED_LIBS (ie, either static or shared library)
-                    _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS})")
-                    add_library(${name} ${_c4al_MORE_ARGS})
+                    _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
+                    add_library(${name} ${_MORE_ARGS})
                 endif()
-                c4_add_target_sources(${prefix} ${name} PUBLIC ${_c4al_SOURCES})
+                set(src_mode PRIVATE)
                 set(tgt_type PUBLIC)
                 set(compiled_target ON)
             endif()
-            #
+        endif(${_EXECUTABLE})
+
+        if(src_mode STREQUAL "PUBLIC")
+            c4_add_target_sources(${prefix} ${name}
+                PUBLIC    "${_SOURCES};${_HEADERS};${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
+                INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
+                PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
+        elseif(src_mode STREQUAL "INTERFACE")
+            c4_add_target_sources(${prefix} ${name}
+                PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
+                INTERFACE "${_SOURCES};${_HEADERS};${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
+                PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
+        elseif(src_mode STREQUAL "PRIVATE")
+            c4_add_target_sources(${prefix} ${name}
+                PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
+                INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
+                PRIVATE   "${_SOURCES};${_HEADERS};${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
+        elseif()
+            message(FATAL_ERROR "${lcprefix}: adding sources for target ${target} invalid source mode")
+        endif()
+
+        if(_INC_DIRS)
+            target_include_directories(${name} ${tgt_type} ${_INC_DIRS})
+        endif()
+        if(_PRIVATE_INC_DIRS)
+            target_include_directories(${name} PRIVATE ${_PRIVATE_INC_DIRS})
         endif()
         #
-        if(_c4al_INC_DIRS)
-            target_include_directories(${name} ${tgt_type} ${_c4al_INC_DIRS})
+        if(_LIBS)
+            _c4_log("${lcprefix}: linking ${target} with libs, [from_target]${tgt_type}: ${_LIBS}")
+            target_link_libraries(${name} ${tgt_type} ${_LIBS})
         endif()
-        if(_c4al_PRIVATE_INC_DIRS)
-            target_include_directories(${name} PRIVATE ${_c4al_PRIVATE_INC_DIRS})
+        if(_PUBLIC_LIBS)
+            _c4_log("${lcprefix}: linking ${target} with libs, PUBLIC: ${_PRIVATE_LIBS}")
+            target_link_libraries(${name} PUBLIC ${_PUBLIC_LIBS})
+        endif()
+        if(_INTERFACE_LIBS)
+            _c4_log("${lcprefix}: linking ${target} with libs, INTERFACE: ${_INTERFACE_LIBS}")
+            target_link_libraries(${name} INTERFACE ${_INTERFACE_LIBS})
+        endif()
+        if(_PRIVATE_LIBS)
+            _c4_log("${lcprefix}: linking ${target} with libs, PRIVATE: ${_PRIVATE_LIBS}")
+            target_link_libraries(${name} PRIVATE ${_PRIVATE_LIBS})
         endif()
         #
-        if(_c4al_LIBS)
-            target_link_libraries(${name} ${tgt_type} ${_c4al_LIBS})
-        endif()
-        if(_c4al_PRIVATE_LIBS)
-            target_link_libraries(${name} PRIVATE ${_c4al_PRIVATE_LIBS})
-        endif()
-        if(_c4al_INTERFACES)
-            target_link_libraries(${name} INTERFACE ${_c4al_INTERFACES})
-        endif()
-        #
-        if(_c4al_FOLDER)
-            set_target_properties(${name} PROPERTIES FOLDER "${_c4al_FOLDER}")
+        if(_FOLDER)
+            set_target_properties(${name} PROPERTIES FOLDER "${_FOLDER}")
         endif()
         #
         if(compiled_target)
@@ -419,20 +453,20 @@ function(c4_add_target prefix name)
                     COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS})
             endif()
             if(${uprefix}LINT)
-                c4_static_analysis_target(${ucprefix} ${name} "${_c4al_FOLDER}" lint_targets)
+                c4_static_analysis_target(${ucprefix} ${name} "${_FOLDER}" lint_targets)
             endif()
         endif()
     endif()
 
     if(compiled_target)
-        if(_c4al_SANITIZE OR ${uprefix}SANITIZE)
+        if(_SANITIZE OR ${uprefix}SANITIZE)
             sanitize_target(${name} ${lcprefix}
                 ${_what}   # LIBRARY or EXECUTABLE
-                SOURCES ${_c4al_SOURCES}
-                INC_DIRS ${_c4al_INC_DIRS}
-                LIBS ${_c4al_LIBS}
+                SOURCES ${_SOURCES}
+                INC_DIRS ${_INC_DIRS}
+                LIBS ${_LIBS}
                 OUTPUT_TARGET_NAMES san_targets
-                FOLDER "${_c4al_FOLDER}"
+                FOLDER "${_FOLDER}"
                 )
         endif()
 
@@ -440,17 +474,17 @@ function(c4_add_target prefix name)
             list(INSERT san_targets 0 ${name})
         endif()
 
-        if(_c4al_SANITIZERS)
-            set(${_c4al_SANITIZERS} ${san_targets} PARENT_SCOPE)
+        if(_SANITIZERS)
+            set(${_SANITIZERS} ${san_targets} PARENT_SCOPE)
         endif()
     endif()
 
     # gather dlls so that they can be automatically copied to the target directory
-    if(_c4al_DLLS)
-        c4_set_transitive_property(${name} _C4_DLLS "${_c4al_DLLS}")
+    if(_DLLS)
+        c4_set_transitive_property(${name} _C4_DLLS "${_DLLS}")
         get_target_property(vd ${name} _C4_DLLS)
     endif()
-    if(${_c4al_EXECUTABLE})
+    if(${_EXECUTABLE})
         if(WIN32)
             c4_get_transitive_property(${name} _C4_DLLS transitive_dlls)
             foreach(_dll ${transitive_dlls})
@@ -820,17 +854,20 @@ function(c4_add_target_sources prefix target)
     set(umbrella ${lprefix}transform-src)
     #
     if("${_TRANSFORM}" STREQUAL "NONE")
-        _c4_log("${lcprefix}: source transform: NONE!")
+        _c4_log("${lcprefix}: target=${target} source transform: NONE!")
         #
         # do not transform the sources
         #
         if(_PUBLIC)
+            _c4_log("${lcprefix}: target=${target} PUBLIC sources: ${_PUBLIC}")
             target_sources(${target} PUBLIC ${_PUBLIC})
         endif()
         if(_INTERFACE)
+            _c4_log("${lcprefix}: target=${target} INTERFACE sources: ${_INTERFACE}")
             target_sources(${target} INTERFACE ${_INTERFACE})
         endif()
         if(_PRIVATE)
+            _c4_log("${lcprefix}: target=${target} PRIVATE sources: ${_PRIVATE}")
             target_sources(${target} PRIVATE ${_PRIVATE})
         endif()
         #
