@@ -1,19 +1,41 @@
+if(NOT _c4_GTPR_included)
+set(_c4_GTPR_included ON)
+
+include(c4Log)
 
 function(c4_get_target_property_recursive outputvar target property)
+    #
+    # helps for debugging
+    if(_stack)
+        set(_stack "${_stack}/${target}")
+    else()
+        set(_stack "${property}:${target}")
+    endif()
+    #
+    # what type of target is this?
     get_target_property(_rec_target_type ${target} TYPE)
+    _c4_log("${_stack} [type=${_rec_target_type}]: get property ${property}")
+    #
+    # adjust the property names for interface targets
     set(_ept_prop_ll LINK_LIBRARIES)
     if(_rec_target_type STREQUAL "INTERFACE_LIBRARY")
         set(_ept_prop_ll INTERFACE_LINK_LIBRARIES)
         if(property STREQUAL "INCLUDE_DIRECTORIES")
+            _c4_log("${_stack} [type=${_rec_target_type}]: property ${property} ---> INTERFACE_INCLUDE_DIRECTORIES")
             set(property INTERFACE_INCLUDE_DIRECTORIES)
         elseif(property STREQUAL "LINK_LIBRARIES")
+            _c4_log("${_stack} [type=${_rec_target_type}]: property ${property} ---> INTERFACE_LINK_LIBRARIES")
             set(property INTERFACE_LINK_LIBRARIES)
         endif()
     endif()
+    #
     get_target_property(_ept_li ${target} ${property})
-    if(NOT _ept_li)
-        set(_ept_li)
+    _c4_log("${_stack} [type=${_rec_target_type}]: property ${property}=${_ept_li}")
+    if(NOT _ept_li)  # the property may not be set (ie foo-NOTFOUND)
+        set(_ept_li) # so clear it in that case
     endif()
+    #
+    # now descend and append the property for each of the linked libraries
     get_target_property(_ept_deps ${target} ${_ept_prop_ll})
     if(_ept_deps)
         foreach(_ept_ll ${_ept_deps})
@@ -23,6 +45,7 @@ function(c4_get_target_property_recursive outputvar target property)
             endif()
         endforeach()
     endif()
+    #
     foreach(le_ ${_ept_li})
         string(STRIP "${le_}" le)
         if(NOT le)
@@ -31,7 +54,7 @@ function(c4_get_target_property_recursive outputvar target property)
             list(APPEND _ept_li_f ${le})
         endif()
     endforeach()
-    list(REMOVE_DUPLICATES _ept_li_f)
+    _c4_log("${_stack} [type=${_rec_target_type}]: final=${_ept_li_f}")
     set(${outputvar} ${_ept_li_f} PARENT_SCOPE)
 endfunction()
 
@@ -143,3 +166,5 @@ function(c4_get_transitive_libraries target prop_name out)
             ${_trval} "${interleaved}")
     endif()
 endfunction()
+
+endif(NOT _c4_GTPR_included)

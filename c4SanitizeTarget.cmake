@@ -1,7 +1,10 @@
 # (C) 2017 Joao Paulo Magalhaes <dev@jpmag.me>
+if(NOT _c4_sanitize_target_included)
+set(_c4_sanitize_target_included ON)
 
 include(CMakeDependentOption)
 include(PrintVar)
+include(c4Log)
 
 #------------------------------------------------------------------------------
 function(setup_sanitize prefix umbrella_option)
@@ -95,24 +98,24 @@ endfunction()
 #------------------------------------------------------------------------------
 function(sanitize_target name prefix)
 
-    set(options0arg
+    set(opt0arg
         LIBRARY
         EXECUTABLE
     )
-    set(options1arg
+    set(opt1arg
         OUTPUT_TARGET_NAMES
         FOLDER
     )
-    set(optionsnarg
+    set(optnarg
         SOURCES
         INC_DIRS
         LIBS
         LIB_DIRS
     )
 
-    cmake_parse_arguments(_c4st "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
 
-    if((NOT _c4st_LIBRARY) AND (NOT _c4st_EXECUTABLE))
+    if((NOT _LIBRARY) AND (NOT _EXECUTABLE))
         message(FATAL_ERROR "either LIBRARY or EXECUTABLE must be specified")
     endif()
 
@@ -125,48 +128,48 @@ function(sanitize_target name prefix)
 
     if(${oprefix}SANITIZE AND NOT TARGET ${prefix}sanitize)
         add_custom_target(${prefix}sanitize)
-        _sanitize_set_target_folder(${prefix}sanitize "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${prefix}sanitize "${_FOLDER}")
     endif()
     if(${oprefix}ASAN AND NOT TARGET ${prefix}asan-all)
         add_custom_target(${prefix}asan-all)
         add_dependencies(${prefix}sanitize ${prefix}asan-all)
-        _sanitize_set_target_folder(${prefix}asan-all "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${prefix}asan-all "${_FOLDER}")
     endif()
     if(${oprefix}MSAN AND NOT TARGET ${prefix}msan-all)
         add_custom_target(${prefix}msan-all)
         add_dependencies(${prefix}sanitize ${prefix}msan-all)
-        _sanitize_set_target_folder(${prefix}msan-all "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${prefix}msan-all "${_FOLDER}")
     endif()
     if(${oprefix}TSAN AND NOT TARGET ${prefix}tsan-all)
         add_custom_target(${prefix}tsan-all)
         add_dependencies(${prefix}sanitize ${prefix}tsan-all)
-        _sanitize_set_target_folder(${prefix}tsan-all "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${prefix}tsan-all "${_FOLDER}")
     endif()
     if(${oprefix}UBSAN AND NOT TARGET ${prefix}ubsan-all)
         add_custom_target(${prefix}ubsan-all)
         add_dependencies(${prefix}sanitize ${prefix}ubsan-all)
-        _sanitize_set_target_folder(${prefix}ubsan-all "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${prefix}ubsan-all "${_FOLDER}")
     endif()
 
     if(${oprefix}ASAN OR ${oprefix}MSAN OR ${oprefix}TSAN OR ${oprefix}UBSAN)
         add_custom_target(${name}-sanitize-all)
-        _sanitize_set_target_folder(${name}-sanitize-all "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${name}-sanitize-all "${_FOLDER}")
     endif()
 
     set(targets)
 
     # https://clang.llvm.org/docs/AddressSanitizer.html
     if(${oprefix}ASAN)
-        if(${_c4st_LIBRARY})
-            add_library(${name}-asan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
-        elseif(${_c4st_EXECUTABLE})
-            add_executable(${name}-asan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
+        if(${_LIBRARY})
+            add_library(${name}-asan EXCLUDE_FROM_ALL ${_SOURCES})
+        elseif(${_EXECUTABLE})
+            add_executable(${name}-asan EXCLUDE_FROM_ALL ${_SOURCES})
         endif()
-        _sanitize_set_target_folder(${name}-asan "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${name}-asan "${_FOLDER}")
         list(APPEND targets ${name}-asan)
-        target_include_directories(${name}-asan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-asan PUBLIC ${_INC_DIRS})
         set(_real_libs)
-        foreach(_l ${_c4st_LIBS})
+        foreach(_l ${_LIBS})
             if(TARGET ${_l}-asan)
                 list(APPEND _real_libs ${_l}-asan)
             else()
@@ -183,16 +186,16 @@ function(sanitize_target name prefix)
 
     # https://clang.llvm.org/docs/ThreadSanitizer.html
     if(${oprefix}TSAN)
-        if(${_c4st_LIBRARY})
-            add_library(${name}-tsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
-        elseif(${_c4st_EXECUTABLE})
-            add_executable(${name}-tsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
+        if(${_LIBRARY})
+            add_library(${name}-tsan EXCLUDE_FROM_ALL ${_SOURCES})
+        elseif(${_EXECUTABLE})
+            add_executable(${name}-tsan EXCLUDE_FROM_ALL ${_SOURCES})
         endif()
-        _sanitize_set_target_folder(${name}-tsan "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${name}-tsan "${_FOLDER}")
         list(APPEND targets ${name}-tsan)
-        target_include_directories(${name}-tsan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-tsan PUBLIC ${_INC_DIRS})
         set(_real_libs)
-        foreach(_l ${_c4st_LIBS})
+        foreach(_l ${_LIBS})
             if(TARGET ${_l}-tsan)
                 list(APPEND _real_libs ${_l}-tsan)
             else()
@@ -209,16 +212,16 @@ function(sanitize_target name prefix)
 
     # https://clang.llvm.org/docs/MemorySanitizer.html
     if(${oprefix}MSAN)
-        if(${_c4st_LIBRARY})
-            add_library(${name}-msan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
-        elseif(${_c4st_EXECUTABLE})
-            add_executable(${name}-msan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
+        if(${_LIBRARY})
+            add_library(${name}-msan EXCLUDE_FROM_ALL ${_SOURCES})
+        elseif(${_EXECUTABLE})
+            add_executable(${name}-msan EXCLUDE_FROM_ALL ${_SOURCES})
         endif()
-        _sanitize_set_target_folder(${name}-msan "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${name}-msan "${_FOLDER}")
         list(APPEND targets ${name}-msan)
-        target_include_directories(${name}-msan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-msan PUBLIC ${_INC_DIRS})
         set(_real_libs)
-        foreach(_l ${_c4st_LIBS})
+        foreach(_l ${_LIBS})
             if(TARGET ${_l}-msan)
                 list(APPEND _real_libs ${_l}-msan)
             else()
@@ -235,16 +238,16 @@ function(sanitize_target name prefix)
 
     # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
     if(${oprefix}UBSAN)
-        if(${_c4st_LIBRARY})
-            add_library(${name}-ubsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
-        elseif(${_c4st_EXECUTABLE})
-            add_executable(${name}-ubsan EXCLUDE_FROM_ALL ${_c4st_SOURCES})
+        if(${_LIBRARY})
+            add_library(${name}-ubsan EXCLUDE_FROM_ALL ${_SOURCES})
+        elseif(${_EXECUTABLE})
+            add_executable(${name}-ubsan EXCLUDE_FROM_ALL ${_SOURCES})
         endif()
-        _sanitize_set_target_folder(${name}-ubsan "${_c4st_FOLDER}")
+        _sanitize_set_target_folder(${name}-ubsan "${_FOLDER}")
         list(APPEND targets ${name}-ubsan)
-        target_include_directories(${name}-ubsan PUBLIC ${_c4st_INC_DIRS})
+        target_include_directories(${name}-ubsan PUBLIC ${_INC_DIRS})
         set(_real_libs)
-        foreach(_l ${_c4st_LIBS})
+        foreach(_l ${_LIBS})
             if(TARGET ${_l}-ubsan)
                 list(APPEND _real_libs ${_l}-ubsan)
             else()
@@ -259,7 +262,9 @@ function(sanitize_target name prefix)
         add_dependencies(${name}-sanitize-all ${name}-ubsan)
     endif()
 
-    if(_c4st_OUTPUT_TARGET_NAMES)
-        set(${_c4st_OUTPUT_TARGET_NAMES} ${targets} PARENT_SCOPE)
+    if(_OUTPUT_TARGET_NAMES)
+        set(${_OUTPUT_TARGET_NAMES} ${targets} PARENT_SCOPE)
     endif()
 endfunction()
+
+endif(NOT _c4_sanitize_target_included)

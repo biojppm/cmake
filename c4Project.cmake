@@ -8,10 +8,11 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 include(ConfigurationTypes)
 include(CreateSourceGroup)
-include(SanitizeTarget)
+include(c4SanitizeTarget)
 include(c4StaticAnalysis)
 include(PrintVar)
 include(c4CatSources)
+include(c4Log)
 
 
 #------------------------------------------------------------------------------
@@ -49,13 +50,6 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
-
-macro(_c4_log)
-    if(C4_PROJ_LOG_ENABLED)
-        message(STATUS "c4: ${ARGN}")
-    endif()
-endmacro()
 
 
 macro(c4_setg var val)
@@ -225,9 +219,9 @@ function(c4_require_module prefix module_name)
         if(_INTERFACE)
             _c4_log("${lcprefix}: ${module_name} is explicitly required as INTERFACE")
             c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
-        elseif(${uprefix}STANDALONE)
-            _c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${module_name} as INTERFACE")
-            c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
+        #elseif(${uprefix}STANDALONE)
+            #_c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${module_name} as INTERFACE")
+            #c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
         endif()
         c4_setg(_${module_name}_available ON)
         c4_setg(_${module_name}_importer ${lcprefix})
@@ -251,7 +245,7 @@ function(c4_require_module prefix module_name)
         else(_SUBDIRECTORY)
             message(FATAL_ERROR "module type must be either REMOTE or SUBDIRECTORY")
         endif(_REMOTE)
-        if(_INTERFACE OR ${uprefix}STANDALONE)
+        if(_INTERFACE)# OR ${uprefix}STANDALONE)
             c4_clean_var_tmp(C4_PROJ_LIBRARY_TYPE)
         endif()
     endif()
@@ -306,36 +300,39 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-function(c4_add_library prefix name)
-    c4_add_target(${prefix} ${name} LIBRARY ${ARGN})
-endfunction(c4_add_library)
-
 function(c4_add_executable prefix name)
     c4_add_target(${prefix} ${name} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
+function(c4_add_library prefix name)
+    c4_add_target(${prefix} ${name} LIBRARY ${ARGN})
+endfunction(c4_add_library)
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
+
 
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
 function(c4_add_target prefix name)
     _c4_log("${prefix}: adding target: ${name}: ${ARGN}")
     _c4_handle_prefix(${prefix})
-    set(options0arg
-        EXECUTABLE
-        LIBRARY
-        SANITIZE
+    set(opt0arg
+        EXECUTABLE  # this is an executable
+        LIBRARY     # this is a library
+        SANITIZE    # turn on sanitizer analysis
     )
-    set(options1arg
-        SOURCE_TRANSFORM
-        SOURCE_ROOT
-        FOLDER
-        SANITIZERS      # outputs the list of sanitize targets in this var
+    set(opt1arg
         LIBRARY_TYPE    # override global setting for C4_PROJ_LIBRARY_TYPE
+        SOURCE_ROOT     # the directory where relative source paths
+                        # should be resolved. when empty,
+                        # use CMAKE_CURRENT_SOURCE_DIR
+        FOLDER          # IDE folder to group the target in
+        SANITIZERS      # outputs the list of sanitize targets in this var
+        SOURCE_TRANSFORM
     )
-    set(optionsnarg
+    set(optnarg
         SOURCES  PUBLIC_SOURCES  INTERFACE_SOURCES  PRIVATE_SOURCES
         HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
         INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
@@ -343,7 +340,7 @@ function(c4_add_target prefix name)
         DLLS
         MORE_ARGS
     )
-    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
     if(${_LIBRARY})
         set(_what LIBRARY)
     elseif(${_EXECUTABLE})
@@ -353,10 +350,20 @@ function(c4_add_target prefix name)
     endif()
 
     function(c4_transform_to_full_path list all)
-        c4_to_full_path("${${list}}" fullsrc)
-        set(${list} "${fullsrc}" PARENT_SCOPE)
+        set(l)
+        foreach(f ${${list}})
+            if(NOT IS_ABSOLUTE "${f}")
+                if(_SOURCE_ROOT)
+                    set(f "${_SOURCE_ROOT}/${f}")
+                else()
+                    set(f "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
+                endif()
+            endif()
+            list(APPEND l "${f}")
+        endforeach()
+        set(${list} "${l}" PARENT_SCOPE)
         set(cp ${${all}})
-        list(APPEND cp ${fullsrc})
+        list(APPEND cp ${l})
         set(${all} ${cp} PARENT_SCOPE)
     endfunction()
     c4_transform_to_full_path(          _SOURCES allsrc)
@@ -474,9 +481,9 @@ function(c4_add_target prefix name)
         if(_SANITIZE OR ${uprefix}SANITIZE)
             sanitize_target(${name} ${lcprefix}
                 ${_what}   # LIBRARY or EXECUTABLE
-                SOURCES ${_SOURCES}
-                INC_DIRS ${_INC_DIRS}
-                LIBS ${_LIBS}
+                SOURCES ${allsrc}
+                INC_DIRS ${_INC_DIRS} ${_PUBLIC_INC_DIRS} ${_INTERFACE_INC_DIRS} ${_PRIVATE_INC_DIRS}
+                LIBS ${_LIBS} ${_PUBLIC_LIBS} ${_INTERFACE_LIBS} ${_PRIVATE_LIBS}
                 OUTPUT_TARGET_NAMES san_targets
                 FOLDER "${_FOLDER}"
                 )
