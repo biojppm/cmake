@@ -582,15 +582,15 @@ function(c4_setup_testing prefix)
         )
     set_target_properties(${lprefix}test PROPERTIES FOLDER ${lprefix}test)
 
-    set(BUILD_GTEST ON CACHE BOOL "" FORCE)
-    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    set(gtest_build_samples OFF CACHE BOOL "" FORCE)
-    set(gtest_build_tests OFF CACHE BOOL "" FORCE)
-    if(MSVC)
-        # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
-    endif()
+    c4_override(BUILD_GTEST ON)
+    c4_override(BUILD_GMOCK OFF)
+    c4_override(gtest_force_shared_crt ON)
+    c4_override(gtest_build_samples OFF)
+    c4_override(gtest_build_tests OFF)
+    #if(MSVC)
+    #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
+    #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
+    #endif()
     c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
         GIT_REPOSITORY https://github.com/google/googletest.git
         #GIT_TAG release-1.8.0
@@ -775,9 +775,9 @@ function(c4_setup_benchmarks prefix)
     set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
     set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
     # download google benchmark
-    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_EXCEPTIONS OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_LTO OFF CACHE BOOL "" FORCE)
+    c4_override(BENCHMARK_ENABLE_TESTING OFF)
+    c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
+    c4_override(BENCHMARK_ENABLE_LTO OFF)
     c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
         GIT_REPOSITORY https://github.com/google/benchmark.git
         )
