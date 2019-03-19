@@ -791,6 +791,14 @@ function(c4_setup_benchmarks prefix)
 endfunction()
 
 
+function(c4_add_benchmark_cmd prefix case)
+    _c4_handle_prefix(${prefix})
+    add_custom_target(${case} ${ARGN})
+    add_dependencies(${lprefix}benchmark ${case})
+    set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
+endfunction()
+
+
 function(c4_add_benchmark prefix target case work_dir comment)
     _c4_handle_prefix(${prefix})
     if(NOT TARGET ${target})
@@ -824,6 +832,7 @@ function(c4_add_benchmark prefix target case work_dir comment)
     add_dependencies(${lprefix}benchmark ${case})
     set_target_properties(${case} PROPERTIES FOLDER ${lprefix}benchmark)
 endfunction()
+
 
 
 #------------------------------------------------------------------------------
