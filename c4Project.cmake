@@ -13,6 +13,7 @@ include(c4StaticAnalysis)
 include(PrintVar)
 include(c4CatSources)
 include(c4Log)
+include(c4Doxygen)
 
 
 #------------------------------------------------------------------------------
@@ -92,6 +93,7 @@ macro(_c4_handle_arg uprefix argname default)
     c4_setg(${uprefix}${argname} "${_${argname}}")
 endmacro()
 
+
 function(c4_declare_project prefix)
     _c4_handle_prefix(${prefix})
     set(opt0arg
@@ -131,6 +133,9 @@ function(c4_declare_project prefix)
     c4_setup_valgrind(${ucprefix} ${uprefix}DEV)
     setup_sanitize(${ucprefix} ${uprefix}DEV)
     c4_setup_static_analysis(${ucprefix} ${uprefix}DEV)
+
+    # docs
+    c4_setup_doxygen(${ucprefix} ${uprefix}DEV)
 
     # these are default compilation flags
     set(f "")
