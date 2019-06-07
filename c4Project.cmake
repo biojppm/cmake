@@ -217,10 +217,13 @@ function(c4_require_module prefix module_name)
     _c4_log("-----------------------------------------------")
     _c4_log("${lcprefix}: requires module ${module_name}!")
 
-    if(_${module_name}_available)
-        _c4_log("${lcprefix}: required module ${module_name} was already imported by ${_${module_name}_importer}: ${_${module_name}_src}...")
+    _c4_module_is_already_imported(${module_name} _is_it_imported _importer _src_dir)
+
+    if(_is_it_imported)
+        _c4_log("${lcprefix}: required module ${module_name} was already imported by ${_importer}}: dir=${_src_dir}...")
 
     else() #elseif(NOT _${module_name}_available)
+        _c4_log("${lcprefix}: required module ${module_name} is unknown. Importing...")
         if(_INTERFACE)
             _c4_log("${lcprefix}: ${module_name} is explicitly required as INTERFACE")
             c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
@@ -228,10 +231,9 @@ function(c4_require_module prefix module_name)
             #_c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${module_name} as INTERFACE")
             #c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
         endif()
-        c4_setg(_${module_name}_available ON)
-        c4_setg(_${module_name}_importer ${lcprefix})
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
         if(_REMOTE)
+            _c4_mark_module_imported(${lcprefix} ${module_name} ${_r})
             message(STATUS "${lcprefix}: importing module ${module_name} (REMOTE)... ${ARGN}")
             c4_import_remote_proj(${prefix} ${module_name} ${_r} ${ARGN})
             c4_setg(${uprefix}${module_name}_SRC_DIR ${_r}/src)
@@ -240,6 +242,7 @@ function(c4_require_module prefix module_name)
             c4_setg(_${module_name}_bin ${_r}/build)
             _c4_log("${lcprefix}: finished importing module ${module_name} (REMOTE=${${uprefix}${module_name}_SRC_DIR}).")
         elseif(_SUBDIRECTORY)
+            _c4_mark_module_imported(${lcprefix} ${module_name} ${_SUBDIRECTORY})
             message(STATUS "${lcprefix}: importing module ${module_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             add_subdirectory(${_SUBDIRECTORY} ${_r}/build)
             c4_setg(${uprefix}${module_name}_SRC_DIR ${_SUBDIRECTORY})
@@ -255,6 +258,36 @@ function(c4_require_module prefix module_name)
         endif()
     endif()
 endfunction(c4_require_module)
+
+# mark the module as imported, and store further properties
+function(_c4_mark_module_imported importer_module module_name module_src_dir)
+    _c4_log("marking module imported: ${module_name} (imported by ${importer_module}). src=${module_src_dir}")
+    # Mark imported by adding a specially named target. Setting a
+    # variable will not work because if might not be visible
+    # everywhere.
+    add_custom_target(_c4_module_imported-${module_name})
+    set_target_properties(_c4_module_imported-${module_name}
+        PROPERTIES
+        _c4_importer "${importer_module}"
+        _c4_src_dir "${module_src_dir}")
+endfunction()
+
+# predicate function testing whether a module was already imported
+function(_c4_module_is_already_imported module_name answer importer_module module_src_dir)
+    if(NOT TARGET _c4_module_imported-${module_name})
+        _c4_log("module not yet imported: ${module_name}")
+        set(${answer} OFF PARENT_SCOPE)
+        set(${importer_module} "" PARENT_SCOPE)
+        set(${module_src_dir} "" PARENT_SCOPE)
+        return()
+    endif()
+    get_target_property(importer _c4_module_imported-${module_name} _c4_importer)
+    get_target_property(src_dir  _c4_module_imported-${module_name} _c4_src_dir)
+    _c4_log("module is available: ${module_name} (was imported by ${importer}). Dir=${src_dir}")
+    set(${answer} ON PARENT_SCOPE)
+    set(${importer_module} ${importer} PARENT_SCOPE)
+    set(${src_dir} ${src_dir} PARENT_SCOPE)
+endfunction()
 
 
 #------------------------------------------------------------------------------
