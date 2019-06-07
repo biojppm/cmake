@@ -172,6 +172,38 @@ function(c4_declare_project prefix)
     endif()
     set(${uprefix}CXX_FLAGS "${${uprefix}CXX_FLAGS} ${of}")
 
+    # https://stackoverflow.com/questions/24225067/how-to-define-function-inside-macro-in-cmake
+    # c4_require_module
+    set(ucprefix_require_module_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_require_module)
+        c4_require_module(${ucprefix_require_module_} ${ARGV})
+    endmacro()
+    # c4_add_library
+    set(ucprefix_add_library_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_library)
+        c4_add_library(${ucprefix_add_library_} ${ARGV})
+    endmacro()
+    # c4_add_executable
+    set(ucprefix_add_executable_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_executable)
+        c4_add_executable(${ucprefix_add_executable_} ${ARGV})
+    endmacro()
+    # c4_import_remote_proj
+    set(ucprefix_import_remote_proj_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_import_remote_proj)
+        c4_import_remote_proj(${ucprefix_import_remote_proj_} ${ARGV})
+    endmacro()
+    # c4_download_remote_proj
+    set(ucprefix_download_remote_proj_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_download_remote_proj)
+        c4_download_remote_proj(${ucprefix_add_library_} ${ARGV})
+    endmacro()
+    # c4_add_doxygen
+    set(ucprefix_add_doxygen_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_doxygen)
+        c4_add_doxygen(${ucprefix_add_library_} ${ARGV})
+    endmacro()
+
 endfunction(c4_declare_project)
 
 
