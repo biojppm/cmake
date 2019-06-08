@@ -294,31 +294,26 @@ endfunction(c4_require_module)
 # mark the module as imported, and store further properties
 function(_c4_mark_module_imported importer_module module_name module_src_dir)
     _c4_log("marking module imported: ${module_name} (imported by ${importer_module}). src=${module_src_dir}")
-    # Mark imported by adding a specially named target. Setting a
-    # variable will not work because if might not be visible
-    # everywhere.
-    add_custom_target(_c4_module_imported-${module_name})
-    set_target_properties(_c4_module_imported-${module_name}
-        PROPERTIES
-        _c4_importer "${importer_module}"
-        _c4_src_dir "${module_src_dir}")
+    set_property(GLOBAL PROPERTY _c4_module_imported-${module_name} ON)
+    set_property(GLOBAL PROPERTY _c4_module_imported-${module_name}-importer "${importer_module}")
+    set_property(GLOBAL PROPERTY _c4_module_imported-${module_name}-src_dir "${module_src_dir}")
 endfunction()
 
 # predicate function testing whether a module was already imported
 function(_c4_module_is_already_imported module_name answer importer_module module_src_dir)
-    if(NOT TARGET _c4_module_imported-${module_name})
-        _c4_log("module not yet imported: ${module_name}")
+    get_property(exists GLOBAL PROPERTY _c4_module_imported-${module_name})
+    if(NOT exists)
         set(${answer} OFF PARENT_SCOPE)
         set(${importer_module} "" PARENT_SCOPE)
         set(${module_src_dir} "" PARENT_SCOPE)
         return()
     endif()
-    get_target_property(importer _c4_module_imported-${module_name} _c4_importer)
-    get_target_property(src_dir  _c4_module_imported-${module_name} _c4_src_dir)
-    _c4_log("module is available: ${module_name} (was imported by ${importer}). Dir=${src_dir}")
+    get_property(_importer GLOBAL PROPERTY _c4_module_imported-${module_name}-importer)
+    get_property(_src_dir  GLOBAL PROPERTY _c4_module_imported-${module_name}-src_dir)
+    _c4_log("module is available: ${module_name} (was imported by ${_importer}). Dir=${_src_dir}")
     set(${answer} ON PARENT_SCOPE)
-    set(${importer_module} ${importer} PARENT_SCOPE)
-    set(${src_dir} ${src_dir} PARENT_SCOPE)
+    set(${importer_module} ${_importer} PARENT_SCOPE)
+    set(${src_dir} ${_src_dir} PARENT_SCOPE)
 endfunction()
 
 
