@@ -203,6 +203,16 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_add_doxygen)
         c4_add_doxygen(${ucprefix_add_library_} ${ARGV})
     endmacro()
+    # c4_add_test
+    set(ucprefix_add_test_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_test)
+        c4_add_test(${ucprefix_add_library_} ${ARGV})
+    endmacro()
+    # c4_add_test_fail_build
+    set(ucprefix_add_test_fail_build_ ${ucprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_test_fail_build)
+        c4_add_test_fail_build(${ucprefix_add_library_} ${ARGV})
+    endmacro()
 
 endfunction(c4_declare_project)
 
@@ -709,6 +719,39 @@ function(c4_add_test prefix target)
     endif()
 endfunction(c4_add_test)
 
+
+# every excess argument is passed on to set_target_properties()
+function(c4_add_test_fail_build prefix name srccontent_or_srcfilename)
+    #
+    set(sdir ${CMAKE_CURRENT_BINARY_DIR}/test_fail_build)
+    set(src ${srccontent_or_srcfilename})
+    if("${src}" STREQUAL "")
+        message(FATAL_ERROR "must be given an existing source file name or a non-empty string")
+    endif()
+    #
+    if(EXISTS ${src})
+        set(fn ${src})
+    else()
+        if(NOT EXISTS ${sdir})
+            file(MAKE_DIRECTORY ${sdir})
+        endif()
+        set(fn ${sdir}/${name}.cpp)
+        file(WRITE ${fn} "${src}")
+    endif()
+    #
+    # https://stackoverflow.com/questions/30155619/expected-build-failure-tests-in-cmake
+    add_executable(${name} ${fn})
+    # don't build this target
+    set_target_properties(${name} PROPERTIES
+        EXCLUDE_FROM_ALL TRUE
+        EXCLUDE_FROM_DEFAULT_BUILD TRUE
+        # and pass on further properties given by the caller
+        ${ARGN})
+    add_test(NAME ${name}
+        COMMAND ${CMAKE_COMMAND} --build . --target ${name} --config $<CONFIGURATION>
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+    set_tests_properties(${name} PROPERTIES WILL_FAIL TRUE)
+endfunction()
 
 
 #------------------------------------------------------------------------------
