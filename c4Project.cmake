@@ -107,6 +107,7 @@ function(c4_declare_project prefix)
         MAJOR
         MINOR
         RELEASE
+        CXX_STANDARD
     )
     set(optNarg
         AUTHORS
@@ -120,6 +121,7 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} MINOR 0)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
+    _c4_handle_arg(${uprefix} CXX_STANDARD 11)
     set(standalone OFF)
     if(_STANDALONE)
         set(standalone ON)
@@ -139,10 +141,10 @@ function(c4_declare_project prefix)
 
     # these are default compilation flags
     set(f "")
-    if(NOT MSVC)
-        set(f "${f} -std=c++11")
-    endif()
     set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
+    if(${_CXX_STANDARD})
+        c4_set_cxx(${CXX_STANDARD})
+    endif()
 
     # these are optional compilation flags
     cmake_dependent_option(${uprefix}PEDANTIC "Compile in pedantic mode" ON ${uprefix}DEV OFF)
@@ -215,6 +217,50 @@ function(c4_declare_project prefix)
     endmacro()
 
 endfunction(c4_declare_project)
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# examples:
+# c4_set_cxx(11) # required, no extensions (eg gnu++11)
+# c4_set_cxx(14) # required, no extensions (eg gnu++11)
+# c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
+# c4_set_cxx(11 EXTENSIONS) # opt-in to extensions
+# c4_set_cxx(11 OPTIONAL EXTENSIONS)
+function(c4_set_cxx standard)
+    _c4_handle_cxx_standard_args(${ARGN})
+    set(CMAKE_CXX_STANDARD ${standard})
+    set(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
+    set(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
+endfunction()
+
+function(c4_target_set_cxx target standard)
+    _c4_handle_cxx_standard_args(${ARGN})
+    set_target_properties(${_TARGET} PROPERTIES
+        CXX_STANDARD ${standard}
+        CXX_STANDARD_REQUIRED ${_REQUIRED}
+        CXX_EXTENSIONS ${_EXTENSIONS})
+endfunction()
+
+macro(_c4_handle_cxx_standard_args)
+    set(opt0arg
+        OPTIONAL
+        EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
+    )
+    set(opt1arg)
+    set(optNarg)
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    # default values for args
+    set(_REQUIRED ON)
+    if(NOT "${_OPTIONAL}" STREQUAL "")
+        set(_REQUIRED OFF)
+    endif()
+    if("${_EXTENSIONS}" STREQUAL "")
+        set(_EXTENSIONS OFF)
+    endif()
+endmacro()
 
 
 #------------------------------------------------------------------------------
