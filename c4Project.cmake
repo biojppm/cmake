@@ -164,8 +164,6 @@ function(c4_declare_project prefix)
     if(${uprefix}PEDANTIC)
         if(MSVC)
             set(of "${of} /W4")
-            # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
         else()
             set(of "${of} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal -fstrict-aliasing")
         endif()
