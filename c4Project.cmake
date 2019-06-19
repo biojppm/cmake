@@ -227,7 +227,8 @@ function(c4_declare_project prefix)
 endfunction(c4_declare_project)
 
 
-function(c4_proj_version dir)
+function(c4_proj_version prefix dir)
+    _c4_handle_prefix(${prefix})
 
     if("${dir}" STREQUAL "")
         set(dir ${CMAKE_CURRENT_LIST_DIR})
@@ -236,20 +237,18 @@ function(c4_proj_version dir)
     # http://xit0.org/2013/04/cmake-use-git-branch-and-commit-details-in-project/
 
     # Get the current working branch
-    execute_process(
-        COMMAND git rev-parse --abbrev-ref HEAD
+    execute_process(COMMAND git rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE GIT_BRANCH
+        OUTPUT_VARIABLE ${uprefix}GIT_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+    )
 
     # Get the latest abbreviated commit hash of the working branch
-    execute_process(
-        COMMAND git log -1 --format=%h
+    execute_process(COMMAND git log -1 --format=%h
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE GIT_COMMIT_HASH
+        OUTPUT_VARIABLE ${uprefix}GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        )
+    )
 
     # also: git diff --stat
     # also: git diff
