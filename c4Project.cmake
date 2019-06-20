@@ -403,13 +403,8 @@ function(_c4_mark_module_imported importer_module module_name module_src_dir mod
         set(deps ${module_name})
     endif()
     _c4_set_module_property(${importer_module} DEPENDENCIES "${deps}")
+    _c4_get_folder(folder ${importer_module} ${module_name})
     #
-    _c4_get_module_property(${importer_module} FOLDER importer_folder)
-    if("${importer_folder}" STREQUAL "")
-        set(folder ${importer_module})
-    else()
-        set(folder "${importer_folder}/deps/${module_name}")
-    endif()
     _c4_set_module_property(${module_name} AVAILABLE ON)
     _c4_set_module_property(${module_name} IMPORTER "${importer_module}")
     _c4_set_module_property(${module_name} SRC_DIR "${module_src_dir}")
@@ -454,17 +449,15 @@ function(c4_import_remote_proj prefix name dir)
     c4_add_subproj(${prefix} ${name} ${dir}/src ${dir}/build)
 endfunction()
 
-function(c4_set_folder_remote_project_targets subfolder)
-    foreach(target ${ARGN})
-        set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${subfolder})
-    endforeach()
-endfunction()
 
 function(c4_download_remote_proj prefix name dir)
-    if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
-        _c4_handle_prefix(${prefix})
-        message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
-        file(WRITE ${dir}/dl/CMakeLists.txt "
+    if((EXISTS ${dir}/dl) AND (EXISTS ${dir}/dl/CMakeLists.txt))
+        return()
+    endif()
+    _c4_handle_prefix(${prefix})
+    message(STATUS "${lcprefix}: downloading ${name}...")
+    message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
+    file(WRITE ${dir}/dl/CMakeLists.txt "
 cmake_minimum_required(VERSION 2.8.2)
 project(${lcprefix}-download-${name} NONE)
 
@@ -482,9 +475,45 @@ ExternalProject_Add(${name}-dl
     TEST_COMMAND \"\"
 )
 ")
-        execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
-        execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
+
+function(_c4_get_folder output importer_module module_name)
+    _c4_get_module_property(${importer_module} FOLDER importer_folder)
+    if("${importer_folder}" STREQUAL "")
+        set(folder ${importer_module})
+    else()
+        set(folder "${importer_folder}/deps/${module_name}")
     endif()
+    set(${output} ${folder} PARENT_SCOPE)
+endfunction()
+
+
+function(_c4_set_target_folder target name_to_append)
+    if("${name_to_append}" STREQUAL "")
+        set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}")
+    else()
+        if("${_c4_curr_path}" STREQUAL "")
+            set_target_properties(${target} PROPERTIES FOLDER ${name_to_append})
+        else()
+            set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${name_to_append})
+        endif()
+    endif()
+endfunction()
+
+
+function(c4_set_folder_remote_project_targets subfolder)
+    foreach(target ${ARGN})
+        _c4_set_target_folder(${target} "${subfolder}")
+    endforeach()
 endfunction()
 
 
@@ -654,15 +683,7 @@ function(c4_add_target prefix name)
         endif()
 
         if(compiled_target)
-            if(_FOLDER)
-                if("${_c4_curr_path}" STREQUAL "")
-                    set_target_properties(${name} PROPERTIES FOLDER "${_FOLDER}")
-                else()
-                    set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}/${_FOLDER}")
-                endif()
-            else()
-                set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}")
-            endif()
+            _c4_set_target_folder(${name} "${_FOLDER}")
         endif()
         #
         if(compiled_target)
@@ -767,7 +788,7 @@ function(c4_setup_testing prefix)
     message(STATUS "${lcprefix}: enabling tests")
     # umbrella target for building test binaries
     add_custom_target(${lprefix}test-build)
-    set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test)
+    _c4_set_target_folder(${lprefix}test-build ${lprefix}test)
     # umbrella target for running tests
     set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_custom_target(${lprefix}test
@@ -780,7 +801,7 @@ function(c4_setup_testing prefix)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         DEPENDS ${lprefix}test-build
         )
-    set_target_properties(${lprefix}test PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test)
+    _c4_set_target_folder(${lprefix}test ${lprefix}test)
 
     c4_override(BUILD_GTEST ON)
     c4_override(BUILD_GMOCK OFF)
@@ -822,7 +843,7 @@ function(c4_add_test prefix target)
         add_custom_target(${target}-all)
         add_dependencies(${target}-all ${target})
         add_dependencies(${lprefix}test-build ${target}-all)
-        set_target_properties(${target}-all PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test/${target})
+        _c4_set_target_folder(${target}-all ${lprefix}test/${target})
     else()
         add_dependencies(${lprefix}test-build ${target})
     endif()
@@ -922,8 +943,10 @@ function(c4_setup_coverage prefix)
 	    message(STATUS "${prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
             set(_covok OFF)
         endif()
-      elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
-        message(STATUS "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+    elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
+        if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+            message(FATAL_ERROR "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+        endif()
         set(_covok OFF)
     endif()
     if(NOT _covok)
@@ -1008,13 +1031,8 @@ function(c4_setup_benchmarks prefix)
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
         DEPENDS ${lprefix}benchmark-build
         )
-    if(_c4_curr_path)
-        set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
-        set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
-    else()
-        set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
-        set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
-    endif()
+    _c4_set_target_folder(${lprefix}benchmark-build ${lprefix}benchmark)
+    _c4_set_target_folder(${lprefix}benchmark ${lprefix}benchmark)
     # download google benchmark
     c4_override(BENCHMARK_ENABLE_TESTING OFF)
     c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
@@ -1037,7 +1055,7 @@ function(c4_add_benchmark_cmd prefix case)
     _c4_handle_prefix(${prefix})
     add_custom_target(${case} ${ARGN})
     add_dependencies(${lprefix}benchmark ${case})
-    set_target_properties(${case} PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
+    _c4_set_target_folder(${case} ${lprefix}benchmark)
 endfunction()
 
 
@@ -1072,7 +1090,7 @@ function(c4_add_benchmark prefix target case work_dir comment)
         )
     add_dependencies(${lprefix}benchmark-build ${target})
     add_dependencies(${lprefix}benchmark ${case})
-    set_target_properties(${case} PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
+    _c4_set_target_folder(${case} ${lprefix}benchmark)
 endfunction()
 
 
