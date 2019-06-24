@@ -747,6 +747,8 @@ endfunction() # add_target
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # TODO (still incomplete)
+# see: https://github.com/pr0g/cmake-examples
+# see: https://cliutils.gitlab.io/modern-cmake/
 function(c4_install_library prefix name)
     install(DIRECTORY
         example_lib/library
