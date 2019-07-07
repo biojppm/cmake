@@ -148,7 +148,7 @@ function(c4_declare_project prefix)
     set(f "")
     set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
     if(${_CXX_STANDARD})
-        c4_set_cxx(${CXX_STANDARD})
+        c4_set_cxx(${_CXX_STANDARD})
     endif()
 
     # these are optional compilation flags
@@ -216,14 +216,23 @@ function(c4_declare_project prefix)
     # c4_add_test
     set(lcprefix_add_test_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test)
-        c4_add_test(${lcprefix_add_library_} ${ARGN})
+        c4_add_test(${lcprefix_add_test_} ${ARGN})
     endmacro()
     # c4_add_test_fail_build
     set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test_fail_build)
         c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
     endmacro()
-
+    # c4_set_cxx
+    set(lcprefix_set_cxx_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_set_cxx)
+        c4_set_cxx(${lcprefix_set_cxx_} ${ARGN})
+    endmacro()
+    # c4_target_set_cxx
+    set(lcprefix_target_set_cxx_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_target_set_cxx)
+        c4_target_set_cxx(${lcprefix_target_set_cxx_} ${ARGN})
+    endmacro()
 endfunction(c4_declare_project)
 
 
@@ -274,6 +283,12 @@ function(c4_set_cxx standard)
     set(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
 endfunction()
 
+# examples:
+# c4_set_cxx(tgt 11) # required, no extensions (eg gnu++11)
+# c4_set_cxx(tgt 14) # required, no extensions (eg gnu++11)
+# c4_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
+# c4_set_cxx(tgt 11 EXTENSIONS) # opt-in to extensions
+# c4_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
 function(c4_target_set_cxx target standard)
     _c4_handle_cxx_standard_args(${ARGN})
     set_target_properties(${_TARGET} PROPERTIES
@@ -541,6 +556,7 @@ function(c4_add_target prefix name)
     _c4_handle_prefix(${prefix})
     set(opt0arg
         EXECUTABLE  # this is an executable
+        WIN32       # the executable is WIN32
         LIBRARY     # this is a library
         SANITIZE    # turn on sanitizer analysis
     )
@@ -601,8 +617,13 @@ function(c4_add_target prefix name)
     if(NOT ${uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
             _c4_log("${lcprefix}: adding executable: ${name}")
-            add_executable(${name} ${_MORE_ARGS})
-            set(src_mode PRIVATE)
+            if(WIN32)
+                if(${_WIN32})
+                    list(APPEND _MORE_ARGS WIN32)
+                endif()
+            endif()
+		    add_executable(${name} ${_MORE_ARGS})
+			    set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_LIBRARY})
