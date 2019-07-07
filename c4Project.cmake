@@ -148,7 +148,7 @@ function(c4_declare_project prefix)
     set(f "")
     set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
     if(${_CXX_STANDARD})
-        c4_set_cxx(${CXX_STANDARD})
+        c4_set_cxx(${_CXX_STANDARD})
     endif()
 
     # these are optional compilation flags
@@ -164,8 +164,6 @@ function(c4_declare_project prefix)
     if(${uprefix}PEDANTIC)
         if(MSVC)
             set(of "${of} /W4")
-            # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-            set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
         else()
             set(of "${of} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal -fstrict-aliasing")
         endif()
@@ -181,47 +179,141 @@ function(c4_declare_project prefix)
 
     # https://stackoverflow.com/questions/24225067/how-to-define-function-inside-macro-in-cmake
     # c4_require_module
-    set(ucprefix_require_module_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_require_module_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_require_module)
-        c4_require_module(${ucprefix_require_module_} ${ARGV})
+        c4_require_module(${lcprefix_require_module_} ${ARGN})
     endmacro()
     # c4_add_library
-    set(ucprefix_add_library_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_add_library_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_library)
-        c4_add_library(${ucprefix_add_library_} ${ARGV})
+        c4_add_library(${lcprefix_add_library_} ${ARGN})
     endmacro()
     # c4_add_executable
-    set(ucprefix_add_executable_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_add_executable_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_executable)
-        c4_add_executable(${ucprefix_add_executable_} ${ARGV})
+        c4_add_executable(${lcprefix_add_executable_} ${ARGN})
     endmacro()
     # c4_import_remote_proj
-    set(ucprefix_import_remote_proj_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_import_remote_proj_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_import_remote_proj)
-        c4_import_remote_proj(${ucprefix_import_remote_proj_} ${ARGV})
+        c4_import_remote_proj(${lcprefix_import_remote_proj_} ${ARGN})
     endmacro()
     # c4_download_remote_proj
-    set(ucprefix_download_remote_proj_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_download_remote_proj_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_download_remote_proj)
-        c4_download_remote_proj(${ucprefix_add_library_} ${ARGV})
+        c4_download_remote_proj(${lcprefix_add_library_} ${ARGN})
     endmacro()
     # c4_add_doxygen
-    set(ucprefix_add_doxygen_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_add_doxygen_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_doxygen)
-        c4_add_doxygen(${ucprefix_add_library_} ${ARGV})
+        c4_add_doxygen(${lcprefix_add_library_} ${ARGN})
+    endmacro()
+    # c4_setup_testing
+    set(lcprefix_setup_testing_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_setup_testing)
+        c4_setup_testing(${lcprefix_setup_testing_} ${ARGN})
     endmacro()
     # c4_add_test
-    set(ucprefix_add_test_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_add_test_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test)
-        c4_add_test(${ucprefix_add_library_} ${ARGV})
+        c4_add_test(${lcprefix_add_test_} ${ARGN})
     endmacro()
     # c4_add_test_fail_build
-    set(ucprefix_add_test_fail_build_ ${ucprefix} PARENT_SCOPE)
+    set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test_fail_build)
-        c4_add_test_fail_build(${ucprefix_add_library_} ${ARGV})
+        c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
     endmacro()
-
+    # c4_set_cxx
+    set(lcprefix_set_cxx_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_set_cxx)
+        c4_set_cxx(${lcprefix_set_cxx_} ${ARGN})
+    endmacro()
+    # c4_target_set_cxx
+    set(lcprefix_target_set_cxx_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_target_set_cxx)
+        c4_target_set_cxx(${lcprefix_target_set_cxx_} ${ARGN})
+    endmacro()
 endfunction(c4_declare_project)
+
+
+function(c4_proj_version prefix dir)
+    _c4_handle_prefix(${prefix})
+
+    if("${dir}" STREQUAL "")
+        set(dir ${CMAKE_CURRENT_LIST_DIR})
+    endif()
+
+    # http://xit0.org/2013/04/cmake-use-git-branch-and-commit-details-in-project/
+
+    # Get the current working branch
+    execute_process(COMMAND git rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${dir}
+        OUTPUT_VARIABLE ${uprefix}GIT_BRANCH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    # Get the latest abbreviated commit hash of the working branch
+    execute_process(COMMAND git log -1 --format=%h
+        WORKING_DIRECTORY ${dir}
+        OUTPUT_VARIABLE ${uprefix}GIT_COMMIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    # also: git diff --stat
+    # also: git diff
+    # also: git status --ignored
+
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# examples:
+# c4_set_cxx(11) # required, no extensions (eg gnu++11)
+# c4_set_cxx(14) # required, no extensions (eg gnu++11)
+# c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
+# c4_set_cxx(11 EXTENSIONS) # opt-in to extensions
+# c4_set_cxx(11 OPTIONAL EXTENSIONS)
+function(c4_set_cxx standard)
+    _c4_handle_cxx_standard_args(${ARGN})
+    set(CMAKE_CXX_STANDARD ${standard})
+    set(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
+    set(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
+endfunction()
+
+# examples:
+# c4_set_cxx(tgt 11) # required, no extensions (eg gnu++11)
+# c4_set_cxx(tgt 14) # required, no extensions (eg gnu++11)
+# c4_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
+# c4_set_cxx(tgt 11 EXTENSIONS) # opt-in to extensions
+# c4_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
+function(c4_target_set_cxx target standard)
+    _c4_handle_cxx_standard_args(${ARGN})
+    set_target_properties(${_TARGET} PROPERTIES
+        CXX_STANDARD ${standard}
+        CXX_STANDARD_REQUIRED ${_REQUIRED}
+        CXX_EXTENSIONS ${_EXTENSIONS})
+endfunction()
+
+macro(_c4_handle_cxx_standard_args)
+    set(opt0arg
+        OPTIONAL
+        EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
+    )
+    set(opt1arg)
+    set(optNarg)
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    # default values for args
+    set(_REQUIRED ON)
+    if(NOT "${_OPTIONAL}" STREQUAL "")
+        set(_REQUIRED OFF)
+    endif()
+    if("${_EXTENSIONS}" STREQUAL "")
+        set(_EXTENSIONS OFF)
+    endif()
+endmacro()
 
 
 #------------------------------------------------------------------------------
@@ -370,13 +462,8 @@ function(_c4_mark_module_imported importer_module module_name module_src_dir mod
         set(deps ${module_name})
     endif()
     _c4_set_module_property(${importer_module} DEPENDENCIES "${deps}")
+    _c4_get_folder(folder ${importer_module} ${module_name})
     #
-    _c4_get_module_property(${importer_module} FOLDER importer_folder)
-    if("${importer_folder}" STREQUAL "")
-        set(folder ${importer_module})
-    else()
-        set(folder "${importer_folder}/deps/${module_name}")
-    endif()
     _c4_set_module_property(${module_name} AVAILABLE ON)
     _c4_set_module_property(${module_name} IMPORTER "${importer_module}")
     _c4_set_module_property(${module_name} SRC_DIR "${module_src_dir}")
@@ -427,11 +514,15 @@ function(c4_set_folder_remote_project_targets subfolder)
     endforeach()
 endfunction()
 
+
 function(c4_download_remote_proj prefix name dir)
-    if((NOT EXISTS ${dir}/dl) OR (NOT EXISTS ${dir}/dl/CMakeLists.txt))
-        _c4_handle_prefix(${prefix})
-        message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
-        file(WRITE ${dir}/dl/CMakeLists.txt "
+    if((EXISTS ${dir}/dl) AND (EXISTS ${dir}/dl/CMakeLists.txt))
+        return()
+    endif()
+    _c4_handle_prefix(${prefix})
+    message(STATUS "${lcprefix}: downloading ${name}...")
+    message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
+    file(WRITE ${dir}/dl/CMakeLists.txt "
 cmake_minimum_required(VERSION 2.8.2)
 project(${lcprefix}-download-${name} NONE)
 
@@ -449,9 +540,45 @@ ExternalProject_Add(${name}-dl
     TEST_COMMAND \"\"
 )
 ")
-        execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
-        execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
+
+function(_c4_get_folder output importer_module module_name)
+    _c4_get_module_property(${importer_module} FOLDER importer_folder)
+    if("${importer_folder}" STREQUAL "")
+        set(folder ${importer_module})
+    else()
+        set(folder "${importer_folder}/deps/${module_name}")
     endif()
+    set(${output} ${folder} PARENT_SCOPE)
+endfunction()
+
+
+function(_c4_set_target_folder target name_to_append)
+    if("${name_to_append}" STREQUAL "")
+        set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}")
+    else()
+        if("${_c4_curr_path}" STREQUAL "")
+            set_target_properties(${target} PROPERTIES FOLDER ${name_to_append})
+        else()
+            set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${name_to_append})
+        endif()
+    endif()
+endfunction()
+
+
+function(c4_set_folder_remote_project_targets subfolder)
+    foreach(target ${ARGN})
+        _c4_set_target_folder(${target} "${subfolder}")
+    endforeach()
 endfunction()
 
 
@@ -479,6 +606,7 @@ function(c4_add_target prefix name)
     _c4_handle_prefix(${prefix})
     set(opt0arg
         EXECUTABLE  # this is an executable
+        WIN32       # the executable is WIN32
         LIBRARY     # this is a library
         SANITIZE    # turn on sanitizer analysis
     )
@@ -539,8 +667,13 @@ function(c4_add_target prefix name)
     if(NOT ${uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
             _c4_log("${lcprefix}: adding executable: ${name}")
-            add_executable(${name} ${_MORE_ARGS})
-            set(src_mode PRIVATE)
+            if(WIN32)
+                if(${_WIN32})
+                    list(APPEND _MORE_ARGS WIN32)
+                endif()
+            endif()
+		    add_executable(${name} ${_MORE_ARGS})
+			    set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_LIBRARY})
@@ -621,15 +754,7 @@ function(c4_add_target prefix name)
         endif()
 
         if(compiled_target)
-            if(_FOLDER)
-                if("${_c4_curr_path}" STREQUAL "")
-                    set_target_properties(${name} PROPERTIES FOLDER "${_FOLDER}")
-                else()
-                    set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}/${_FOLDER}")
-                endif()
-            else()
-                set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}")
-            endif()
+            _c4_set_target_folder(${name} "${_FOLDER}")
         endif()
         #
         if(compiled_target)
@@ -693,6 +818,8 @@ endfunction() # add_target
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # TODO (still incomplete)
+# see: https://github.com/pr0g/cmake-examples
+# see: https://cliutils.gitlab.io/modern-cmake/
 function(c4_install_library prefix name)
     install(DIRECTORY
         example_lib/library
@@ -735,6 +862,7 @@ function(c4_setup_testing prefix)
     # umbrella target for building test binaries
     add_custom_target(${lprefix}test-build)
     set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test)
+    _c4_set_target_folder(${lprefix}test-build ${lprefix}test)
     # umbrella target for running tests
     set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_custom_target(${lprefix}test
@@ -747,7 +875,7 @@ function(c4_setup_testing prefix)
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         DEPENDS ${lprefix}test-build
         )
-    set_target_properties(${lprefix}test PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test)
+    _c4_set_target_folder(${lprefix}test ${lprefix}test)
 
     c4_override(BUILD_GTEST ON)
     c4_override(BUILD_GMOCK OFF)
@@ -789,7 +917,7 @@ function(c4_add_test prefix target)
         add_custom_target(${target}-all)
         add_dependencies(${target}-all ${target})
         add_dependencies(${lprefix}test-build ${target}-all)
-        set_target_properties(${target}-all PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test/${target})
+        _c4_set_target_folder(${target}-all ${lprefix}test/${target})
     else()
         add_dependencies(${lprefix}test-build ${target})
     endif()
@@ -889,8 +1017,10 @@ function(c4_setup_coverage prefix)
 	    message(STATUS "${prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
             set(_covok OFF)
         endif()
-      elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
-        message(STATUS "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+    elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
+        if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+            message(FATAL_ERROR "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+        endif()
         set(_covok OFF)
     endif()
     if(NOT _covok)
@@ -975,13 +1105,8 @@ function(c4_setup_benchmarks prefix)
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
         DEPENDS ${lprefix}benchmark-build
         )
-    if(_c4_curr_path)
-        set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
-        set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
-    else()
-        set_target_properties(${lprefix}benchmark-build PROPERTIES FOLDER ${lprefix}benchmark)
-        set_target_properties(${lprefix}benchmark PROPERTIES FOLDER ${lprefix}benchmark)
-    endif()
+    _c4_set_target_folder(${lprefix}benchmark-build ${lprefix}benchmark)
+    _c4_set_target_folder(${lprefix}benchmark ${lprefix}benchmark)
     # download google benchmark
     c4_override(BENCHMARK_ENABLE_TESTING OFF)
     c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
@@ -1004,7 +1129,7 @@ function(c4_add_benchmark_cmd prefix case)
     _c4_handle_prefix(${prefix})
     add_custom_target(${case} ${ARGN})
     add_dependencies(${lprefix}benchmark ${case})
-    set_target_properties(${case} PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
+    _c4_set_target_folder(${case} ${lprefix}benchmark)
 endfunction()
 
 
@@ -1039,7 +1164,7 @@ function(c4_add_benchmark prefix target case work_dir comment)
         )
     add_dependencies(${lprefix}benchmark-build ${target})
     add_dependencies(${lprefix}benchmark ${case})
-    set_target_properties(${case} PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}benchmark)
+    _c4_set_target_folder(${case} ${lprefix}benchmark)
 endfunction()
 
 
