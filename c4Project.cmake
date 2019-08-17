@@ -218,6 +218,11 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_add_test)
         c4_add_test(${lcprefix_add_test_} ${ARGN})
     endmacro()
+    # c4_add_benchmark
+    set(lcprefix_add_benchmark_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_benchmark)
+        c4_add_benchmark(${lcprefix_add_benchmark_} ${ARGN})
+    endmacro()
     # c4_add_test_fail_build
     set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test_fail_build)
@@ -1127,7 +1132,9 @@ endfunction()
 
 function(c4_add_benchmark_cmd prefix case)
     _c4_handle_prefix(${prefix})
-    add_custom_target(${case} ${ARGN})
+    add_custom_target(${case} ${ARGN}
+        VERBATIM
+        COMMENT "${prefix}: running benchmark ${case}: ${ARGN}")
     add_dependencies(${lprefix}benchmark ${case})
     _c4_set_target_folder(${case} ${lprefix}benchmark)
 endfunction()
@@ -1138,9 +1145,7 @@ function(c4_add_benchmark prefix target case work_dir comment)
     if(NOT TARGET ${target})
         message(FATAL_ERROR "target ${target} does not exist...")
     endif()
-    if(comment)
-        set(comment COMMENT "${comment}")
-    endif()
+    set(exe $<TARGET_FILE:${target}>)
     if(${uprefix}BENCHMARK_CPUPOWER)
         if(C4_BM_SUDO AND C4_BM_CPUPOWER)
             set(c ${C4_PROJ_SUDO} ${C4_PROJ_CPUPOWER} frequency-set --governor performance)
@@ -1155,12 +1160,13 @@ function(c4_add_benchmark prefix target case work_dir comment)
     endif()
     add_custom_target(${case}
         ${cpupow_before}
-        COMMAND echo $<TARGET_FILE:${target}> ${ARGN}
-        COMMAND $<TARGET_FILE:${target}> ${ARGN}
+        COMMAND echo ${exe} ${ARGN}
+        COMMAND ${exe} ${ARGN}
         ${cpupow_after}
+        VERBATIM
         WORKING_DIRECTORY ${work_dir}
         DEPENDS ${target}
-        ${comment}
+        COMMENT "running benchmark case: ${case}: ${comment}"
         )
     add_dependencies(${lprefix}benchmark-build ${target})
     add_dependencies(${lprefix}benchmark ${case})
