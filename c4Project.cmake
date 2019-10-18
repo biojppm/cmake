@@ -1145,6 +1145,9 @@ function(c4_add_benchmark prefix target case work_dir comment)
     if(NOT TARGET ${target})
         message(FATAL_ERROR "target ${target} does not exist...")
     endif()
+    if(NOT EXISTS "${work_dir}")
+        file(MAKE_DIRECTORY "${work_dir}")
+    endif()
     set(exe $<TARGET_FILE:${target}>)
     if(${uprefix}BENCHMARK_CPUPOWER)
         if(C4_BM_SUDO AND C4_BM_CPUPOWER)
@@ -1160,11 +1163,12 @@ function(c4_add_benchmark prefix target case work_dir comment)
     endif()
     add_custom_target(${case}
         ${cpupow_before}
+        #COMMAND ${CMAKE_COMMAND} -E echo "target file = $<TARGET_FILE:${target}>"
         COMMAND echo ${exe} ${ARGN}
-        COMMAND ${exe} ${ARGN}
+        COMMAND "${exe}" ${ARGN}
         ${cpupow_after}
         VERBATIM
-        WORKING_DIRECTORY ${work_dir}
+        WORKING_DIRECTORY "${work_dir}"
         DEPENDS ${target}
         COMMENT "running benchmark case: ${case}: ${comment}"
         )
