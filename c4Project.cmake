@@ -87,11 +87,30 @@ endmacro()
 #------------------------------------------------------------------------------
 
 macro(_c4_handle_arg uprefix argname default)
-    if("_${argname}" STREQUAL "")
-        set(_${argname} "${${default}}")
-    endif()
-    c4_setg(${uprefix}${argname} "${_${argname}}")
+     if("${_${argname}}" STREQUAL "")
+         set(_${argname} "${default}")
+     else()
+         c4_setg(_${argname} "${_${argname}}")
+     endif()
 endmacro()
+
+
+macro(_c4_handle_arg_or_fallback uprefix argname default)
+    if("${_${argname}}" STREQUAL "")
+        if("${${uprefix}${argname}}" STREQUAL "")
+            if("${C4_${argname}}" STREQUAL "")
+                c4_setg(_${argname} "${default}")
+            else()
+                c4_setg(_${argname} "${C4_${argname}}")
+            endif()
+        else()
+            c4_setg(_${argname} "${${uprefix}${argname}}")
+        endif()
+    else()
+        c4_setg(_${argname} "${_${argname}}")
+    endif()
+endmacro()
+
 
 
 function(c4_declare_project prefix)
@@ -107,7 +126,8 @@ function(c4_declare_project prefix)
         MAJOR
         MINOR
         RELEASE
-        CXX_STANDARD
+        CXX_STANDARD  # if this is not provided, falls back on
+                      # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD
     )
     set(optNarg
         AUTHORS
@@ -121,7 +141,7 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} MINOR 0)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
-    _c4_handle_arg(${uprefix} CXX_STANDARD 11)
+    _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "")
     set(standalone OFF)
     if(_STANDALONE)
         set(standalone ON)
@@ -147,6 +167,7 @@ function(c4_declare_project prefix)
     # these are default compilation flags
     set(f "")
     set(${uprefix}CXX_FLAGS ${f} CACHE STRING "compilation flags")
+    c4_setg(${uprefix}CXX_STANDARD "${_CXX_STANDARD}")
     if(${_CXX_STANDARD})
         c4_set_cxx(${_CXX_STANDARD})
     endif()
@@ -228,16 +249,6 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_add_test_fail_build)
         c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
     endmacro()
-    # c4_set_cxx
-    set(lcprefix_set_cxx_ ${lcprefix} PARENT_SCOPE)
-    macro(${lcprefix}_set_cxx)
-        c4_set_cxx(${lcprefix_set_cxx_} ${ARGN})
-    endmacro()
-    # c4_target_set_cxx
-    set(lcprefix_target_set_cxx_ ${lcprefix} PARENT_SCOPE)
-    macro(${lcprefix}_target_set_cxx)
-        c4_target_set_cxx(${lcprefix_target_set_cxx_} ${ARGN})
-    endmacro()
 endfunction(c4_declare_project)
 
 
@@ -276,68 +287,26 @@ endfunction()
 #------------------------------------------------------------------------------
 
 # examples:
-# c4_set_cxx(11) # required, no extensions (eg gnu++11)
-# c4_set_cxx(14) # required, no extensions (eg gnu++11)
+# c4_set_cxx(11) # required, no extensions (eg c++11)
+# c4_set_cxx(14) # required, no extensions (eg c++14)
+# c4_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
+# c4_set_cxx(14 EXTENSIONS) # opt-in to extensions (eg, gnu++14)
 # c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
-# c4_set_cxx(11 EXTENSIONS) # opt-in to extensions
 # c4_set_cxx(11 OPTIONAL EXTENSIONS)
-function(c4_set_cxx standard)
+macro(c4_set_cxx standard)
     _c4_handle_cxx_standard_args(${ARGN})
-    set(CMAKE_CXX_STANDARD ${standard})
-    set(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
-    set(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
-endfunction()
-
-# examples:
-# c4_set_cxx(tgt 11) # required, no extensions (eg gnu++11)
-# c4_set_cxx(tgt 14) # required, no extensions (eg gnu++11)
-# c4_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
-# c4_set_cxx(tgt 11 EXTENSIONS) # opt-in to extensions
-# c4_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
-function(c4_target_set_cxx target standard)
-    _c4_handle_cxx_standard_args(${ARGN})
-    set_target_properties(${_TARGET} PROPERTIES
-        CXX_STANDARD ${standard}
-        CXX_STANDARD_REQUIRED ${_REQUIRED}
-        CXX_EXTENSIONS ${_EXTENSIONS})
-endfunction()
-
-macro(_c4_handle_cxx_standard_args)
-    set(opt0arg
-        OPTIONAL
-        EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
-    )
-    set(opt1arg)
-    set(optNarg)
-    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
-    # default values for args
-    set(_REQUIRED ON)
-    if(NOT "${_OPTIONAL}" STREQUAL "")
-        set(_REQUIRED OFF)
-    endif()
-    if("${_EXTENSIONS}" STREQUAL "")
-        set(_EXTENSIONS OFF)
-    endif()
+    c4_setg(CMAKE_CXX_STANDARD ${standard})
+    c4_setg(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
+    c4_setg(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
 endmacro()
 
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
 # examples:
-# c4_set_cxx(11) # required, no extensions (eg gnu++11)
-# c4_set_cxx(14) # required, no extensions (eg gnu++11)
-# c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
-# c4_set_cxx(11 EXTENSIONS) # opt-in to extensions
-# c4_set_cxx(11 OPTIONAL EXTENSIONS)
-function(c4_set_cxx standard)
-    _c4_handle_cxx_standard_args(${ARGN})
-    set(CMAKE_CXX_STANDARD ${standard})
-    set(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
-    set(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
-endfunction()
-
+# c4_target_set_cxx(11) # required, no extensions (eg c++11)
+# c4_target_set_cxx(14) # required, no extensions (eg c++14)
+# c4_target_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
+# c4_target_set_cxx(14 EXTENSIONS) # opt-in to extensions (eg, gnu++14)
+# c4_target_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
+# c4_target_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
 function(c4_target_set_cxx target standard)
     _c4_handle_cxx_standard_args(${ARGN})
     set_target_properties(${_TARGET} PROPERTIES
