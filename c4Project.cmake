@@ -229,6 +229,7 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_add_doxygen)
         c4_add_doxygen(${lcprefix_add_library_} ${ARGN})
     endmacro()
+    #
     # c4_setup_testing
     set(lcprefix_setup_testing_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_setup_testing)
@@ -239,15 +240,26 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_add_test)
         c4_add_test(${lcprefix_add_test_} ${ARGN})
     endmacro()
+    # c4_add_test_fail_build
+    set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_test_fail_build)
+        c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
+    endmacro()
+    #
+    # c4_setup_benchmarking
+    set(lcprefix_setup_benchmarking_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_setup_benchmarking)
+        c4_setup_benchmarking(${lcprefix_setup_benchmarking_} ${ARGN})
+    endmacro()
     # c4_add_benchmark
     set(lcprefix_add_benchmark_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_benchmark)
         c4_add_benchmark(${lcprefix_add_benchmark_} ${ARGN})
     endmacro()
-    # c4_add_test_fail_build
-    set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
-    macro(${lcprefix}_add_test_fail_build)
-        c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
+    # c4_add_target_benchmark
+    set(lcprefix_add_target_benchmark_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_add_target_benchmark)
+        c4_add_target_benchmark(${lcprefix_add_target_benchmark_} ${ARGN})
     endmacro()
 endfunction(c4_declare_project)
 
@@ -1069,26 +1081,29 @@ endfunction(c4_setup_coverage)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_benchmarks prefix)
+function(c4_setup_benchmarking prefix)
     _c4_handle_prefix(${prefix})
-    message(STATUS "${lcprefix}: enabling benchmarks: ${lprefix}benchmark-build")
+    message(STATUS "${lcprefix}: enabling benchmarks: to build, ${lprefix}bm-build")
+    message(STATUS "${lcprefix}: enabling benchmarks: to run, ${lprefix}bm")
     # umbrella target for building test binaries
-    add_custom_target(${lprefix}benchmark-build)
+    add_custom_target(${lprefix}bm-build)
     # umbrella target for running benchmarks
-    add_custom_target(${lprefix}benchmark
+    add_custom_target(${lprefix}bm
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        DEPENDS ${lprefix}benchmark-build
+        DEPENDS ${lprefix}bm-build
         )
-    _c4_set_target_folder(${lprefix}benchmark-build ${lprefix}benchmark)
-    _c4_set_target_folder(${lprefix}benchmark ${lprefix}benchmark)
+    _c4_set_target_folder(${lprefix}bm-build ${lprefix}bm)
+    _c4_set_target_folder(${lprefix}bm ${lprefix}bm)
     # download google benchmark
-    c4_override(BENCHMARK_ENABLE_TESTING OFF)
-    c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
-    c4_override(BENCHMARK_ENABLE_LTO OFF)
-    c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        )
-    c4_set_folder_remote_project_targets(${lprefix}benchmark benchmark benchmark_main)
+    if(NOT TARGET benchmark)
+        c4_override(BENCHMARK_ENABLE_TESTING OFF)
+        c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
+        c4_override(BENCHMARK_ENABLE_LTO OFF)
+        c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            )
+        c4_set_folder_remote_project_targets(${lprefix}bm benchmark benchmark_main)
+    endif()
     #
     option(${uprefix}BENCHMARK_CPUPOWER
         "set the cpu mode to performance before / powersave after the benchmark" OFF)
@@ -1099,23 +1114,58 @@ function(c4_setup_benchmarks prefix)
 endfunction()
 
 
-function(c4_add_benchmark_cmd prefix case)
+function(c4_add_benchmark_cmd prefix casename)
     _c4_handle_prefix(${prefix})
-    add_custom_target(${case} ${ARGN}
+    add_custom_target(${casename}
+        COMMAND ${ARGN}
         VERBATIM
-        COMMENT "${prefix}: running benchmark ${case}: ${ARGN}")
-    add_dependencies(${lprefix}benchmark ${case})
-    _c4_set_target_folder(${case} ${lprefix}benchmark)
+        COMMENT "${prefix}: running benchmark ${casename}: ${ARGN}")
+    add_dependencies(${lprefix}benchmark ${casename})
+    _c4_set_target_folder(${casename} ${lprefix}bm)
 endfunction()
 
 
-function(c4_add_benchmark prefix target case work_dir comment)
+# assumes this is a googlebenchmark target, and that multiple
+# benchmarks are defined from it
+function(c4_add_target_benchmark prefix target casename)
+    set(opt0arg
+    )
+    set(opt1arg
+        WORKDIR # working directory
+        FILTER  # benchmark patterns to filter
+    )
+    set(optnarg
+        ARGS
+    )
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
+    set(name "${target}-${casename}")
+    set(rdir "${CMAKE_CURRENT_BINARY_DIR}/bm-results")
+    set(rfile "${rdir}/${name}.json")
+    if(NOT EXISTS "${rdir}")
+        file(MAKE_DIRECTORY "${rdir}")
+    endif()
+    set(filter)
+    if(NOT ("${_FILTER}" STREQUAL ""))
+        set(filter "--benchmark_filter=${_FILTER}")
+    endif()
+    set(args_fwd ${filter} --benchmark_out_format=json --benchmark_out=${rfile} ${_ARGS})
+    c4_add_benchmark(${prefix} ${target}
+        "${name}"
+        "${_WORKDIR}"
+        "saving results in ${rfile}"
+        ${args_fwd})
+endfunction()
+
+
+function(c4_add_benchmark prefix target casename work_dir comment)
     _c4_handle_prefix(${prefix})
     if(NOT TARGET ${target})
         message(FATAL_ERROR "target ${target} does not exist...")
     endif()
-    if(NOT EXISTS "${work_dir}")
-        file(MAKE_DIRECTORY "${work_dir}")
+    if(NOT ("${work_dir}" STREQUAL ""))
+        if(NOT EXISTS "${work_dir}")
+            file(MAKE_DIRECTORY "${work_dir}")
+        endif()
     endif()
     set(exe $<TARGET_FILE:${target}>)
     if(${uprefix}BENCHMARK_CPUPOWER)
@@ -1130,20 +1180,21 @@ function(c4_add_benchmark prefix target case work_dir comment)
                 COMMAND ${c})
         endif()
     endif()
-    add_custom_target(${case}
+    add_custom_target(${casename}
         ${cpupow_before}
+        # this is useful to show the target file (you cannot echo generator variables)
         #COMMAND ${CMAKE_COMMAND} -E echo "target file = $<TARGET_FILE:${target}>"
-        COMMAND echo ${exe} ${ARGN}
+        COMMAND ${CMAKE_COMMAND} -E echo "${exe} ${ARGN}"
         COMMAND "${exe}" ${ARGN}
         ${cpupow_after}
         VERBATIM
         WORKING_DIRECTORY "${work_dir}"
         DEPENDS ${target}
-        COMMENT "running benchmark case: ${case}: ${comment}"
+        COMMENT "${lcprefix}: running benchmark ${target}, case ${casename}: ${comment}"
         )
-    add_dependencies(${lprefix}benchmark-build ${target})
-    add_dependencies(${lprefix}benchmark ${case})
-    _c4_set_target_folder(${case} ${lprefix}benchmark)
+    add_dependencies(${lprefix}bm-build ${target})
+    add_dependencies(${lprefix}bm ${casename})
+    _c4_set_target_folder(${casename} ${lprefix}bm)
 endfunction()
 
 
