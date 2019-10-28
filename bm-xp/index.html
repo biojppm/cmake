@@ -1,0 +1,63 @@
+<!DOCTYPE HTML>
+<html>
+
+  <head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="jquery-ui.min.css"/>
+    <link rel="stylesheet" type="text/css" href="jquery.dataTables.min.css"/>
+    <link rel="stylesheet" type="text/css" href="highlight.github.min.css"/>
+    <style>
+      body {
+        font-family: "Trebuchet MS", sans-serif;
+        margin: 50px;
+      }
+      .chart {
+        height: 700px; max-width: 920px; margin: 0px auto;
+      }
+    </style>
+  </head>
+
+  <body>
+
+    <div><pre id="dbg"></pre></div>
+
+    <h1 id="heading-title">Title</h1>
+
+    <div>
+      Available benchmarks:
+      <ul id="toc"></ul>
+    </div>
+
+    <div id="bm-results"></div>
+
+    <!-- scripts -->
+    <script type="text/javascript" src="jquery-3.3.1.min.js"></script>
+    <script type="text/javascript" src="jquery-ui.min.js"></script>
+    <script type="text/javascript" src="jquery.canvasjs.min.js"></script>
+    <script type="text/javascript" src="Chart.min.js"></script>
+    <script type="text/javascript" src="jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="highlight.min.js"></script>
+    <script type="text/javascript" src="bm_xp.js"></script>
+
+    <script type="text/javascript">
+      $(document).ready(function() {
+        var specs = {
+          name: 'c4core',
+          benchmarks: {
+            'charconv-atox': {
+              desc: 'parsing a string into a variable',
+              src: 'charconv.cpp',
+              results: 'c4core-bm-charconv-atox.json'
+            },
+            'charconv-xtoa': {
+              desc: 'parsing a variable into a string',
+              src: 'charconv.cpp',
+              results: 'c4core-bm-charconv-xtoa.json'
+            },
+          }
+        };
+        loadSpecs(specs);
+      });
+    </script>
+  </body>
+</html>
