@@ -21,13 +21,14 @@ include(c4Doxygen)
 #------------------------------------------------------------------------------
 # define c4 project settings
 
-set(C4_PROJ_LOG_ENABLED OFF CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
-set(C4_PROJ_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
-set(C4_PROJ_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
-set(C4_PROJ_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
-set(C4_PROJ_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
-set(C4_PROJ_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
-set(C4_PROJ_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
+set(C4_LOG_ENABLED OFF CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
+set(C4_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
+set(C4_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
+set(C4_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
+set(C4_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
+set(C4_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
+set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -116,9 +117,11 @@ endmacro()
 function(c4_declare_project prefix)
     _c4_handle_prefix(${prefix})
     set(opt0arg
-        STANDALONE # declare that the project MAY be compiled in standalone mode,
-                   # where required modules are compiled into the project,
-                   # instead of as being used as separate libraries
+        STANDALONE # declare that this project MAY be compiled in standalone mode,
+                   # where required c4 subprojects are compiled into the project,
+                   # instead of as being used as separate libraries. Ie,
+                   # use the sources and include dirs of that subproject as if
+                   # they are part of this project.
     )
     set(opt1arg
         DESC
@@ -142,17 +145,14 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
     _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "")
-    set(standalone OFF)
-    if(_STANDALONE)
-        set(standalone ON)
-    endif()
+    _c4_handle_arg_or_fallback(${uprefix} STANDALONE OFF)
 
-    if("${_c4_curr_module}" STREQUAL "")
-        set(_c4_curr_module ${prefix})
+    if("${_c4_curr_subproject}" STREQUAL "")
+        set(_c4_curr_subproject ${prefix})
         set(_c4_curr_path ${prefix})
     endif()
 
-    option(${uprefix}STANDALONE "Compile ${lcprefix} in standalone mode (ie, incorporate any dependency)" ${standalone})
+    option(${uprefix}STANDALONE "Compile ${lcprefix} in standalone mode (ie, incorporate any dependency)" ${_STANDALONE})
     option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
@@ -199,10 +199,10 @@ function(c4_declare_project prefix)
     set(${uprefix}CXX_FLAGS "${${uprefix}CXX_FLAGS} ${of}")
 
     # https://stackoverflow.com/questions/24225067/how-to-define-function-inside-macro-in-cmake
-    # c4_require_module
-    set(lcprefix_require_module_ ${lcprefix} PARENT_SCOPE)
-    macro(${lcprefix}_require_module)
-        c4_require_module(${lcprefix_require_module_} ${ARGN})
+    # c4_require_subproject
+    set(lcprefix_require_subproject_ ${lcprefix} PARENT_SCOPE)
+    macro(${lcprefix}_require_subproject)
+        c4_require_subproject(${lcprefix_require_subproject_} ${ARGN})
     endmacro()
     # c4_add_library
     set(lcprefix_add_library_ ${lcprefix} PARENT_SCOPE)
@@ -264,7 +264,8 @@ function(c4_declare_project prefix)
 endfunction(c4_declare_project)
 
 
-function(c4_proj_version prefix dir)
+# WIP, under construction
+function(c4_proj_get_version prefix dir)
     _c4_handle_prefix(${prefix})
 
     if("${dir}" STREQUAL "")
@@ -327,6 +328,7 @@ function(c4_target_set_cxx target standard)
         CXX_EXTENSIONS ${_EXTENSIONS})
 endfunction()
 
+
 macro(_c4_handle_cxx_standard_args)
     set(opt0arg
         OPTIONAL
@@ -350,26 +352,26 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 # type can be one of:
-#  SUBDIRECTORY: the module is located in the given directory name and
+#  SUBDIRECTORY: the subproject is located in the given directory name and
 #               will be added via add_subdirectory()
-#  REMOTE: the module is located in a remote repo/url
+#  REMOTE: the subproject is located in a remote repo/url
 #          and will be added via c4_import_remote_proj()
 #
 # examples:
 #
-# # c4opt requires module c4core, as a subdirectory. c4core will be used
+# # c4opt requires subproject c4core, as a subdirectory. c4core will be used
 # # as a separate library
-# c4_require_module(c4opt
+# c4_require_subproject(c4opt
 #     c4core
 #     SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core
 #     )
 #
-# # c4opt requires module c4core, as a remote proj
-# c4_require_module(c4opt
+# # c4opt requires subproject c4core, as a remote proj
+# c4_require_subproject(c4opt
 #     c4core
 #     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
 #     )
-function(c4_require_module prefix module_name)
+function(c4_require_subproject prefix subproject_name)
     set(options0arg
         INTERFACE
     )
@@ -382,98 +384,98 @@ function(c4_require_module prefix module_name)
     cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
     #
     _c4_handle_prefix(${prefix})
-    list(APPEND _${uprefix}_deps ${module_name})
+    list(APPEND _${uprefix}_deps ${subproject_name})
     c4_setg(_${uprefix}_deps ${_${uprefix}_deps})
 
     _c4_log("-----------------------------------------------")
-    _c4_log("${lcprefix}: requires module ${module_name}!")
+    _c4_log("${lcprefix}: requires subproject ${subproject_name}!")
 
-    _c4_get_module_property(${module_name} AVAILABLE _available)
+    _c4_get_subproject_property(${subproject_name} AVAILABLE _available)
     if(_available)
-        _c4_log("${lcprefix}: required module ${module_name} was already imported:")
-        _c4_log_module(${module_name})
-    else() #elseif(NOT _${module_name}_available)
-        _c4_log("${lcprefix}: required module ${module_name} is unknown. Importing...")
+        _c4_log("${lcprefix}: required subproject ${subproject_name} was already imported:")
+        _c4_log_subproject(${subproject_name})
+    else() #elseif(NOT _${subproject_name}_available)
+        _c4_log("${lcprefix}: required subproject ${subproject_name} is unknown. Importing...")
         if(_INTERFACE)
-            _c4_log("${lcprefix}: ${module_name} is explicitly required as INTERFACE")
-            c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
+            _c4_log("${lcprefix}: ${subproject_name} is explicitly required as INTERFACE")
+            c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
         #elseif(${uprefix}STANDALONE)
-            #_c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${module_name} as INTERFACE")
-            #c4_set_var_tmp(C4_PROJ_LIBRARY_TYPE INTERFACE)
+            #_c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${subproject_name} as INTERFACE")
+            #c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
         endif()
-        set(_r ${CMAKE_CURRENT_BINARY_DIR}/modules/${module_name}) # root
+        set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproject_name}) # root
         if(_REMOTE)
-            _c4_mark_module_imported(${lcprefix} ${module_name} ${_r}/src ${_r}/build)
-            message(STATUS "${lcprefix}: importing module ${module_name} (REMOTE)... ${ARGN}")
-            c4_import_remote_proj(${prefix} ${module_name} ${_r} ${ARGN})
-            _c4_log("${lcprefix}: finished importing module ${module_name} (REMOTE=${${uprefix}${module_name}_SRC_DIR}).")
+            _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_r}/src ${_r}/build)
+            message(STATUS "${lcprefix}: importing subproject ${subproject_name} (REMOTE)... ${ARGN}")
+            c4_import_remote_proj(${prefix} ${subproject_name} ${_r} ${ARGN})
+            _c4_log("${lcprefix}: finished importing subproject ${subproject_name} (REMOTE=${${uprefix}${subproject_name}_SRC_DIR}).")
         elseif(_SUBDIRECTORY)
-            _c4_mark_module_imported(${lcprefix} ${module_name} ${_SUBDIRECTORY} ${_r}/build)
-            message(STATUS "${lcprefix}: importing module ${module_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
-            c4_add_subproj(${lcprefix} ${module_name} ${_SUBDIRECTORY} ${_r}/build)
-            _c4_log("${lcprefix}: finished importing module ${module_name} (SUBDIRECTORY=${${uprefix}${module_name}_SRC_DIR}).")
+            _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
+            message(STATUS "${lcprefix}: importing subproject ${subproject_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
+            c4_add_subproj(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
+            _c4_log("${lcprefix}: finished importing subproject ${subproject_name} (SUBDIRECTORY=${${uprefix}${subproject_name}_SRC_DIR}).")
         else(_SUBDIRECTORY)
-            message(FATAL_ERROR "module type must be either REMOTE or SUBDIRECTORY")
+            message(FATAL_ERROR "subproject type must be either REMOTE or SUBDIRECTORY")
         endif(_REMOTE)
         if(_INTERFACE)# OR ${uprefix}STANDALONE)
-            c4_clean_var_tmp(C4_PROJ_LIBRARY_TYPE)
+            c4_clean_var_tmp(C4_LIBRARY_TYPE)
         endif()
     endif()
-endfunction(c4_require_module)
+endfunction(c4_require_subproject)
 
 
 function(c4_add_subproj prefix proj dir bindir)
-    if("${_c4_curr_module}" STREQUAL "")
-        set(_c4_curr_module ${prefix})
+    if("${_c4_curr_subproject}" STREQUAL "")
+        set(_c4_curr_subproject ${prefix})
         set(_c4_curr_path ${prefix})
     endif()
-    set(prev_module ${_c4_curr_module})
+    set(prev_subproject ${_c4_curr_subproject})
     set(prev_path ${_c4_curr_path})
-    set(_c4_curr_module ${proj})
+    set(_c4_curr_subproject ${proj})
     set(_c4_curr_path ${_c4_curr_path}/${proj})
-    _c4_log("adding subproj: ${prev_module}->${_c4_curr_module}. path=${_c4_curr_path}")
+    _c4_log("adding subproj: ${prev_subproject}->${_c4_curr_subproject}. path=${_c4_curr_path}")
     add_subdirectory(${dir} ${bindir})
-    set(_c4_curr_module ${prev_module})
+    set(_c4_curr_subproject ${prev_subproject})
     set(_c4_curr_path ${prev_path})
 endfunction()
 
 
-function(_c4_mark_module_imported importer_module module_name module_src_dir module_bin_dir)
-    _c4_log("marking module imported: ${module_name} (imported by ${importer_module}). src=${module_src_dir}")
+function(_c4_mark_subproject_imported importer_subproject subproject_name subproject_src_dir subproject_bin_dir)
+    _c4_log("marking subproject imported: ${subproject_name} (imported by ${importer_subproject}). src=${subproject_src_dir}")
     #
-    _c4_get_module_property(${importer_module} DEPENDENCIES deps)
+    _c4_get_subproject_property(${importer_subproject} DEPENDENCIES deps)
     if(deps)
-        list(APPEND deps ${module_name})
+        list(APPEND deps ${subproject_name})
     else()
-        set(deps ${module_name})
+        set(deps ${subproject_name})
     endif()
-    _c4_set_module_property(${importer_module} DEPENDENCIES "${deps}")
-    _c4_get_folder(folder ${importer_module} ${module_name})
+    _c4_set_subproject_property(${importer_subproject} DEPENDENCIES "${deps}")
+    _c4_get_folder(folder ${importer_subproject} ${subproject_name})
     #
-    _c4_set_module_property(${module_name} AVAILABLE ON)
-    _c4_set_module_property(${module_name} IMPORTER "${importer_module}")
-    _c4_set_module_property(${module_name} SRC_DIR "${module_src_dir}")
-    _c4_set_module_property(${module_name} BIN_DIR "${module_bin_dir}")
-    _c4_set_module_property(${module_name} FOLDER "${folder}")
+    _c4_set_subproject_property(${subproject_name} AVAILABLE ON)
+    _c4_set_subproject_property(${subproject_name} IMPORTER "${importer_subproject}")
+    _c4_set_subproject_property(${subproject_name} SRC_DIR "${subproject_src_dir}")
+    _c4_set_subproject_property(${subproject_name} BIN_DIR "${subproject_bin_dir}")
+    _c4_set_subproject_property(${subproject_name} FOLDER "${folder}")
 endfunction()
 
 
-function(_c4_set_module_property module property value)
-    set_property(GLOBAL PROPERTY _c4_module-${module}-${property} ${value})
+function(_c4_set_subproject_property subproject property value)
+    set_property(GLOBAL PROPERTY _c4_subproject-${subproject}-${property} ${value})
 endfunction()
 
 
-function(_c4_get_module_property module property value)
-    get_property(v GLOBAL PROPERTY _c4_module-${module}-${property})
+function(_c4_get_subproject_property subproject property value)
+    get_property(v GLOBAL PROPERTY _c4_subproject-${subproject}-${property})
     set(${value} ${v} PARENT_SCOPE)
 endfunction()
 
 
-function(_c4_log_module module)
+function(_c4_log_subproject subproject)
     set(props AVAILABLE IMPORTER SRC_DIR BIN_DIR DEPENDENCIES FOLDER)
     foreach(p ${props})
-        _c4_get_module_property(${module} ${p} pv)
-        _c4_log("${module}: ${p}=${pv}")
+        _c4_get_subproject_property(${subproject} ${p} pv)
+        _c4_log("${subproject}: ${p}=${pv}")
     endforeach()
 endfunction()
 
@@ -526,8 +528,10 @@ ExternalProject_Add(${name}-dl
     TEST_COMMAND \"\"
 )
 ")
-    execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" . WORKING_DIRECTORY ${dir}/dl)
-    execute_process(COMMAND ${CMAKE_COMMAND} --build . WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} -G "${CMAKE_GENERATOR}" .
+        WORKING_DIRECTORY ${dir}/dl)
+    execute_process(COMMAND ${CMAKE_COMMAND} --build .
+        WORKING_DIRECTORY ${dir}/dl)
 endfunction()
 
 
@@ -537,12 +541,12 @@ endfunction()
 
 
 
-function(_c4_get_folder output importer_module module_name)
-    _c4_get_module_property(${importer_module} FOLDER importer_folder)
+function(_c4_get_folder output importer_subproject subproject_name)
+    _c4_get_subproject_property(${importer_subproject} FOLDER importer_folder)
     if("${importer_folder}" STREQUAL "")
-        set(folder ${importer_module})
+        set(folder ${importer_subproject})
     else()
-        set(folder "${importer_folder}/deps/${module_name}")
+        set(folder "${importer_folder}/deps/${subproject_name}")
     endif()
     set(${output} ${folder} PARENT_SCOPE)
 endfunction()
@@ -572,18 +576,16 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+# a convenience alias to c4_add_target()
 function(c4_add_executable prefix name)
     c4_add_target(${prefix} ${name} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
+
+# a convenience alias to c4_add_target()
 function(c4_add_library prefix name)
     c4_add_target(${prefix} ${name} LIBRARY ${ARGN})
 endfunction(c4_add_library)
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
 
 
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
@@ -597,7 +599,7 @@ function(c4_add_target prefix name)
         SANITIZE    # turn on sanitizer analysis
     )
     set(opt1arg
-        LIBRARY_TYPE    # override global setting for C4_PROJ_LIBRARY_TYPE
+        LIBRARY_TYPE    # override global setting for C4_LIBRARY_TYPE
         SOURCE_ROOT     # the directory where relative source paths
                         # should be resolved. when empty,
                         # use CMAKE_CURRENT_SOURCE_DIR
@@ -610,7 +612,7 @@ function(c4_add_target prefix name)
         HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
         INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
         LIBS     PUBLIC_LIBS     INTERFACE_LIBS     PRIVATE_LIBS
-        DLLS
+        DLLS           # DLLs required by this target
         MORE_ARGS
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
@@ -664,7 +666,7 @@ function(c4_add_target prefix name)
             set(compiled_target ON)
         elseif(${_LIBRARY})
             _c4_log("${lcprefix}: adding library: ${name}")
-            set(_blt ${C4_PROJ_LIBRARY_TYPE})
+            set(_blt ${C4_LIBRARY_TYPE})
             if(NOT "${_LIBRARY_TYPE}" STREQUAL "")
                 set(_blt ${_LIBRARY_TYPE})
             endif()
@@ -797,8 +799,8 @@ function(c4_add_target prefix name)
             endforeach()
         endif()
     endif()
-
 endfunction() # add_target
+
 
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -833,7 +835,12 @@ function(c4_install_library prefix name)
     install(FILES example_lib-config.cmake
         DESTINATION lib/cmake/${name}
         )
-
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
+        MyLibConfigVersion.cmake
+        VERSION ${PACKAGE_VERSION}
+        COMPATIBILITY AnyNewerVersion
+        )
     # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
 endfunction()
 
@@ -1108,8 +1115,8 @@ function(c4_setup_benchmarking prefix)
     option(${uprefix}BENCHMARK_CPUPOWER
         "set the cpu mode to performance before / powersave after the benchmark" OFF)
     if(${uprefix}BENCHMARK_CPUPOWER)
-        find_program(C4_PROJ_SUDO sudo)
-        find_program(C4_PROJ_CPUPOWER cpupower)
+        find_program(C4_SUDO sudo)
+        find_program(C4_CPUPOWER cpupower)
     endif()
 endfunction()
 
@@ -1170,11 +1177,11 @@ function(c4_add_benchmark prefix target casename work_dir comment)
     set(exe $<TARGET_FILE:${target}>)
     if(${uprefix}BENCHMARK_CPUPOWER)
         if(C4_BM_SUDO AND C4_BM_CPUPOWER)
-            set(c ${C4_PROJ_SUDO} ${C4_PROJ_CPUPOWER} frequency-set --governor performance)
+            set(c ${C4_SUDO} ${C4_CPUPOWER} frequency-set --governor performance)
             set(cpupow_before
                 COMMAND echo ${c}
                 COMMAND ${c})
-            set(c ${C4_PROJ_SUDO} ${C4_PROJ_CPUPOWER} frequency-set --governor powersave)
+            set(c ${C4_SUDO} ${C4_CPUPOWER} frequency-set --governor powersave)
             set(cpupow_after
                 COMMAND echo ${c}
                 COMMAND ${c})
@@ -1227,7 +1234,7 @@ function(c4_add_target_sources prefix target)
     )
     cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
     if(("${_TRANSFORM}" STREQUAL "GLOBAL") OR ("${_TRANSFORM}" STREQUAL ""))
-        set(_TRANSFORM ${C4_PROJ_SOURCE_TRANSFORM})
+        set(_TRANSFORM ${C4_SOURCE_TRANSFORM})
     endif()
     if("${_TRANSFORM}" STREQUAL "")
         set(_TRANSFORM NONE)
@@ -1277,7 +1284,7 @@ function(c4_add_target_sources prefix target)
         _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
         _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
         if(cpublic OR cinterface OR cprivate)
-            _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_SRC_EXT} out)
+            _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_SRC_EXT} out)
             _c4_log("${lcprefix}: ${target}: output unit: ${out}")
             c4_cat_sources(${prefix} "${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
             add_dependencies(${target} ${out})
@@ -1312,7 +1319,7 @@ function(c4_add_target_sources prefix target)
         _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
         _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
         if(c)
-            _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_HDR_EXT} out)
+            _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_HDR_EXT} out)
             _c4_log("${lcprefix}: ${target}: output hdr: ${out}")
             _c4cat_filter_srcs_hdrs("${_PUBLIC}" c_h)
             c4_cat_sources(${prefix} "${c}" "${out}" ${umbrella})
@@ -1328,7 +1335,7 @@ function(c4_add_target_sources prefix target)
         #
         # concatenate everything into a single header file
         #
-        _c4cat_get_outname(${prefix} ${target} "all" ${C4_PROJ_GEN_HDR_EXT} out)
+        _c4cat_get_outname(${prefix} ${target} "all" ${C4_GEN_HDR_EXT} out)
         _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
         c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
         #
@@ -1340,8 +1347,8 @@ function(c4_add_target_sources prefix target)
         #  * all compilation unit into a single compilation unit
         #  * all headers into a single header
         #
-        _c4cat_get_outname(${prefix} ${target} "src" ${C4_PROJ_GEN_SRC_EXT} out)
-        _c4cat_get_outname(${prefix} ${target} "hdr" ${C4_PROJ_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${prefix} ${target} "hdr" ${C4_GEN_SRC_EXT} out)
         _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
         c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
     else()
@@ -1365,17 +1372,17 @@ function(_c4cat_get_outname prefix target id ext out)
 endfunction()
 
 function(_c4cat_filter_srcs in out)
-    _c4cat_filter_extensions("${in}" "${C4_PROJ_SRC_EXTS}" l)
+    _c4cat_filter_extensions("${in}" "${C4_SRC_EXTS}" l)
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
 function(_c4cat_filter_hdrs in out)
-    _c4cat_filter_extensions("${in}" "${C4_PROJ_HDR_EXTS}" l)
+    _c4cat_filter_extensions("${in}" "${C4_HDR_EXTS}" l)
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
 function(_c4cat_filter_srcs_hdrs in out)
-    _c4cat_filter_extensions("${in}" "${C4_PROJ_HDR_EXTS};${C4_PROJ_SRC_EXTS}" l)
+    _c4cat_filter_extensions("${in}" "${C4_HDR_EXTS};${C4_SRC_EXTS}" l)
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
