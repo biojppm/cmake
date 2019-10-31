@@ -217,67 +217,54 @@ function(c4_declare_project prefix)
     set(${uprefix}CXX_FLAGS "${${uprefix}CXX_FLAGS} ${of}")
 
     # https://stackoverflow.com/questions/24225067/how-to-define-function-inside-macro-in-cmake
+    set(lcprefix_fwd_prefix_ ${lcprefix} PARENT_SCOPE)
     # c4_require_subproject
-    set(lcprefix_require_subproject_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_require_subproject)
-        c4_require_subproject(${lcprefix_require_subproject_} ${ARGN})
+        c4_require_subproject(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_library
-    set(lcprefix_add_library_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_library)
-        c4_add_library(${lcprefix_add_library_} ${ARGN})
+        c4_add_library(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_executable
-    set(lcprefix_add_executable_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_executable)
-        c4_add_executable(${lcprefix_add_executable_} ${ARGN})
+        c4_add_executable(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_import_remote_proj
-    set(lcprefix_import_remote_proj_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_import_remote_proj)
-        c4_import_remote_proj(${lcprefix_import_remote_proj_} ${ARGN})
+        c4_import_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_download_remote_proj
-    set(lcprefix_download_remote_proj_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_download_remote_proj)
-        c4_download_remote_proj(${lcprefix_add_library_} ${ARGN})
+        c4_download_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_doxygen
-    set(lcprefix_add_doxygen_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_doxygen)
-        c4_add_doxygen(${lcprefix_add_library_} ${ARGN})
+        c4_add_doxygen(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
-    #
     # c4_setup_testing
-    set(lcprefix_setup_testing_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_setup_testing)
-        c4_setup_testing(${lcprefix_setup_testing_} ${ARGN})
+        c4_setup_testing(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_test
-    set(lcprefix_add_test_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test)
-        c4_add_test(${lcprefix_add_test_} ${ARGN})
+        c4_add_test(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_test_fail_build
-    set(lcprefix_add_test_fail_build_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_test_fail_build)
-        c4_add_test_fail_build(${lcprefix_add_library_} ${ARGN})
+        c4_add_test_fail_build(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
-    #
     # c4_setup_benchmarking
-    set(lcprefix_setup_benchmarking_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_setup_benchmarking)
-        c4_setup_benchmarking(${lcprefix_setup_benchmarking_} ${ARGN})
+        c4_setup_benchmarking(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_benchmark
-    set(lcprefix_add_benchmark_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_benchmark)
-        c4_add_benchmark(${lcprefix_add_benchmark_} ${ARGN})
+        c4_add_benchmark(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_add_target_benchmark
-    set(lcprefix_add_target_benchmark_ ${lcprefix} PARENT_SCOPE)
     macro(${lcprefix}_add_target_benchmark)
-        c4_add_target_benchmark(${lcprefix_add_target_benchmark_} ${ARGN})
+        c4_add_target_benchmark(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
 endfunction(c4_declare_project)
 
