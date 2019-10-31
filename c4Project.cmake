@@ -49,10 +49,10 @@ macro(c4_override opt val)
     set(${opt} ${val} CACHE BOOL "" FORCE)
 endmacro()
 
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 
 macro(c4_setg var val)
     set(${var} ${val})
@@ -100,15 +100,19 @@ macro(_c4_handle_arg_or_fallback uprefix argname default)
     if("${_${argname}}" STREQUAL "")
         if("${${uprefix}${argname}}" STREQUAL "")
             if("${C4_${argname}}" STREQUAL "")
+                _c4_log("${uprefix}: handle arg: _${argname}: picking default=${default}")
                 c4_setg(_${argname} "${default}")
             else()
+                _c4_log("${uprefix}: handle arg: _${argname}: picking C4_${argname}=${C4_${argname}}")
                 c4_setg(_${argname} "${C4_${argname}}")
             endif()
         else()
+            _c4_log("${uprefix}: handle arg: _${argname}: picking ${uprefix}${argname}=${${uprefix}${argname}}")
             c4_setg(_${argname} "${${uprefix}${argname}}")
         endif()
     else()
-        c4_setg(_${argname} "${_${argname}}")
+        _c4_log("${uprefix}: handle arg: _${argname}: picking explicit value _${argname}=${_${argname}}")
+        #c4_setg(_${argname} "${_${argname}}")
     endif()
 endmacro()
 
@@ -116,13 +120,24 @@ endmacro()
 
 function(c4_declare_project prefix)
     _c4_handle_prefix(${prefix})
+    # zero-value macro arguments
     set(opt0arg
-        STANDALONE # declare that this project MAY be compiled in standalone mode,
-                   # where required c4 subprojects are compiled into the project,
-                   # instead of as being used as separate libraries. Ie,
-                   # use the sources and include dirs of that subproject as if
-                   # they are part of this project.
+        STANDALONE # Declare that targets from this project MAY be
+                   # compiled in standalone mode. In this mode, any
+                   # designated libraries on which a target depends
+                   # will be incorporated into the target instead of
+                   # being linked with it. The effect is to "flatten"
+                   # those libraries into the requesting library, with
+                   # their sources now becoming part of the requesting
+                   # library; their dependencies are transitively handled.
+                   # Note that requesting targets must explicitly
+                   # opt-in to this behavior via the INCORPORATE
+                   # argument to c4_add_library() or
+                   # c4_add_executable(). Note also that this behavior
+                   # is only enabled if this project's option
+                   # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
     )
+    # one-value macro arguments
     set(opt1arg
         DESC
         AUTHOR
@@ -132,6 +147,7 @@ function(c4_declare_project prefix)
         CXX_STANDARD  # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD
     )
+    # multi-value macro arguments
     set(optNarg
         AUTHORS
     )
@@ -145,14 +161,16 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
     _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "")
-    _c4_handle_arg_or_fallback(${uprefix} STANDALONE OFF)
 
     if("${_c4_curr_subproject}" STREQUAL "")
         set(_c4_curr_subproject ${prefix})
         set(_c4_curr_path ${prefix})
     endif()
 
-    option(${uprefix}STANDALONE "Compile ${lcprefix} in standalone mode (ie, incorporate any dependency)" ${_STANDALONE})
+    if(_STANDALONE)
+        option(${uprefix}STANDALONE
+            "Enable compilation of opting-in targets from ${lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)" ${_STANDALONE})
+    endif()
     option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
@@ -590,12 +608,12 @@ endfunction(c4_add_library)
 
 # example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
 function(c4_add_target prefix name)
-    _c4_log("${prefix}: adding target: ${name}: ${ARGN}")
     _c4_handle_prefix(${prefix})
+    _c4_log("${lcprefix}: adding target: ${name}: ${ARGN}")
     set(opt0arg
-        EXECUTABLE  # this is an executable
+        LIBRARY     # the target is a library
+        EXECUTABLE  # the target is an executable
         WIN32       # the executable is WIN32
-        LIBRARY     # this is a library
         SANITIZE    # turn on sanitizer analysis
     )
     set(opt1arg
@@ -608,6 +626,8 @@ function(c4_add_target prefix name)
         SOURCE_TRANSFORM
     )
     set(optnarg
+        INCORPORATE  # incorporate these libraries into this target,
+                     # subject to ${uprefix}STANDALONE and C4_STANDALONE
         SOURCES  PUBLIC_SOURCES  INTERFACE_SOURCES  PRIVATE_SOURCES
         HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
         INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
@@ -616,6 +636,7 @@ function(c4_add_target prefix name)
         MORE_ARGS
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
+
     if(${_LIBRARY})
         set(_what LIBRARY)
     elseif(${_EXECUTABLE})
@@ -660,8 +681,8 @@ function(c4_add_target prefix name)
                     list(APPEND _MORE_ARGS WIN32)
                 endif()
             endif()
-		    add_executable(${name} ${_MORE_ARGS})
-			    set(src_mode PRIVATE)
+	    add_executable(${name} ${_MORE_ARGS})
+	    set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_LIBRARY})
@@ -686,6 +707,7 @@ function(c4_add_target prefix name)
                     _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
                     add_library(${name} ${_MORE_ARGS})
                 endif()
+                # libraries
                 set(src_mode PRIVATE)
                 set(tgt_type PUBLIC)
                 set(compiled_target ON)
@@ -712,40 +734,37 @@ function(c4_add_target prefix name)
         endif()
 
         if(_INC_DIRS)
-            target_include_directories(${name} ${tgt_type} ${_INC_DIRS})
+            _c4_log("${lcprefix}: ${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
+            target_include_directories(${name} "${tgt_type}" ${_INC_DIRS})
         endif()
         if(_PUBLIC_INC_DIRS)
+            _c4_log("${lcprefix}: ${name}: adding PUBLIC include dirs ${_PUBLIC_INC_DIRS}")
             target_include_directories(${name} PUBLIC ${_PUBLIC_INC_DIRS})
         endif()
         if(_INTERFACE_INC_DIRS)
+            _c4_log("${lcprefix}: ${name}: adding INTERFACE include dirs ${_INTERFACE_INC_DIRS}")
             target_include_directories(${name} INTERFACE ${_INTERFACE_INC_DIRS})
         endif()
         if(_PRIVATE_INC_DIRS)
+            _c4_log("${lcprefix}: ${name}: adding PRIVATE include dirs ${_PRIVATE_INC_DIRS}")
             target_include_directories(${name} PRIVATE ${_PRIVATE_INC_DIRS})
         endif()
 
         if(_LIBS)
-            _c4_log("${lcprefix}: linking ${name} with libs, [from_target]${tgt_type}: ${_LIBS}")
-            target_link_libraries(${name} ${tgt_type} ${_LIBS})
+            _c4_link_with_libs(${prefix} ${name} "${tgt_type}" "${_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PUBLIC_LIBS)
-            _c4_log("${lcprefix}: linking ${name} with libs, PUBLIC: ${_PRIVATE_LIBS}")
-            target_link_libraries(${name} PUBLIC ${_PUBLIC_LIBS})
+            _c4_link_with_libs(${prefix} ${name} PUBLIC "${_PUBLIC_LIBS}" "${_INCORPORATE}")
         endif()
         if(_INTERFACE_LIBS)
-            _c4_log("${lcprefix}: linking ${name} with libs, INTERFACE: ${_INTERFACE_LIBS}")
-            target_link_libraries(${name} INTERFACE ${_INTERFACE_LIBS})
+            _c4_link_with_libs(${prefix} ${name} INTERFACE "${_INTERFACE_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PRIVATE_LIBS)
-            _c4_log("${lcprefix}: linking ${name} with libs, PRIVATE: ${_PRIVATE_LIBS}")
-            target_link_libraries(${name} PRIVATE ${_PRIVATE_LIBS})
+            _c4_link_with_libs(${prefix} ${name} PRIVATE "${_PRIVATE_LIBS}" "${_INCORPORATE}")
         endif()
 
         if(compiled_target)
             _c4_set_target_folder(${name} "${_FOLDER}")
-        endif()
-        #
-        if(compiled_target)
             if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS)
                 #print_var(${uprefix}CXX_FLAGS)
                 set_target_properties(${name} PROPERTIES
@@ -754,8 +773,8 @@ function(c4_add_target prefix name)
             if(${uprefix}LINT)
                 c4_static_analysis_target(${ucprefix} ${name} "${_FOLDER}" lint_targets)
             endif()
-        endif()
-    endif()
+        endif(compiled_target)
+    endif(NOT ${uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
         if(_SANITIZE OR ${uprefix}SANITIZE)
@@ -783,6 +802,7 @@ function(c4_add_target prefix name)
         c4_set_transitive_property(${name} _C4_DLLS "${_DLLS}")
         get_target_property(vd ${name} _C4_DLLS)
     endif()
+
     if(${_EXECUTABLE})
         if(WIN32)
             c4_get_transitive_property(${name} _C4_DLLS transitive_dlls)
@@ -802,10 +822,71 @@ function(c4_add_target prefix name)
 endfunction() # add_target
 
 
+function(_c4_link_with_libs prefix target link_type libs incorporate)
+    _c4_handle_prefix(${prefix})
+    foreach(lib ${libs})
+        if(incorporate AND (
+                    (C4_STANDALONE OR ${uprefix}STANDALONE)
+                    AND
+                    (NOT (${lib} IN_LIST incorporate))))
+            _c4_log("${lcprefix}: -----> ${target} ${link_type} incorporating lib ${lib}")
+            _c4_incorporate_lib(${prefix} ${target} ${link_type} ${lib})
+        else()
+            _c4_log("${lcprefix}: ${target} ${link_type} linking with lib ${lib}")
+            target_link_libraries(${target} ${link_type} ${lib})
+        endif()
+    endforeach()
+endfunction()
+
+
+function(_c4_incorporate_lib prefix target link_type splib)
+    _c4_handle_prefix(${prefix})
+    #
+    _c4_get_tgt_prop(splib_src ${splib} SOURCES)
+    if(splib_src)
+        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${splib_src}")
+        c4_add_target_sources(${prefix} ${target} PRIVATE ${splib_src})
+    endif()
+    #
+    _c4_get_tgt_prop(splib_isrc ${splib} INTERFACE_SOURCES)
+    if(splib_isrc)
+        c4_add_target_sources(${prefix} ${target} INTERFACE ${splib_isrc})
+    endif()
+    #
+    #
+    _c4_get_tgt_prop(splib_incs ${splib} INCLUDE_DIRECTORIES)
+    if(splib_incs)
+        target_include_directories(${target} PUBLIC ${splib_incs})
+    endif()
+    #
+    _c4_get_tgt_prop(splib_iincs ${splib} INTERFACE_INCLUDE_DIRECTORIES)
+    if(splib_iincs)
+        target_include_directories(${target} INTERFACE ${splib_iincs})
+    endif()
+    #
+    #
+    _c4_get_tgt_prop(splib_lib ${splib} LINK_LIBRARIES)
+    if(splib_lib)
+        target_link_libraries(${target} PUBLIC ${splib_lib})
+    endif()
+    _c4_get_tgt_prop(splib_ilib ${splib} INTERFACE_LIBRARY)
+    if(splib_ilib)
+        target_link_libraries(${target} INTERFACE ${splib_ilib})
+    endif()
+endfunction()
+
+
+function(_c4_get_tgt_prop out tgt prop)
+    get_target_property(val ${tgt} ${prop})
+    message(STATUS "${tgt}: ${prop}=${val}")
+    set(${out} ${val} PARENT_SCOPE)
+endfunction()
+
+
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
-# TODO (still incomplete)
+# WIP, under construction (still incomplete)
 # see: https://github.com/pr0g/cmake-examples
 # see: https://cliutils.gitlab.io/modern-cmake/
 function(c4_install_library prefix name)
