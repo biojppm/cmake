@@ -572,7 +572,9 @@ endfunction()
 
 function(c4_set_folder_remote_project_targets subfolder)
     foreach(target ${ARGN})
-        _c4_set_target_folder(${target} "${subfolder}")
+        if(TARGET ${target})
+            _c4_set_target_folder(${target} "${subfolder}")
+        endif()
     endforeach()
 endfunction()
 
