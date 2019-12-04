@@ -243,6 +243,14 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_download_remote_proj)
         c4_download_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
+    # c4_install_library
+    macro(${lcprefix}_install_library)
+        c4_install_library(${lcprefix_fwd_prefix_} ${ARGN})
+    endmacro()
+    # c4_install_files
+    macro(${lcprefix}_install_files)
+        c4_install_files("${lcprefix_fwd_prefix_}" ${ARGN})
+    endmacro()
     # c4_add_doxygen
     macro(${lcprefix}_add_doxygen)
         c4_add_doxygen(${lcprefix_fwd_prefix_} ${ARGN})
@@ -258,6 +266,14 @@ function(c4_declare_project prefix)
     # c4_add_test_fail_build
     macro(${lcprefix}_add_test_fail_build)
         c4_add_test_fail_build(${lcprefix_fwd_prefix_} ${ARGN})
+    endmacro()
+    # c4_add_install_include_test
+    macro(${lcprefix}_add_install_include_test)
+        c4_add_install_include_test(${lcprefix_fwd_prefix_} ${ARGN})
+    endmacro()
+    # c4_add_install_link_test
+    macro(${lcprefix}_add_install_link_test)
+        c4_add_install_link_test(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_setup_benchmarking
     macro(${lcprefix}_setup_benchmarking)
@@ -384,6 +400,7 @@ endmacro()
 function(c4_require_subproject prefix subproject_name)
     set(options0arg
         INTERFACE
+        EXCLUDE_FROM_ALL
     )
     set(options1arg
         SUBDIRECTORY
@@ -639,15 +656,12 @@ function(c4_add_target prefix name)
         message(FATAL_ERROR "must be either LIBRARY or EXECUTABLE")
     endif()
 
+    _c4_handle_arg_or_fallback(${uprefix} SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     function(c4_transform_to_full_path list all)
         set(l)
         foreach(f ${${list}})
             if(NOT IS_ABSOLUTE "${f}")
-                if(_SOURCE_ROOT)
-                    set(f "${_SOURCE_ROOT}/${f}")
-                else()
-                    set(f "${CMAKE_CURRENT_SOURCE_DIR}/${f}")
-                endif()
+                set(f "${_SOURCE_ROOT}/${f}")
             endif()
             list(APPEND l "${f}")
         endforeach()
@@ -726,6 +740,7 @@ function(c4_add_target prefix name)
         elseif()
             message(FATAL_ERROR "${lcprefix}: adding sources for target ${target} invalid source mode")
         endif()
+        set_target_properties(${name} PROPERTIES C4_SOURCE_ROOT ${_SOURCE_ROOT})
 
         if(_INC_DIRS)
             _c4_log("${lcprefix}: ${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
@@ -872,7 +887,7 @@ endfunction()
 
 function(_c4_get_tgt_prop out tgt prop)
     get_target_property(val ${tgt} ${prop})
-    message(STATUS "${tgt}: ${prop}=${val}")
+    _c4_log("${tgt}: ${prop}=${val}")
     set(${out} ${val} PARENT_SCOPE)
 endfunction()
 
@@ -883,40 +898,137 @@ endfunction()
 # WIP, under construction (still incomplete)
 # see: https://github.com/pr0g/cmake-examples
 # see: https://cliutils.gitlab.io/modern-cmake/
+
 function(c4_install_library prefix name)
-    install(DIRECTORY
-        example_lib/library
-        DESTINATION
-        include/example_lib
-        )
-    # install and export the library
-    install(FILES
-        example_lib/library.hpp
-        example_lib/api.hpp
-        DESTINATION
-        include/example_lib
-        )
+    _c4_handle_prefix(${prefix})
+    # zero-value macro arguments
+    set(opt0arg
+    )
+    # one-value macro arguments
+    set(opt1arg
+        EXPORT_PREFIX
+        EXPORT_TARGET
+        EXPORT_NAMESPACE
+    )
+    # multi-value macro arguments
+    set(optNarg
+    )
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    #
+    _c4_handle_arg(${uprefix} EXPORT_PREFIX "${prefix}")
+    _c4_handle_arg(${uprefix} EXPORT_TARGET "${prefix}-export")
+    _c4_handle_arg(${uprefix} EXPORT_NAMESPACE "${prefix}::")
+    #
+    set(exported_name "${_EXPORT_NAMESPACE}${name}")
+    set(targets_file "${_EXPORT_PREFIX}Targets.cmake")
+    #
+    set(_RUNTIME_INSTALL_DIR   bin/)
+    set(_ARCHIVE_INSTALL_DIR   lib/)
+    set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
+    set(_INCLUDE_INSTALL_DIR   include/)
+    set(_OBJECTS_INSTALL_DIR   obj/)
+    set(_SYSCONFIG_INSTALL_DIR etc/${lcprefix}/)
+    #
+    # don't really know which is the right one, so do both for now...
+    set(cfg_dst1 ${_LIBRARY_INSTALL_DIR}/${lcprefix}/cmake)
+    set(cfg_dst2 ${_LIBRARY_INSTALL_DIR}/cmake/${lcprefix})
+    #
+    # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
+    c4_install_sources(${prefix} ${name} include)
     install(TARGETS ${name}
-        EXPORT ${name}_targets
-        RUNTIME DESTINATION bin
-        ARCHIVE DESTINATION lib
-        LIBRARY DESTINATION lib
-        INCLUDES DESTINATION include
+        EXPORT ${_EXPORT_TARGET}
+        RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
+        ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}
+        LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}
+        OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
+        INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
         )
-    install(EXPORT ${name}_targets
-        NAMESPACE ${name}::
-        DESTINATION lib/cmake/${name}
-        )
-    install(FILES example_lib-config.cmake
-        DESTINATION lib/cmake/${name}
-        )
+    install(EXPORT ${_EXPORT_TARGET} FILE ${targets_file} NAMESPACE ${name}:: DESTINATION ${cfg_dst1})
+    install(EXPORT ${_EXPORT_TARGET} FILE ${targets_file} NAMESPACE ${name}:: DESTINATION ${cfg_dst2})
+    #
+    # Config files
+    # the module below has nice docs in it; do read them
+    # to understand the macro calls below
     include(CMakePackageConfigHelpers)
+    set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${lcprefix}Config.cmake)
+    set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${lcprefix}ConfigVersion.cmake)
+    #
+    file(WRITE ${cfg}.in "
+set(${uprefix}VERSION ${${uprefix}VERSION})
+
+@PACKAGE_INIT@
+
+if(NOT TARGET ${exported_name})
+    include(\${PACKAGE_PREFIX_DIR}/${targets_file})
+endif()
+
+# HACK: PACKAGE_PREFIX_DIR is obtained from the PACKAGE_INIT macro above;
+# When used below in the calls to set_and_check(),
+# it points at the location of this file. So point it instead
+# to the CMAKE_INSTALL_PREFIX, in relative terms
+set(fixdir \"\${PACKAGE_PREFIX_DIR}/../../..\")
+get_filename_component(PACKAGE_PREFIX_DIR \"\${fixdir}\" ABSOLUTE)
+
+set_and_check(${uprefix}INCLUDE_DIR \"@PACKAGE__INCLUDE_INSTALL_DIR@\")
+set_and_check(${uprefix}LIB_DIR \"@PACKAGE__LIBRARY_INSTALL_DIR@\")
+#set_and_check(${uprefix}SYSCONFIG_DIR \"@PACKAGE__SYSCONFIG_INSTALL_DIR@\")
+
+check_required_components(${lcprefix})
+")
+    configure_package_config_file(${cfg}.in ${cfg}
+        INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}"  # defaults to CMAKE_INSTALL_PREFIX
+        INSTALL_DESTINATION "${CMAKE_INSTALL_PREFIX}"
+        PATH_VARS
+           _INCLUDE_INSTALL_DIR
+           _LIBRARY_INSTALL_DIR
+           _SYSCONFIG_INSTALL_DIR
+        #NO_SET_AND_CHECK_MACRO
+        #NO_CHECK_REQUIRED_COMPONENTS_MACRO
+        )
     write_basic_package_version_file(
-        MyLibConfigVersion.cmake
-        VERSION ${PACKAGE_VERSION}
+        ${cfg_ver}
+        VERSION ${${uprefix}VERSION}
         COMPATIBILITY AnyNewerVersion
         )
-    # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
+    install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst1})
+    install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst2})
+endfunction()
+
+
+function(c4_install_files prefix files destination relative_to)
+    _c4_log("${prefix}: adding files to install list, destination ${destination}: ${files}")
+    foreach(f ${files})
+        file(RELATIVE_PATH rf "${relative_to}" ${f})
+        get_filename_component(rd "${rf}" DIRECTORY)
+        install(FILES ${f} DESTINATION "${destination}/${rd}" ${ARGN})
+    endforeach()
+endfunction()
+
+
+function(c4_install_directories prefix directories destination relative_to)
+    _c4_log("${prefix}: adding directories to install list, destination ${destination}: ${directories}")
+    foreach(d ${directories})
+        file(RELATIVE_PATH rf "${relative_to}" ${d})
+        get_filename_component(rd "${rf}" DIRECTORY)
+        install(DIRECTORY ${d} DESTINATION "${destination}/${rd}" ${ARGN})
+    endforeach()
+endfunction()
+
+
+function(c4_install_sources prefix target destination)
+    _c4_get_tgt_prop(src ${target} SOURCES)
+    _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
+    _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
+    if(src)
+        c4_install_files(${prefix} "${src}" "${destination}" "${srcroot}")
+    endif()
+    if(isrc)
+        c4_install_files(${prefix} "${isrc}" "${destination}" "${srcroot}")
+    endif()
+endfunction()
+
+
+function(c4_pack prefix)
 endfunction()
 
 
@@ -1038,8 +1150,106 @@ function(c4_add_test_fail_build prefix name srccontent_or_srcfilename)
         ${ARGN})
     add_test(NAME ${name}
         COMMAND ${CMAKE_COMMAND} --build . --target ${name} --config $<CONFIGURATION>
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(${name} PROPERTIES WILL_FAIL TRUE)
+endfunction()
+
+
+function(c4_add_install_link_test prefix library namespace exe_source_code)
+    _c4_add_library_client_test(${prefix} ${library} "${namespace}" "${prefix}-test-${library}-install-link" "${exe_source_code}")
+endfunction()
+
+
+function(c4_add_install_include_test prefix library namespace)
+    set(incfiles) # TODO get the list of files
+    set(incblock)
+    foreach(i ${incfiles})
+        set(incblock "${incblock}
+#include <${i}>
+")
+    endforeach()
+    set(src "${incblock}
+
+int main()
+{
+    return 0;
+}
+")
+    _c4_add_library_client_test(${prefix} ${library} "${namespace}" "${prefix}-test-${library}-install-include" "${src}")
+endfunction()
+
+
+function(_c4_add_library_client_test prefix library namespace pname source_code)
+    _c4_handle_prefix(${prefix})
+    set(pdir "${CMAKE_CURRENT_BINARY_DIR}/${pname}")
+    set(bdir "${pdir}/build")
+    if(NOT EXISTS "${pdir}")
+        file(MAKE_DIRECTORY "${pdir}")
+    endif()
+    if(NOT EXISTS "${bdir}/build")
+        file(MAKE_DIRECTORY "${bdir}/build")
+    endif()
+    set(psrc "${pdir}/${pname}.cpp")
+    set(tsrc "${pdir}/${pname}-run.cmake")
+    set(tout "${pdir}/${pname}-run-out.log")
+    # generate the source file
+    file(WRITE "${psrc}" "${source_code}")
+    # generate the cmake project consuming this library
+    file(WRITE "${pdir}/CMakeLists.txt" "
+cmake_minimum_required(VERSION 3.9)
+project(${pname} LANGUAGES CXX)
+
+find_package(${library} REQUIRED)
+
+add_executable(${pname} \"${psrc}\")
+target_include_directories(${pname} PUBLIC \${${uprefix}INCLUDE_DIR})
+target_link_libraries(${pname} PUBLIC ${namespace}${library})
+")
+    # The test consists in running the script generated below.
+    # We force evaluation of the configuration generator expression
+    # by receiving its result via the command line.
+    add_test(NAME ${pname}-run
+        COMMAND ${CMAKE_COMMAND} -DCFG_IN=$<CONFIG> -P "${tsrc}"
+        )
+    # generate the cmake script with the test content
+    file(WRITE "${tsrc}" "
+# run a command and check its return status
+function(runcmd)
+    message(STATUS \"Running command: \${ARGN}\")
+    message(STATUS \"Running command: output goes to ${tout}\")
+    execute_process(
+        COMMAND \${ARGN}
+        RESULT_VARIABLE retval
+        OUTPUT_FILE \"${tout}\"
+        ERROR_FILE \"${tout}\"
+        COMMAND_ECHO STDOUT
+    )
+    file(READ \"${tout}\" output)
+    message(STATUS \"output:
+--------------------
+\${output}--------------------\")
+    message(STATUS \"Exit status was \${retval}: \${ARGN}\")
+    if(NOT (\${retval} EQUAL 0))
+        message(FATAL_ERROR \"Command failed with exit status \${retval}: \${ARGN}\")
+    endif()
+endfunction()
+
+# force evaluation of the configuration generator expression
+# by receiving its result via the command line
+set(cfg \${CFG_IN})
+
+# install the library
+runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" --config \${cfg})
+
+# configure the client project
+runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX})
+
+# build the client project
+runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --config \${cfg})
+
+# install the client project
+#runcmd(\"${CMAKE_COMMAND}\" --install \"${bdir}\" --config \${cfg})
+")
 endfunction()
 
 
