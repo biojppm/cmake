@@ -1224,7 +1224,7 @@ endfunction()
 
 
 function(c4_add_install_include_test prefix library namespace)
-    set(incfiles) # TODO get the list of files
+    set(incfiles) # TODO get the list of include files
     set(incblock)
     foreach(i ${incfiles})
         set(incblock "${incblock}
@@ -1259,14 +1259,19 @@ function(_c4_add_library_client_test prefix library namespace pname source_code)
     file(WRITE "${psrc}" "${source_code}")
     # generate the cmake project consuming this library
     file(WRITE "${pdir}/CMakeLists.txt" "
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.12)
 project(${pname} LANGUAGES CXX)
 
 find_package(${library} REQUIRED)
 
-add_executable(${pname} \"${psrc}\")
-target_include_directories(${pname} PUBLIC \${${uprefix}INCLUDE_DIR})
+add_executable(${pname} ${pname}.cpp)
+# this must be the only required setup to link with ${library}
 target_link_libraries(${pname} PUBLIC ${namespace}${library})
+
+add_custom_target(${pname}-run
+    COMMAND \$<TARGET_FILE:${pname}>
+    DEPENDS ${pname}
+)
 ")
     # The test consists in running the script generated below.
     # We force evaluation of the configuration generator expression
@@ -1310,8 +1315,8 @@ runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=${
 # build the client project
 runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --config \${cfg})
 
-# install the client project
-#runcmd(\"${CMAKE_COMMAND}\" --install \"${bdir}\" --config \${cfg})
+# run the client executable
+runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --target \"${pname}-run\" --config \${cfg})
 ")
 endfunction()
 
