@@ -968,6 +968,28 @@ function(c4_install_target prefix target)
     set(l ${${prefix}_TARGETS})
     list(APPEND l ${target})
     set(${prefix}_TARGETS ${l} PARENT_SCOPE)
+    #
+#    # pkgconfig (WIP)
+#    set(pc ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/${target}.pc)
+#    file(WRITE ${pc} "# pkg-config: ${target}
+#
+#prefix=\"${CMAKE_INSTALL_PREFIX}\"
+#exec_prefix=\"\${prefix}\"
+#libdir=\"\${prefix}/${CMAKE_INSTALL_LIBDIR}\"
+#includedir=\"\${prefix}/include\"
+#
+#Name: ${target}
+#Description: A library for xyzzying frobnixes
+#URL: https://github.com/me/mylibrary
+#Version: 0.0.0
+#Requires: @PKGCONF_REQ_PUB@
+#Requires.private: @PKGCONF_REQ_PRIV@
+#Cflags: -I\"${includedir}\"
+#Libs: -L\"${libdir}\" -lmylibrary
+#Libs.private: -L\"${libdir}\" -lmylibrary @PKGCONF_LIBS_PRIV@
+#")
+#    _c4_setup_install_vars(${prefix})
+#    install(FILES ${pc} DESTINATION "${_ARCHIVE_INSTALL_DIR}/pkgconfig/")
 endfunction()
 
 
@@ -1076,11 +1098,11 @@ check_required_components(${lcprefix})
     # YES:
     #__c4_install_exports(cmake/                                    ".."      )
     # NO:
-    #__c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/             "../.."   )
+    #__c4_install_exports(${_ARCHIVE_INSTALL_DIR}cmake/             "../.."   )
     # YES:
-    __c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/${lcprefix}/ "../../..")
+    __c4_install_exports(${_ARCHIVE_INSTALL_DIR}cmake/${lcprefix}/ "../../..")
     # YES:
-    #__c4_install_exports(${_LIBRARY_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
+    #__c4_install_exports(${_ARCHIVE_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
 endfunction()
 
 
@@ -1133,10 +1155,6 @@ function(c4_install_sources prefix target destination)
         _c4cat_filter_srcs_hdrs("${isrc}" isrc)
         c4_install_files(${prefix} "${isrc}" "${destination}" "${srcroot}")
     endif()
-endfunction()
-
-
-function(c4_pack prefix)
 endfunction()
 
 
