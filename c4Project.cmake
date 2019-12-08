@@ -1343,6 +1343,9 @@ add_custom_target(${pname}-run
         COMMAND ${CMAKE_COMMAND} -DCFG_IN=$<CONFIG> -P "${tsrc}"
         )
     # generate the cmake script with the test content
+    if(WIN32)
+        set(cfg_opt "--config \${cfg}")
+    endif()
     file(WRITE "${tsrc}" "
 # run a command and check its return status
 function(runcmd)
@@ -1370,16 +1373,16 @@ endfunction()
 set(cfg \${CFG_IN})
 
 # install the library
-runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" --config \${cfg})
+runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" ${cfg_opt})
 
 # configure the client project
 runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX})
 
 # build the client project
-runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --config \${cfg})
+runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" ${cfg_opt})
 
 # run the client executable
-runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --target \"${pname}-run\" --config \${cfg})
+runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --target \"${pname}-run\" ${cfg_opt})
 ")
 endfunction()
 
