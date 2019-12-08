@@ -146,6 +146,7 @@ function(c4_declare_project prefix)
     set(opt1arg
         DESC
         AUTHOR
+        URL
         MAJOR
         MINOR
         RELEASE
@@ -161,11 +162,20 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} DESC "${lcprefix}")
     _c4_handle_arg(${uprefix} AUTHOR "${lcprefix} author <author@domain.net>")
     _c4_handle_arg(${uprefix} AUTHORS "${_AUTHOR}")
+    _c4_handle_arg(${uprefix} URL "")
     _c4_handle_arg(${uprefix} MAJOR 0)
     _c4_handle_arg(${uprefix} MINOR 0)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
     _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "")
+
+    c4_set_proj_prop(${prefix} DESC         "${_DESC}")
+    c4_set_proj_prop(${prefix} AUTHOR       "${_AUTHOR}")
+    c4_set_proj_prop(${prefix} URL          "${_URL}")
+    c4_set_proj_prop(${prefix} MAJOR        "${_MAJOR}")
+    c4_set_proj_prop(${prefix} MINOR        "${_MINOR}")
+    c4_set_proj_prop(${prefix} RELEASE      "${_RELEASE}")
+    c4_set_proj_prop(${prefix} CXX_STANDARD "${_CXX_STANDARD}")
 
     if("${_c4_curr_subproject}" STREQUAL "")
         set(_c4_curr_subproject ${prefix})
@@ -199,6 +209,7 @@ function(c4_declare_project prefix)
     cmake_dependent_option(${uprefix}PEDANTIC "Compile in pedantic mode" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}WERROR "Compile with warnings as errors" ON ${uprefix}DEV OFF)
     cmake_dependent_option(${uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${uprefix}DEV OFF)
+
 
     if(${uprefix}STRICT_ALIASING)
         if(NOT MSVC)
@@ -292,6 +303,27 @@ function(c4_declare_project prefix)
         c4_add_target_benchmark(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
 endfunction(c4_declare_project)
+
+
+function(c4_set_proj_prop prefix prop value)
+    set(C4PROJ_${prefix}_${prop} ${value})
+endfunction()
+
+
+function(c4_get_proj_prop prefix prop var)
+    set(${var} ${C4PROJ_${prefix}_${prop}} PARENT_SCOPE)
+endfunction()
+
+
+function(c4_set_target_prop target prop value)
+    set_target_properties(${target} PROPERTIES C4_TGT_${prop} ${value})
+endfunction()
+
+
+function(c4_get_target_prop target prop var)
+    get_target_property(val ${target} C4_TGT_${prop})
+    set(${var} ${val} PARENT_SCOPE)
+endfunction()
 
 
 # WIP, under construction
@@ -744,7 +776,7 @@ function(c4_add_target prefix name)
         elseif()
             message(FATAL_ERROR "${lcprefix}: adding sources for target ${target} invalid source mode")
         endif()
-        set_target_properties(${name} PROPERTIES C4_SOURCE_ROOT ${_SOURCE_ROOT})
+        set_target_properties(${name} PROPERTIES C4_SOURCE_ROOT "${_SOURCE_ROOT}")
 
         if(_INC_DIRS)
             _c4_log("${lcprefix}: ${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
@@ -919,9 +951,9 @@ function(c4_install_target prefix target)
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
     _c4_handle_arg(${uprefix} EXPORT "${prefix}-export")
+    #
     _c4_setup_install_vars(${prefix})
     # TODO: don't forget to install DLLs: _${uprefix}_${target}_DLLS
-    c4_install_sources(${prefix} ${target} include)
     install(TARGETS ${target}
         EXPORT ${_EXPORT}
         RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
@@ -930,6 +962,8 @@ function(c4_install_target prefix target)
         OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
         INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
         )
+    #
+    c4_install_sources(${prefix} ${target} include)
     #
     set(l ${${prefix}_TARGETS})
     list(APPEND l ${target})
@@ -1039,11 +1073,14 @@ check_required_components(${lcprefix})
     #
     # don't really know which is the right place to install the exports,
     # so for now install in all these candidates (relative to install root)...
-    #YES: __c4_install_exports(cmake/                                    ".."      )
-    #NO : __c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/             "../.."   )
-    #YES:
+    # YES:
+    #__c4_install_exports(cmake/                                    ".."      )
+    # NO:
+    #__c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/             "../.."   )
+    # YES:
     __c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/${lcprefix}/ "../../..")
-    #YES: __c4_install_exports(${_LIBRARY_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
+    # YES:
+    #__c4_install_exports(${_LIBRARY_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
 endfunction()
 
 
@@ -1079,13 +1116,21 @@ endfunction()
 
 
 function(c4_install_sources prefix target destination)
+    # executables have no sources requiring install
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "EXECUTABLE")
+        return() # nothing to do
+    endif()
+    # get the sources from the target
     _c4_get_tgt_prop(src ${target} SOURCES)
     _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
     _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
     if(src)
-        c4_install_files(${prefix} "${src}" "${destination}" "${srcroot}")
+        _c4cat_filter_hdrs("${src}" hdr)
+        c4_install_files(${prefix} "${hdr}" "${destination}" "${srcroot}")
     endif()
     if(isrc)
+        _c4cat_filter_srcs_hdrs("${isrc}" isrc)
         c4_install_files(${prefix} "${isrc}" "${destination}" "${srcroot}")
     endif()
 endfunction()
@@ -1599,7 +1644,7 @@ function(c4_add_target_sources prefix target)
     if("${target_type}" STREQUAL "INTERFACE_LIBRARY")
         set(_is_iface TRUE)
     elseif("${prop_name}" STREQUAL "LINK_LIBRARIES")
-        set(_is_iface TRUE)
+        set(_is_iface FALSE)
     endif()
     #
     set(out)
@@ -1741,14 +1786,14 @@ endfunction()
 
 function(_c4cat_filter_extensions in filter out)
     set(l)
-    foreach(fn ${in})
-        _c4cat_get_file_ext(${fn} ext)
-        _c4cat_one_of(${ext} "${filter}" yes)
+    foreach(fn ${in})  # don't quote the list here
+        _c4cat_get_file_ext("${fn}" ext)
+        _c4cat_one_of("${ext}" "${filter}" yes)
         if(${yes})
-            list(APPEND l ${fn})
+            list(APPEND l "${fn}")
         endif()
     endforeach()
-    set(${out} ${l} PARENT_SCOPE)
+    set(${out} "${l}" PARENT_SCOPE)
 endfunction()
 
 function(_c4cat_get_file_ext in out)
