@@ -1353,7 +1353,7 @@ function(runcmd)
         RESULT_VARIABLE retval
         OUTPUT_FILE \"${tout}\"
         ERROR_FILE \"${tout}\"
-        COMMAND_ECHO STDOUT
+        # COMMAND_ECHO STDOUT  # only available from cmake-3.15
     )
     file(READ \"${tout}\" output)
     message(STATUS \"output:
