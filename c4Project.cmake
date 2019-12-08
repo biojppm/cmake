@@ -243,9 +243,13 @@ function(c4_declare_project prefix)
     macro(${lcprefix}_download_remote_proj)
         c4_download_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
-    # c4_install_library
-    macro(${lcprefix}_install_library)
-        c4_install_library(${lcprefix_fwd_prefix_} ${ARGN})
+    # c4_install_target
+    macro(${lcprefix}_install_target)
+        c4_install_target(${lcprefix_fwd_prefix_} ${ARGN})
+    endmacro()
+    # c4_install_exports
+    macro(${lcprefix}_install_exports)
+        c4_install_exports(${lcprefix_fwd_prefix_} ${ARGN})
     endmacro()
     # c4_install_files
     macro(${lcprefix}_install_files)
@@ -899,66 +903,106 @@ endfunction()
 # see: https://github.com/pr0g/cmake-examples
 # see: https://cliutils.gitlab.io/modern-cmake/
 
-function(c4_install_library prefix name)
+
+function(c4_install_target prefix target)
     _c4_handle_prefix(${prefix})
     # zero-value macro arguments
     set(opt0arg
     )
     # one-value macro arguments
     set(opt1arg
-        EXPORT_PREFIX
-        EXPORT_TARGET
-        EXPORT_NAMESPACE
+        EXPORT # the name of the export target. default: see below.
     )
     # multi-value macro arguments
     set(optNarg
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
-    _c4_handle_arg(${uprefix} EXPORT_PREFIX "${prefix}")
-    _c4_handle_arg(${uprefix} EXPORT_TARGET "${prefix}-export")
-    _c4_handle_arg(${uprefix} EXPORT_NAMESPACE "${prefix}::")
-    #
-    set(exported_name "${_EXPORT_NAMESPACE}${name}")
-    set(targets_file "${_EXPORT_PREFIX}Targets.cmake")
-    #
-    set(_RUNTIME_INSTALL_DIR   bin/)
-    set(_ARCHIVE_INSTALL_DIR   lib/)
-    set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
-    set(_INCLUDE_INSTALL_DIR   include/)
-    set(_OBJECTS_INSTALL_DIR   obj/)
-    set(_SYSCONFIG_INSTALL_DIR etc/${lcprefix}/)
-    #
-    # don't really know which is the right one, so do both for now...
-    set(cfg_dst1 ${_LIBRARY_INSTALL_DIR}/${lcprefix}/cmake)
-    set(cfg_dst2 ${_LIBRARY_INSTALL_DIR}/cmake/${lcprefix})
-    #
-    # TODO: don't forget to install DLLs: _${uprefix}_${name}_DLLS
-    c4_install_sources(${prefix} ${name} include)
-    install(TARGETS ${name}
-        EXPORT ${_EXPORT_TARGET}
+    _c4_handle_arg(${uprefix} EXPORT "${prefix}-export")
+    _c4_setup_install_vars(${prefix})
+    # TODO: don't forget to install DLLs: _${uprefix}_${target}_DLLS
+    c4_install_sources(${prefix} ${target} include)
+    install(TARGETS ${target}
+        EXPORT ${_EXPORT}
         RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
         ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}
         LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}
         OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
         INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
         )
-    install(EXPORT ${_EXPORT_TARGET} FILE ${targets_file} NAMESPACE ${name}:: DESTINATION ${cfg_dst1})
-    install(EXPORT ${_EXPORT_TARGET} FILE ${targets_file} NAMESPACE ${name}:: DESTINATION ${cfg_dst2})
     #
-    # Config files
-    # the module below has nice docs in it; do read them
-    # to understand the macro calls below
-    include(CMakePackageConfigHelpers)
-    set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${lcprefix}Config.cmake)
-    set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${lcprefix}ConfigVersion.cmake)
+    set(l ${${prefix}_TARGETS})
+    list(APPEND l ${target})
+    set(${prefix}_TARGETS ${l} PARENT_SCOPE)
+endfunction()
+
+
+function(c4_install_exports prefix)
+    _c4_handle_prefix(${prefix})
+    # zero-value macro arguments
+    set(opt0arg
+    )
+    # one-value macro arguments
+    set(opt1arg
+        PREFIX     # override the c4 project-wide prefix. This will be used in the cmake
+        TARGET     # the name of the exports target
+        NAMESPACE  # the namespace for the targets
+    )
+    # multi-value macro arguments
+    set(optNarg
+        DEPENDENCIES
+    )
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
-    file(WRITE ${cfg}.in "
+    _c4_handle_arg(${uprefix} PREFIX    "${prefix}")
+    _c4_handle_arg(${uprefix} TARGET    "${prefix}-export")
+    _c4_handle_arg(${uprefix} NAMESPACE "${prefix}::")
+    #
+    _c4_setup_install_vars(${prefix})
+    #
+    list(GET ${prefix}_TARGETS 0 target)
+    set(exported_target "${_NAMESPACE}${target}")
+    set(targets_file "${_PREFIX}Targets.cmake")
+    #
+    set(deps)
+    if(_DEPENDENCIES)
+        set(deps "#-----------------------------
+include(CMakeFindDependencyMacro)")
+        foreach(d ${_DEPENDENCIES})
+            set(deps "${deps}
+find_dependency(${d} REQUIRED)
+")
+        endforeach()
+        set(deps "${deps}
+#-----------------------------")
+    endif()
+    #
+    # cfg_dst is the path relative to install root where the export
+    # should be installed; cfg_dst_rel is the path from there to
+    # the install root
+    macro(__c4_install_exports cfg_dst cfg_dst_rel)
+        # make sure that different exports are staged in different directories
+        set(case export_cases/${cfg_dst})
+        file(MAKE_DIRECTORY ${case})
+        #
+        install(EXPORT "${_TARGET}"
+            FILE "${targets_file}"
+            NAMESPACE "${_NAMESPACE}"
+            DESTINATION "${cfg_dst}")
+        #
+        # Config files
+        # the module below has nice docs in it; do read them
+        # to understand the macro calls below
+        include(CMakePackageConfigHelpers)
+        set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${case}/${lcprefix}Config.cmake)
+        set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${case}/${lcprefix}ConfigVersion.cmake)
+        #
+        file(WRITE ${cfg}.in "${deps}
 set(${uprefix}VERSION ${${uprefix}VERSION})
 
 @PACKAGE_INIT@
 
-if(NOT TARGET ${exported_name})
+if(NOT TARGET ${exported_target})
     include(\${PACKAGE_PREFIX_DIR}/${targets_file})
 endif()
 
@@ -966,8 +1010,8 @@ endif()
 # When used below in the calls to set_and_check(),
 # it points at the location of this file. So point it instead
 # to the CMAKE_INSTALL_PREFIX, in relative terms
-set(fixdir \"\${PACKAGE_PREFIX_DIR}/../../..\")
-get_filename_component(PACKAGE_PREFIX_DIR \"\${fixdir}\" ABSOLUTE)
+get_filename_component(PACKAGE_PREFIX_DIR
+    \"\${PACKAGE_PREFIX_DIR}/${cfg_dst_rel}\" ABSOLUTE)
 
 set_and_check(${uprefix}INCLUDE_DIR \"@PACKAGE__INCLUDE_INSTALL_DIR@\")
 set_and_check(${uprefix}LIB_DIR \"@PACKAGE__LIBRARY_INSTALL_DIR@\")
@@ -975,24 +1019,43 @@ set_and_check(${uprefix}LIB_DIR \"@PACKAGE__LIBRARY_INSTALL_DIR@\")
 
 check_required_components(${lcprefix})
 ")
-    configure_package_config_file(${cfg}.in ${cfg}
-        INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}"  # defaults to CMAKE_INSTALL_PREFIX
-        INSTALL_DESTINATION "${CMAKE_INSTALL_PREFIX}"
-        PATH_VARS
-           _INCLUDE_INSTALL_DIR
-           _LIBRARY_INSTALL_DIR
-           _SYSCONFIG_INSTALL_DIR
-        #NO_SET_AND_CHECK_MACRO
-        #NO_CHECK_REQUIRED_COMPONENTS_MACRO
+        configure_package_config_file(${cfg}.in ${cfg}
+            INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}"  # defaults to CMAKE_INSTALL_PREFIX
+            INSTALL_DESTINATION "${CMAKE_INSTALL_PREFIX}"
+            PATH_VARS
+                _INCLUDE_INSTALL_DIR
+                _LIBRARY_INSTALL_DIR
+                _SYSCONFIG_INSTALL_DIR
+            #NO_SET_AND_CHECK_MACRO
+            #NO_CHECK_REQUIRED_COMPONENTS_MACRO
         )
-    write_basic_package_version_file(
-        ${cfg_ver}
-        VERSION ${${uprefix}VERSION}
-        COMPATIBILITY AnyNewerVersion
+        write_basic_package_version_file(
+            ${cfg_ver}
+            VERSION ${${uprefix}VERSION}
+            COMPATIBILITY AnyNewerVersion
         )
-    install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst1})
-    install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst2})
+        install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst})
+    endmacro(__c4_install_exports)
+    #
+    # don't really know which is the right place to install the exports,
+    # so for now install in all these candidates (relative to install root)...
+    #YES: __c4_install_exports(cmake/                                    ".."      )
+    #NO : __c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/             "../.."   )
+    #YES:
+    __c4_install_exports(${_LIBRARY_INSTALL_DIR}cmake/${lcprefix}/ "../../..")
+    #YES: __c4_install_exports(${_LIBRARY_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
 endfunction()
+
+
+macro(_c4_setup_install_vars prefix)
+    _c4_handle_prefix(${prefix})
+    set(_RUNTIME_INSTALL_DIR   bin/)
+    set(_ARCHIVE_INSTALL_DIR   lib/)
+    set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
+    set(_INCLUDE_INSTALL_DIR   include/)
+    set(_OBJECTS_INSTALL_DIR   obj/)
+    set(_SYSCONFIG_INSTALL_DIR etc/${lcprefix}/)
+endmacro()
 
 
 function(c4_install_files prefix files destination relative_to)
