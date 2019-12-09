@@ -167,7 +167,7 @@ function(c4_declare_project prefix)
     _c4_handle_arg(${uprefix} MINOR 0)
     _c4_handle_arg(${uprefix} RELEASE 1)
     c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
-    _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "")
+    _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "11")
 
     c4_set_proj_prop(${prefix} DESC         "${_DESC}")
     c4_set_proj_prop(${prefix} AUTHOR       "${_AUTHOR}")
@@ -388,6 +388,14 @@ function(c4_target_set_cxx target standard)
         CXX_STANDARD ${standard}
         CXX_STANDARD_REQUIRED ${_REQUIRED}
         CXX_EXTENSIONS ${_EXTENSIONS})
+endfunction()
+
+
+function(c4_target_inherit_cxx_standard target)
+    set_target_properties(${target} PROPERTIES
+        CXX_STANDARD "${CXX_STANDARD}"
+        CXX_STANDARD_REQUIRED "${CXX_STANDARD_REQUIRED}"
+        CXX_EXTENSIONS "${CXX_EXTENSIONS}")
 endfunction()
 
 
@@ -809,6 +817,7 @@ function(c4_add_target prefix name)
         endif()
 
         if(compiled_target)
+            c4_target_inherit_cxx_standard(${name})
             _c4_set_target_folder(${name} "${_FOLDER}")
             if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS)
                 #print_var(${uprefix}CXX_FLAGS)
