@@ -1357,6 +1357,8 @@ add_custom_target(${pname}-run
     if(WIN32)
         set(cfg_opt "--config \${cfg}")
     endif()
+    # CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
+    set(platform "-DCMAKE_GENERATOR_PLATFORM=\"${CMAKE_GENERATOR_PLATFORM}\" -DCMAKE_VS_PLATFORM_NAME=\"${CMAKE_VS_PLATFORM_NAME}\"")
     file(WRITE "${tsrc}" "
 # run a command and check its return status
 function(runcmd)
@@ -1388,7 +1390,7 @@ set(cfg \${CFG_IN})
 runcmd(\"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
 
 # configure the client project
-runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX})
+runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=\"${CMAKE_INSTALL_PREFIX}\" ${platform}\")
 
 # build the client project
 runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" ${cfg_opt})
