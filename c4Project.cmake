@@ -384,10 +384,11 @@ endmacro()
 # c4_target_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
 function(c4_target_set_cxx target standard)
     _c4_handle_cxx_standard_args(${ARGN})
-    set_target_properties(${_TARGET} PROPERTIES
+    set_target_properties(${target} PROPERTIES
         CXX_STANDARD ${standard}
         CXX_STANDARD_REQUIRED ${_REQUIRED}
         CXX_EXTENSIONS ${_EXTENSIONS})
+    target_compile_features(myTarget PUBLIC cxx_std_${standard})
 endfunction()
 
 
@@ -396,6 +397,7 @@ function(c4_target_inherit_cxx_standard target)
         CXX_STANDARD "${CMAKE_CXX_STANDARD}"
         CXX_STANDARD_REQUIRED "${CMAKE_CXX_STANDARD_REQUIRED}"
         CXX_EXTENSIONS "${CMAKE_CXX_EXTENSIONS}")
+    target_compile_features(${target} PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 endfunction()
 
 
