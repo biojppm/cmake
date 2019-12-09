@@ -393,9 +393,9 @@ endfunction()
 
 function(c4_target_inherit_cxx_standard target)
     set_target_properties(${target} PROPERTIES
-        CXX_STANDARD "${CXX_STANDARD}"
-        CXX_STANDARD_REQUIRED "${CXX_STANDARD_REQUIRED}"
-        CXX_EXTENSIONS "${CXX_EXTENSIONS}")
+        CXX_STANDARD "${CMAKE_CXX_STANDARD}"
+        CXX_STANDARD_REQUIRED "${CMAKE_CXX_STANDARD_REQUIRED}"
+        CXX_EXTENSIONS "${CMAKE_CXX_EXTENSIONS}")
 endfunction()
 
 
