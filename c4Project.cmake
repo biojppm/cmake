@@ -1373,7 +1373,8 @@ endfunction()
 set(cfg \${CFG_IN})
 
 # install the library
-runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" ${cfg_opt})
+#runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" ${cfg_opt})  # requires cmake>3.13 (at least)
+runcmd(\"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
 
 # configure the client project
 runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX})
