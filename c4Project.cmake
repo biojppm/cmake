@@ -1131,7 +1131,7 @@ check_required_components(${lcprefix})
     elseif(APPLE)
         message(FATAL_ERROR "not implemented")
     elseif(UNIX)
-        __c4_install_exports(${_ARCHIVE_INSTALL_DIR}share/cmake/ "../../..")
+        __c4_install_exports(${_ARCHIVE_INSTALL_DIR}/cmake/${prefix} "../../..")
     else()
         message(FATAL_ERROR "unknown platform")
     endif()
@@ -1402,11 +1402,6 @@ add_custom_target(${pname}-run
     add_test(NAME ${pname}-run
         COMMAND ${CMAKE_COMMAND} -DCFG_IN=$<CONFIG> -P "${tsrc}"
         )
-    # generate the cmake script with the test content
-    if(WIN32)
-        set(cfg_opt "--config \${cfg}")
-    endif()
-    set(platform "")
     # NOTE: in the cmake configure command, be sure to NOT use quotes
     # in -DCMAKE_PREFIX_PATH=\"${CMAKE_INSTALL_PREFIX}\". Use
     # -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX} instead.
@@ -1415,6 +1410,28 @@ add_custom_target(${pname}-run
     if(NOT (has_spaces EQUAL -1))
         message(FATAL_ERROR "install tests will fail if the install path has spaces: '${CMAKE_INSTALL_PREFIX}' : ... ${has_spaces}")
     endif()
+    # make sure the test project uses the same architecture
+    if(WIN32)
+        set(cfg_opt "--config \${cfg}")
+        set(arch -DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM} -DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME})
+    elseif(ANDROID OR IOS OR WINCE OR WINDOWS_PHONE)
+        message(FATAL_ERROR "not implemented")
+    elseif(IOS)
+        message(FATAL_ERROR "not implemented")
+    elseif(UNIX)
+        if(CMAKE_GENERATOR_PLATFORM OR CMAKE_VS_PLATFORM_NAME)
+            set(arch -DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM} -DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME})
+        else()
+            if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+                set(arch -DCMAKE_CXX_FLAGS=-m64)
+            elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+                set(arch -DCMAKE_CXX_FLAGS=-m32)
+            else()
+                message(FATAL_ERROR "not implemented")
+            endif()
+        endif()
+    endif()
+    # generate the cmake script with the test content
     file(WRITE "${tsrc}" "
 # run a command and check its return status
 function(runcmd)
@@ -1453,7 +1470,7 @@ runcmd(\"\${cmk}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
 # configure the client project
 # CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
 # see https://cmake.org/cmake/help/v3.9/variable/CMAKE_GENERATOR_PLATFORM.html
-runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" -DCMAKE_PREFIX_PATH=\${pfx} -DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM} -DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME})
+runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" -DCMAKE_PREFIX_PATH=\${pfx} ${arch})
 
 # build the client project
 runcmd(\"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
