@@ -1104,16 +1104,37 @@ check_required_components(${lcprefix})
         install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst})
     endmacro(__c4_install_exports)
     #
-    # don't really know which is the right place to install the exports,
-    # so for now install in all these candidates (relative to install root)...
-    # YES:
-    #__c4_install_exports(cmake/                                    ".."      )
-    # NO:
-    #__c4_install_exports(${_ARCHIVE_INSTALL_DIR}cmake/             "../.."   )
-    # YES:
-    __c4_install_exports(${_ARCHIVE_INSTALL_DIR}cmake/${lcprefix}/ "../../..")
-    # YES:
-    #__c4_install_exports(${_ARCHIVE_INSTALL_DIR}${lcprefix}/cmake/ "../../..")
+    # To install the exports:
+    #
+    # Windows:
+    # <prefix>/
+    # <prefix>/(cmake|CMake)/
+    # <prefix>/<name>*/
+    # <prefix>/<name>*/(cmake|CMake)/
+    #
+    # Unix:
+    # <prefix>/(lib/<arch>|lib|share)/cmake/<name>*/
+    # <prefix>/(lib/<arch>|lib|share)/<name>*/
+    # <prefix>/(lib/<arch>|lib|share)/<name>*/(cmake|CMake)/
+    #
+    # Apple:
+    # <prefix>/<name>.framework/Resources/
+    # <prefix>/<name>.framework/Resources/CMake/
+    # <prefix>/<name>.framework/Versions/*/Resources/
+    # <prefix>/<name>.framework/Versions/*/Resources/CMake/
+    # <prefix>/<name>.app/Contents/Resources/
+    # <prefix>/<name>.app/Contents/Resources/CMake/
+    #
+    # (This was taken from the find_package() documentation)
+    if(WIN32)
+        __c4_install_exports(cmake/ "..")
+    elseif(APPLE)
+        message(FATAL_ERROR "not implemented")
+    elseif(UNIX)
+        __c4_install_exports(${_ARCHIVE_INSTALL_DIR}share/cmake/ "../../..")
+    else()
+        message(FATAL_ERROR "unknown platform")
+    endif()
 endfunction()
 
 
@@ -1166,6 +1187,29 @@ function(c4_install_sources prefix target destination)
         _c4cat_filter_srcs_hdrs("${isrc}" isrc)
         c4_install_files(${prefix} "${isrc}" "${destination}" "${srcroot}")
     endif()
+endfunction()
+
+
+function(c4_get_target_installed_headers prefix target out)
+    set(hdrs)
+    _c4_get_tgt_prop(src ${target} SOURCES)
+    _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
+    _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
+    if(src)
+        _c4cat_filter_hdrs("${src}" h_)
+        foreach(h ${h_})
+            file(RELATIVE_PATH rf "${srcroot}" "${h}")
+            list(APPEND hdrs "${rf}")
+        endforeach()
+    endif()
+    if(isrc)
+        _c4cat_filter_hdrs("${isrc}" h_)
+        foreach(h ${h_})
+            file(RELATIVE_PATH rf "${srcroot}" "${h}")
+            list(APPEND hdrs "${rf}")
+        endforeach()
+    endif()
+    set(${out} ${hdrs} PARENT_SCOPE)
 endfunction()
 
 
@@ -1298,12 +1342,11 @@ endfunction()
 
 
 function(c4_add_install_include_test prefix library namespace)
-    set(incfiles) # TODO get the list of include files
+    c4_get_target_installed_headers(${prefix} ${library} incfiles)
     set(incblock)
     foreach(i ${incfiles})
         set(incblock "${incblock}
-#include <${i}>
-")
+#include <${i}>")
     endforeach()
     set(src "${incblock}
 
@@ -1338,6 +1381,12 @@ project(${pname} LANGUAGES CXX)
 
 find_package(${library} REQUIRED)
 
+message(STATUS \"
+found ${library}:
+    ${uprefix}INCLUDE_DIR=\${${uprefix}INCLUDE_DIR}
+    ${uprefix}LIB_DIR=\${${uprefix}LIB_DIR}
+\")
+
 add_executable(${pname} ${pname}.cpp)
 # this must be the only required setup to link with ${library}
 target_link_libraries(${pname} PUBLIC ${namespace}${library})
@@ -1357,8 +1406,15 @@ add_custom_target(${pname}-run
     if(WIN32)
         set(cfg_opt "--config \${cfg}")
     endif()
-    # CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
-    set(platform "-DCMAKE_GENERATOR_PLATFORM=\"${CMAKE_GENERATOR_PLATFORM}\" -DCMAKE_VS_PLATFORM_NAME=\"${CMAKE_VS_PLATFORM_NAME}\"")
+    set(platform "")
+    # NOTE: in the cmake configure command, be sure to NOT use quotes
+    # in -DCMAKE_PREFIX_PATH=\"${CMAKE_INSTALL_PREFIX}\". Use
+    # -DCMAKE_PREFIX_PATH=${CMAKE_INSTALL_PREFIX} instead.
+    # So here we add a check to make sure the install path has no spaces
+    string(FIND "${CMAKE_INSTALL_PREFIX}" " " has_spaces)
+    if(NOT (has_spaces EQUAL -1))
+        message(FATAL_ERROR "install tests will fail if the install path has spaces: '${CMAKE_INSTALL_PREFIX}' : ... ${has_spaces}")
+    endif()
     file(WRITE "${tsrc}" "
 # run a command and check its return status
 function(runcmd)
@@ -1381,22 +1437,29 @@ function(runcmd)
     endif()
 endfunction()
 
+set(cmk \"${CMAKE_COMMAND}\")
+set(pfx \"${CMAKE_INSTALL_PREFIX}\")
+set(pdir \"${pdir}\")
+set(bdir \"${bdir}\")
+
 # force evaluation of the configuration generator expression
 # by receiving its result via the command line
 set(cfg \${CFG_IN})
 
 # install the library
-#runcmd(\"${CMAKE_COMMAND}\" --install \"${CMAKE_BINARY_DIR}\" ${cfg_opt})  # requires cmake>3.13 (at least)
-runcmd(\"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
+#runcmd(\"\${cmk}\" --install \"${CMAKE_BINARY_DIR}\" ${cfg_opt})  # requires cmake>3.13 (at least)
+runcmd(\"\${cmk}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
 
 # configure the client project
-runcmd(\"${CMAKE_COMMAND}\" -S \"${pdir}\" -B \"${bdir}\" -DCMAKE_PREFIX_PATH=\"${CMAKE_INSTALL_PREFIX}\" ${platform}\")
+# CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
+# see https://cmake.org/cmake/help/v3.9/variable/CMAKE_GENERATOR_PLATFORM.html
+runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" -DCMAKE_PREFIX_PATH=\${pfx} -DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM} -DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME})
 
 # build the client project
-runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" ${cfg_opt})
+runcmd(\"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
 
 # run the client executable
-runcmd(\"${CMAKE_COMMAND}\" --build \"${bdir}\" --target \"${pname}-run\" ${cfg_opt})
+runcmd(\"\${cmk}\" --build \"\${bdir}\" --target \"${pname}-run\" ${cfg_opt})
 ")
 endfunction()
 
