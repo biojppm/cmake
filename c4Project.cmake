@@ -1411,6 +1411,8 @@ add_custom_target(${pname}-run
         message(FATAL_ERROR "install tests will fail if the install path has spaces: '${CMAKE_INSTALL_PREFIX}' : ... ${has_spaces}")
     endif()
     # make sure the test project uses the same architecture
+    # CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
+    # see https://cmake.org/cmake/help/v3.9/variable/CMAKE_GENERATOR_PLATFORM.html
     if(WIN32)
         set(cfg_opt "--config \${cfg}")
         set(arch -DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM} -DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME})
@@ -1468,9 +1470,7 @@ set(cfg \${CFG_IN})
 runcmd(\"\${cmk}\" --build \"${CMAKE_BINARY_DIR}\" ${cfg_opt} --target install)
 
 # configure the client project
-# CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
-# see https://cmake.org/cmake/help/v3.9/variable/CMAKE_GENERATOR_PLATFORM.html
-runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" -DCMAKE_PREFIX_PATH=\${pfx} ${arch})
+runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" \"-DCMAKE_PREFIX_PATH=\${pfx}\" ${arch} \"-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}\" \"-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}\")
 
 # build the client project
 runcmd(\"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
