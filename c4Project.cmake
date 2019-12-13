@@ -1360,6 +1360,12 @@ endfunction()
 
 
 function(_c4_add_library_client_test prefix library namespace pname source_code)
+    if("${CMAKE_BUILD_TYPE}" STREQUAL Coverage)
+        add_test(NAME ${pname}-run
+            COMMAND ${CMAKE_COMMAND} -E echo "skipping this test in coverage builds"
+            )
+        return()
+    endif()
     _c4_handle_prefix(${prefix})
     set(pdir "${CMAKE_CURRENT_BINARY_DIR}/${pname}")
     set(bdir "${pdir}/build")
