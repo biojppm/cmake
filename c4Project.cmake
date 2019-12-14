@@ -1487,7 +1487,7 @@ set(cfg \${CFG_IN})
 runcmd(\"\${cmk}\" --build \"\${idir}\" ${cfg_opt} --target install)
 
 # configure the client project
-runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" \"-DCMAKE_PREFIX_PATH=\${pfx}\" ${arch} \"-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}\" \"-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}\")
+runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" \"-DCMAKE_PREFIX_PATH=\${pfx}\" \"-DCMAKE_GENERATOR=${CMAKE_GENERATOR}\" ${arch} \"-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}\" \"-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}\")
 
 # build the client project
 runcmd(\"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
