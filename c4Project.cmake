@@ -1643,11 +1643,17 @@ function(c4_setup_benchmarking prefix)
         c4_set_folder_remote_project_targets(${lprefix}bm benchmark benchmark_main)
     endif()
     #
-    option(${uprefix}BENCHMARK_CPUPOWER
-        "set the cpu mode to performance before / powersave after the benchmark" OFF)
-    if(${uprefix}BENCHMARK_CPUPOWER)
-        find_program(C4_SUDO sudo)
-        find_program(C4_CPUPOWER cpupower)
+    if(CMAKE_COMPILER_IS_GNUCC)
+        target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
+    endif()
+    #
+    if(NOT WIN32)
+        option(${uprefix}BENCHMARK_CPUPOWER
+            "set the cpu mode to performance before / powersave after the benchmark" OFF)
+        if(${uprefix}BENCHMARK_CPUPOWER)
+            find_program(C4_SUDO sudo)
+            find_program(C4_CPUPOWER cpupower)
+        endif()
     endif()
 endfunction()
 
