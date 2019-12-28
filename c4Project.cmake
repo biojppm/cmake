@@ -480,11 +480,13 @@ function(c4_require_subproject prefix subproject_name)
         endif()
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproject_name}) # root
         if(_REMOTE)
+            list(FILTER ARGN EXCLUDE REGEX REMOTE)  # remove REMOTE from ARGN
             _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_r}/src ${_r}/build)
             message(STATUS "${lcprefix}: importing subproject ${subproject_name} (REMOTE)... ${ARGN}")
             c4_import_remote_proj(${prefix} ${subproject_name} ${_r} ${ARGN})
             _c4_log("${lcprefix}: finished importing subproject ${subproject_name} (REMOTE=${${uprefix}${subproject_name}_SRC_DIR}).")
         elseif(_SUBDIRECTORY)
+            list(FILTER ARGN EXCLUDE REGEX SUBDIRECTORY)  # remove SUBDIRECTORY from ARGN
             _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
             message(STATUS "${lcprefix}: importing subproject ${subproject_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             c4_add_subproj(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
