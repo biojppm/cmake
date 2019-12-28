@@ -36,7 +36,7 @@ set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files 
 #------------------------------------------------------------------------------
 
 function(c4_set_var_tmp var value)
-    _c4_log("tmp-setting ${var} to ${value} (was ${${value}})")
+    _c4_log("tmp-setting ${var} to ${value} (was ${${var}})")
     set(_c4_old_val_${var} ${${var}})
     set(${var} ${value} PARENT_SCOPE)
 endfunction()
