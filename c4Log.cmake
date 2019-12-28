@@ -7,4 +7,8 @@ macro(_c4_log)
     endif()
 endmacro()
 
+macro(c4_log)
+    message(STATUS "c4: ${ARGN}")
+endmacro()
+
 endif(NOT _c4_log_included)

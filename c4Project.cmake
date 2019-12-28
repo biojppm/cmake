@@ -21,6 +21,7 @@ include(c4Doxygen)
 #------------------------------------------------------------------------------
 # define c4 project settings
 
+set(C4_EXTERN_DIR "$ENV{C4_EXTERN_DIR}" CACHE PATH "the directory where imported projects should be looked for (or cloned in when not found)")
 set(C4_LOG_ENABLED OFF CACHE BOOL "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
 set(C4_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to BUILD_SHARED_LIBS),INTERFACE,STATIC,SHARED,MODULE")
 set(C4_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
@@ -566,9 +567,11 @@ endfunction()
 # pass the needed arguments after dir.
 # These arguments will be forwarded to ExternalProject_Add()
 function(c4_import_remote_proj prefix name dir)
-    c4_download_remote_proj(${prefix} ${name} ${dir} ${ARGN})
-    c4_add_subproj(${prefix} ${name} ${dir}/src ${dir}/build)
+    set(srcdir_in_out "${dir}")
+    c4_download_remote_proj(${prefix} ${name} srcdir_in_out ${ARGN})
+    c4_add_subproj(${prefix} ${name} "${srcdir_in_out}" "${dir}/build")
 endfunction()
+
 
 function(c4_set_folder_remote_project_targets subfolder)
     foreach(target ${ARGN})
@@ -577,13 +580,45 @@ function(c4_set_folder_remote_project_targets subfolder)
 endfunction()
 
 
-function(c4_download_remote_proj prefix name dir)
-    if((EXISTS ${dir}/dl) AND (EXISTS ${dir}/dl/CMakeLists.txt))
+function(c4_download_remote_proj prefix name candidate_dir)
+    _c4_handle_prefix(${prefix})
+    set(dir ${${candidate_dir}})
+    set(cvar _${uprefix}_DOWNLOAD_${name}_LOCATION)
+    set(cval ${${cvar}})
+    #
+    # was it already downloaded in this project?
+    if(NOT ("${cval}" STREQUAL ""))
+        c4_log("${lcprefix}: ${name} was previously imported into this project: \"${_${uprefix}_DOWNLOAD_${name}_LOCATION}\"!")
+        set(${candidate_dir} "${cval}" PARENT_SCOPE)
         return()
     endif()
-    _c4_handle_prefix(${prefix})
-    message(STATUS "${lcprefix}: downloading ${name}...")
-    message(STATUS "${lcprefix}: downloading remote project ${name} to ${dir}/dl/CMakeLists.txt")
+    #
+    # try to find an existing version (downloaded by some other project)
+    set(out "${dir}")
+    _c4_find_cached_proj(${prefix} ${name} out)
+    if(NOT ("${out}" STREQUAL "${dir}"))
+        c4_log("${lcprefix}: using ${name} from \"${out}\"...")
+        set(${cvar} "${out}" CACHE INTERNAL "")
+        set(${candidate_dir} "${out}" PARENT_SCOPE)
+        return()
+    endif()
+    #
+    # no version was found; need to download.
+    c4_log("${lcprefix}: downloading ${name}: not in cache...")
+    # check for a global place to download into
+    set(srcdir)
+    _c4_get_cached_srcdir_global_extern(${prefix} ${name} srcdir)
+    if("${srcdir}" STREQUAL "")
+        # none found; default to the given dir
+        set(srcdir "${dir}/src")
+    endif()
+    #
+    # do it
+    #if((EXISTS ${dir}/dl) AND (EXISTS ${dir}/dl/CMakeLists.txt))
+    #    return()
+    #endif()
+    c4_log("${lcprefix}: downloading remote project: ${name} -> \"${srcdir}\" (dir=${dir})...")
+    #
     file(WRITE ${dir}/dl/CMakeLists.txt "
 cmake_minimum_required(VERSION 2.8.2)
 project(${lcprefix}-download-${name} NONE)
@@ -594,7 +629,7 @@ include(ExternalProject)
 
 ExternalProject_Add(${name}-dl
     ${ARGN}
-    SOURCE_DIR \"${dir}/src\"
+    SOURCE_DIR \"${srcdir}\"
     BINARY_DIR \"${dir}/build\"
     CONFIGURE_COMMAND \"\"
     BUILD_COMMAND \"\"
@@ -606,14 +641,56 @@ ExternalProject_Add(${name}-dl
         WORKING_DIRECTORY ${dir}/dl)
     execute_process(COMMAND ${CMAKE_COMMAND} --build .
         WORKING_DIRECTORY ${dir}/dl)
+    #
+    set(${candidate_dir} "${srcdir}" PARENT_SCOPE)
+    set(_${uprefix}_DOWNLOAD_${name}_LOCATION "${srcdir}" CACHE INTERNAL "")
+endfunction()
+
+
+# checks if the project was already downloaded. If it was, then dir_in_out is
+# changed to the directory where the project was found at.
+function(_c4_find_cached_proj prefix name dir_in_out)
+    _c4_handle_prefix(${prefix})
+    c4_log("${prefix}: downloading ${name}: searching cached project...")
+    #
+    # 1. search in the per-import variable, eg RYML_CACHE_DOWNLOAD_GTEST
+    string(TOUPPER ${name} uname)
+    set(var ${uprefix}CACHE_DOWNLOAD_${uname})
+    set(val "${${var}}")
+    if(NOT ("${val}" STREQUAL ""))
+        c4_log("${prefix}: downloading ${name}: searching in ${var}=${val}")
+        if(EXISTS "${val}")
+            c4_log("${prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
+            set(${dir_in_out} ${sav} PARENT_SCOPE)
+        endif()
+    endif()
+    #
+    # 2. search in the global directory (if there is one)
+    _c4_get_cached_srcdir_global_extern(${prefix} ${name} sav)
+    if(NOT ("${sav}" STREQUAL ""))
+        c4_log("${prefix}: downloading ${name}: searching in C4_EXTERN_DIR: ${sav}")
+        if(EXISTS "${sav}")
+            c4_log("${prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
+            set(${dir_in_out} ${sav} PARENT_SCOPE)
+        endif()
+    endif()
+endfunction()
+
+
+function(_c4_get_cached_srcdir_global_extern prefix name out)
+    set(${out} "" PARENT_SCOPE)
+    if("${C4_EXTERN_DIR}" STREQUAL "")
+        set(C4_EXTERN_DIR "$ENV{C4PROJ_EXTERN_DIR}")
+    endif()
+    if(NOT ("${C4_EXTERN_DIR}" STREQUAL ""))
+        set(${out} "${C4_EXTERN_DIR}/${name}" PARENT_SCOPE)
+    endif()
 endfunction()
 
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
-
 
 function(_c4_get_folder output importer_subproject subproject_name)
     _c4_get_subproject_property(${importer_subproject} FOLDER importer_folder)
