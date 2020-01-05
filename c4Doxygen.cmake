@@ -5,12 +5,12 @@ set(_c4_doxygen_included ON)
 include(c4Log)
 
 #------------------------------------------------------------------------------
-function(c4_setup_doxygen prefix umbrella_option)
-    cmake_dependent_option(${prefix}_BUILD_DOCS "Enable targets to build documentation for ${prefix}" ON "${umbrella_option}" OFF)
-    if(${prefix}_BUILD_DOCS)
+function(c4_setup_doxygen umbrella_option)
+    cmake_dependent_option(${_c4_uprefix}BUILD_DOCS "Enable targets to build documentation for ${prefix}" ON "${umbrella_option}" OFF)
+    if(${_c4_uprefix}BUILD_DOCS)
         find_package(Doxygen)
-        _c4_log("${prefix}: enabling documentation targets")
-    endif() # ${prefix}_SANITIZE
+        _c4_log("${_c4_prefix}: enabling documentation targets")
+    endif()
 endfunction()
 
 function(_c4_doxy_list_to_str var)
@@ -22,12 +22,10 @@ function(_c4_doxy_list_to_str var)
 endfunction()
 
 #------------------------------------------------------------------------------
-function(c4_add_doxygen prefix doc_name)
-    if(NOT ${prefix}_BUILD_DOCS)
+function(c4_add_doxygen doc_name)
+    if(NOT ${_c4_uprefix}BUILD_DOCS)
         return()
     endif()
-    string(TOUPPER ${prefix} ucprefix)
-    string(TOLOWER ${prefix} lcprefix)
     #
     set(opt0
         NO_CONFIGURE
@@ -46,7 +44,7 @@ function(c4_add_doxygen prefix doc_name)
     )
     cmake_parse_arguments("" "${opt0}" "${opt1}" "${optN}" ${ARGN})
     if(NOT _PROJ)
-        set(_PROJ ${ucprefix})
+        set(_PROJ ${_c4__c4_ucprefix})
     endif()
     if(NOT _DOXYFILE)
         set(_DOXYFILE ${CMAKE_CURRENT_LIST_DIR}/Doxyfile.in)
@@ -62,9 +60,9 @@ function(c4_add_doxygen prefix doc_name)
     _c4_doxy_list_to_str(_STRIP_FROM_PATH)
     #
     if("${doc_name}" MATCHES "^[Dd]oc")
-        set(tgt ${lcprefix}-${doc_name})
+        set(tgt ${_c4_lcprefix}-${doc_name})
     else()
-        set(tgt ${lcprefix}-doc-${doc_name})
+        set(tgt ${_c4_lcprefix}-doc-${doc_name})
     endif()
     #
     if(_NO_CONFIGURE)

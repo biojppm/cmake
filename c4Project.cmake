@@ -35,99 +35,12 @@ set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-function(c4_set_var_tmp var value)
-    _c4_log("tmp-setting ${var} to ${value} (was ${${var}})")
-    set(_c4_old_val_${var} ${${var}})
-    set(${var} ${value} PARENT_SCOPE)
-endfunction()
-
-function(c4_clean_var_tmp var)
-    _c4_log("cleaning ${var} to ${_c4_old_val_${var}} (tmp was ${${var}})")
-    set(${var} ${_c4_old_val_${var}} PARENT_SCOPE)
-endfunction()
-
-macro(c4_override opt val)
-    set(${opt} ${val} CACHE BOOL "" FORCE)
-endmacro()
-
-
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
-macro(c4_setg var val)
-    set(${var} ${val})
-    set(${var} ${val} PARENT_SCOPE)
-endmacro()
-
-
-macro(_c4_handle_prefix prefix)
-    string(TOUPPER "${prefix}" ucprefix)
-    string(TOLOWER "${prefix}" lcprefix)
-    set(ocprefix ${prefix})
-    set(oprefix ${prefix})
-    set(uprefix ${ucprefix})
-    set(lprefix ${lcprefix})
-    if(oprefix)
-        set(oprefix "${oprefix}_")
-    endif()
-    if(uprefix)
-        set(uprefix "${uprefix}_")
-    endif()
-    if(lprefix)
-        set(lprefix "${lprefix}-")
-    endif()
-endmacro(_c4_handle_prefix)
-
-
-macro(_show_pfx_vars)
-    print_var(prefix)
-    print_var(ucprefix)
-    print_var(lcprefix)
-    print_var(uprefix)
-    print_var(lprefix)
-endmacro()
-
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-
-macro(_c4_handle_arg uprefix argname default)
-     if("${_${argname}}" STREQUAL "")
-         set(_${argname} "${default}")
-     else()
-         c4_setg(_${argname} "${_${argname}}")
-     endif()
-endmacro()
-
-
-macro(_c4_handle_arg_or_fallback uprefix argname default)
-    if("${_${argname}}" STREQUAL "")
-        if("${${uprefix}${argname}}" STREQUAL "")
-            if("${C4_${argname}}" STREQUAL "")
-                _c4_log("${uprefix}: handle arg: _${argname}: picking default=${default}")
-                c4_setg(_${argname} "${default}")
-            else()
-                _c4_log("${uprefix}: handle arg: _${argname}: picking C4_${argname}=${C4_${argname}}")
-                c4_setg(_${argname} "${C4_${argname}}")
-            endif()
-        else()
-            _c4_log("${uprefix}: handle arg: _${argname}: picking ${uprefix}${argname}=${${uprefix}${argname}}")
-            c4_setg(_${argname} "${${uprefix}${argname}}")
-        endif()
-    else()
-        _c4_log("${uprefix}: handle arg: _${argname}: picking explicit value _${argname}=${_${argname}}")
-        #c4_setg(_${argname} "${_${argname}}")
-    endif()
-endmacro()
-
-
 
 function(c4_declare_project prefix)
-    _c4_handle_prefix(${prefix})
-    # zero-value macro arguments
-    set(opt0arg
+    set(opt0arg  # zero-value macro arguments
         STANDALONE # Declare that targets from this project MAY be
                    # compiled in standalone mode. In this mode, any
                    # designated libraries on which a target depends
@@ -143,8 +56,7 @@ function(c4_declare_project prefix)
                    # is only enabled if this project's option
                    # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
     )
-    # one-value macro arguments
-    set(opt1arg
+    set(opt1arg  # one-value macro arguments
         DESC
         AUTHOR
         URL
@@ -154,166 +66,118 @@ function(c4_declare_project prefix)
         CXX_STANDARD  # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD
     )
-    # multi-value macro arguments
-    set(optNarg
+    set(optNarg  # multi-value macro arguments
         AUTHORS
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
-    _c4_handle_arg(${uprefix} DESC "${lcprefix}")
-    _c4_handle_arg(${uprefix} AUTHOR "${lcprefix} author <author@domain.net>")
-    _c4_handle_arg(${uprefix} AUTHORS "${_AUTHOR}")
-    _c4_handle_arg(${uprefix} URL "")
-    _c4_handle_arg(${uprefix} MAJOR 0)
-    _c4_handle_arg(${uprefix} MINOR 0)
-    _c4_handle_arg(${uprefix} RELEASE 1)
-    c4_setg(${uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
-    _c4_handle_arg_or_fallback(${uprefix} CXX_STANDARD "11")
-
-    c4_set_proj_prop(${prefix} DESC         "${_DESC}")
-    c4_set_proj_prop(${prefix} AUTHOR       "${_AUTHOR}")
-    c4_set_proj_prop(${prefix} URL          "${_URL}")
-    c4_set_proj_prop(${prefix} MAJOR        "${_MAJOR}")
-    c4_set_proj_prop(${prefix} MINOR        "${_MINOR}")
-    c4_set_proj_prop(${prefix} RELEASE      "${_RELEASE}")
-    c4_set_proj_prop(${prefix} CXX_STANDARD "${_CXX_STANDARD}")
+    # get the several prefix flavors
+    string(TOUPPER "${prefix}" _c4_ucprefix) # ucprefix := upper case prefix
+    string(TOLOWER "${prefix}" _c4_lcprefix) # lcprefix := lower case prefix
+    set(_c4_uprefix  ${_c4_ucprefix})        # upper prefix: for variables
+    set(_c4_lprefix  ${_c4_lcprefix})        # lower prefix: for targets
+    set(_c4_prefix   ${prefix})              # prefix := original prefix
+    set(_c4_oprefix  ${prefix})              # oprefix := original prefix
+    set(_c4_ocprefix ${prefix})              # ocprefix := original case prefix
+    if(_c4_oprefix)
+        set(_c4_oprefix "${_c4_oprefix}_")
+    endif()
+    if(_c4_uprefix)
+        set(_c4_uprefix "${_c4_uprefix}_")
+    endif()
+    if(_c4_lprefix)
+        set(_c4_lprefix "${_c4_lprefix}-")
+    endif()
+    # export the prefixes
+    set(_c4_prefix   ${_c4_prefix}   PARENT_SCOPE)
+    set(_c4_oprefix  ${_c4_oprefix}  PARENT_SCOPE)
+    set(_c4_uprefix  ${_c4_uprefix}  PARENT_SCOPE)
+    set(_c4_lprefix  ${_c4_lprefix}  PARENT_SCOPE)
+    set(_c4_ocprefix ${_c4_ocprefix} PARENT_SCOPE)
+    set(_c4_ucprefix ${_c4_ucprefix} PARENT_SCOPE)
+    set(_c4_lcprefix ${_c4_lcprefix} PARENT_SCOPE)
+    #
+    _c4_handle_arg(DESC "${_c4_lcprefix}")
+    _c4_handle_arg(AUTHOR "${_c4_lcprefix} author <author@domain.net>")
+    _c4_handle_arg(AUTHORS "${_AUTHOR}")
+    _c4_handle_arg(URL "https://c4project.url")
+    _c4_handle_arg(MAJOR 0)
+    _c4_handle_arg(MINOR 0)
+    _c4_handle_arg(RELEASE 1)
+    c4_setg(${_c4_uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
+    _c4_handle_arg_or_fallback(CXX_STANDARD "11")
+    #
+    c4_set_proj_prop(DESC         "${_DESC}")
+    c4_set_proj_prop(AUTHOR       "${_AUTHOR}")
+    c4_set_proj_prop(URL          "${_URL}")
+    c4_set_proj_prop(MAJOR        "${_MAJOR}")
+    c4_set_proj_prop(MINOR        "${_MINOR}")
+    c4_set_proj_prop(RELEASE      "${_RELEASE}")
+    c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
 
     if("${_c4_curr_subproject}" STREQUAL "")
-        set(_c4_curr_subproject ${prefix})
-        set(_c4_curr_path ${prefix})
+        set(_c4_curr_subproject ${_c4_prefix})
+        set(_c4_curr_path ${_c4_prefix})
     endif()
 
     if(_STANDALONE)
-        option(${uprefix}STANDALONE
-            "Enable compilation of opting-in targets from ${lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)" ${_STANDALONE})
+        option(${_c4_uprefix}STANDALONE
+            "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)" ${_STANDALONE})
     endif()
-    option(${uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
-    cmake_dependent_option(${uprefix}BUILD_TESTS "build unit tests" ON ${uprefix}DEV OFF)
-    cmake_dependent_option(${uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${uprefix}DEV OFF)
-    c4_setup_coverage(${ucprefix})
-    c4_setup_valgrind(${ucprefix} ${uprefix}DEV)
-    setup_sanitize(${ucprefix} ${uprefix}DEV)
-    c4_setup_static_analysis(${ucprefix} ${uprefix}DEV)
 
-    # docs
-    c4_setup_doxygen(${ucprefix} ${uprefix}DEV)
+    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
+    cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
+    cmake_dependent_option(${_c4_uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${_c4_uprefix}DEV OFF)
+    c4_setup_coverage()
+    c4_setup_valgrind(${_c4_uprefix}DEV)
+    c4_setup_sanitize(${_c4_uprefix}DEV)
+    c4_setup_static_analysis(${_c4_uprefix}DEV)
+    c4_setup_doxygen(${_c4_uprefix}DEV)
 
     # CXX standard
-    c4_setg(${uprefix}CXX_STANDARD "${_CXX_STANDARD}")
+    c4_setg(${_c4_uprefix}CXX_STANDARD "${_CXX_STANDARD}")
     if(${_CXX_STANDARD})
         c4_set_cxx(${_CXX_STANDARD})
     endif()
 
     # these are default compilation flags
-    set(${uprefix}CXX_FLAGS "" CACHE STRING "compilation flags for ${prefix} targets")
+    set(${_c4_uprefix}CXX_FLAGS "" CACHE STRING "compilation flags for ${_c4_prefix} targets")
     # these are optional compilation flags
-    cmake_dependent_option(${uprefix}PEDANTIC "Compile in pedantic mode" ON ${uprefix}DEV OFF)
-    cmake_dependent_option(${uprefix}WERROR "Compile with warnings as errors" ON ${uprefix}DEV OFF)
-    cmake_dependent_option(${uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${uprefix}DEV OFF)
+    cmake_dependent_option(${_c4_uprefix}PEDANTIC "Compile in pedantic mode" ON ${_c4_uprefix}DEV OFF)
+    cmake_dependent_option(${_c4_uprefix}WERROR "Compile with warnings as errors" ON ${_c4_uprefix}DEV OFF)
+    cmake_dependent_option(${_c4_uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${_c4_uprefix}DEV OFF)
     # always append the optional flags to the project's flags
     set(addf)
-    if(${uprefix}PEDANTIC)
+    if(${_c4_uprefix}PEDANTIC)
         if(MSVC)
             set(addf "${addf} /W4")
         else()
-            set(addf "${addf} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal -fstrict-aliasing")
+            set(addf "${addf} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal")
         endif()
     endif()
-    if(${uprefix}WERROR)
+    if(${_c4_uprefix}WERROR)
         if(MSVC)
             set(addf "${addf} /WX")
         else()
             set(addf "${addf} -Werror -pedantic-errors")
         endif()
     endif()
-    if(${uprefix}STRICT_ALIASING)
+    if(${_c4_uprefix}STRICT_ALIASING)
         if(NOT MSVC)
             set(addf "${addf} -fstrict-aliasing")
         endif()
     endif()
-    set(${uprefix}CXX_FLAGS_OPT "${${uprefix}CXX_FLAGS_OPT} ${addf}" PARENT_SCOPE)
-
-    # the rest of this function defines convenient shorthands
-    # https://stackoverflow.com/questions/24225067/how-to-define-function-inside-macro-in-cmake
-    set(lcprefix_fwd_prefix_ ${lcprefix} PARENT_SCOPE)
-    # c4_require_subproject
-    macro(${lcprefix}_require_subproject)
-        c4_require_subproject(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_library
-    macro(${lcprefix}_add_library)
-        c4_add_library(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_executable
-    macro(${lcprefix}_add_executable)
-        c4_add_executable(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_import_remote_proj
-    macro(${lcprefix}_import_remote_proj)
-        c4_import_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_download_remote_proj
-    macro(${lcprefix}_download_remote_proj)
-        c4_download_remote_proj(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_install_target
-    macro(${lcprefix}_install_target)
-        c4_install_target(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_install_exports
-    macro(${lcprefix}_install_exports)
-        c4_install_exports(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_install_files
-    macro(${lcprefix}_install_files)
-        c4_install_files("${lcprefix_fwd_prefix_}" ${ARGN})
-    endmacro()
-    # c4_add_doxygen
-    macro(${lcprefix}_add_doxygen)
-        c4_add_doxygen(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_setup_testing
-    macro(${lcprefix}_setup_testing)
-        c4_setup_testing(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_test
-    macro(${lcprefix}_add_test)
-        c4_add_test(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_test_fail_build
-    macro(${lcprefix}_add_test_fail_build)
-        c4_add_test_fail_build(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_install_include_test
-    macro(${lcprefix}_add_install_include_test)
-        c4_add_install_include_test(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_install_link_test
-    macro(${lcprefix}_add_install_link_test)
-        c4_add_install_link_test(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_setup_benchmarking
-    macro(${lcprefix}_setup_benchmarking)
-        c4_setup_benchmarking(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_benchmark
-    macro(${lcprefix}_add_benchmark)
-        c4_add_benchmark(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
-    # c4_add_target_benchmark
-    macro(${lcprefix}_add_target_benchmark)
-        c4_add_target_benchmark(${lcprefix_fwd_prefix_} ${ARGN})
-    endmacro()
+    set(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT} ${addf}" PARENT_SCOPE)
 endfunction(c4_declare_project)
 
 
-function(c4_set_proj_prop prefix prop value)
-    set(C4PROJ_${prefix}_${prop} ${value})
+function(c4_set_proj_prop prop value)
+    set(C4PROJ_${_c4_prefix}_${prop} ${value})
 endfunction()
 
 
-function(c4_get_proj_prop prefix prop var)
-    set(${var} ${C4PROJ_${prefix}_${prop}} PARENT_SCOPE)
+function(c4_get_proj_prop prop var)
+    set(${var} ${C4PROJ_${_c4_prefix}_${prop}} PARENT_SCOPE)
 endfunction()
 
 
@@ -328,9 +192,83 @@ function(c4_get_target_prop target prop var)
 endfunction()
 
 
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+macro(_c4_show_pfx_vars)
+    if(NOT ("${ARGN}" STREQUAL ""))
+        message(STATUS "prefix vars: ${ARGN}")
+    endif()
+    print_var(_c4_prefix)
+    print_var(_c4_ocprefix)
+    print_var(_c4_ucprefix)
+    print_var(_c4_lcprefix)
+    print_var(_c4_oprefix)
+    print_var(_c4_uprefix)
+    print_var(_c4_lprefix)
+endmacro()
+
+
+macro(_c4_handle_arg argname default)
+     if("${_${argname}}" STREQUAL "")
+         set(_${argname} "${default}")
+     else()
+         c4_setg(_${argname} "${_${argname}}")
+     endif()
+endmacro()
+
+
+macro(_c4_handle_arg_or_fallback argname default)
+    if("${_${argname}}" STREQUAL "")
+        if("${${_c4_uprefix}${argname}}" STREQUAL "")
+            if("${C4_${argname}}" STREQUAL "")
+                _c4_log("${_c4_prefix}: handle arg: _${argname}: picking default=${default}")
+                c4_setg(_${argname} "${default}")
+            else()
+                _c4_log("${_c4_prefix}: handle arg: _${argname}: picking C4_${argname}=${C4_${argname}}")
+                c4_setg(_${argname} "${C4_${argname}}")
+            endif()
+        else()
+            _c4_log("${_c4_prefix}: handle arg: _${argname}: picking ${uprefix}${argname}=${${uprefix}${argname}}")
+            c4_setg(_${argname} "${${_c4_uprefix}${argname}}")
+        endif()
+    else()
+        _c4_log("${_c4_prefix}: handle arg: _${argname}: picking explicit value _${argname}=${_${argname}}")
+        #c4_setg(_${argname} "${_${argname}}")
+    endif()
+endmacro()
+
+
+function(c4_set_var_tmp var value)
+    _c4_log("tmp-setting ${var} to ${value} (was ${${value}})")
+    set(_c4_old_val_${var} ${${var}})
+    set(${var} ${value} PARENT_SCOPE)
+endfunction()
+
+function(c4_clean_var_tmp var)
+    _c4_log("cleaning ${var} to ${_c4_old_val_${var}} (tmp was ${${var}})")
+    set(${var} ${_c4_old_val_${var}} PARENT_SCOPE)
+endfunction()
+
+macro(c4_override opt val)
+    set(${opt} ${val} CACHE BOOL "" FORCE)
+endmacro()
+
+
+macro(c4_setg var val)
+    set(${var} ${val})
+    set(${var} ${val} PARENT_SCOPE)
+endmacro()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
 # WIP, under construction
-function(c4_proj_get_version prefix dir)
-    _c4_handle_prefix(${prefix})
+function(c4_proj_get_version dir)
 
     if("${dir}" STREQUAL "")
         set(dir ${CMAKE_CURRENT_LIST_DIR})
@@ -341,14 +279,14 @@ function(c4_proj_get_version prefix dir)
     # Get the current working branch
     execute_process(COMMAND git rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE ${uprefix}GIT_BRANCH
+        OUTPUT_VARIABLE ${_c4_uprefix}GIT_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
     # Get the latest abbreviated commit hash of the working branch
     execute_process(COMMAND git log -1 --format=%h
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE ${uprefix}GIT_COMMIT_HASH
+        OUTPUT_VARIABLE ${_c4_uprefix}GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
@@ -435,17 +373,15 @@ endmacro()
 #
 # # c4opt requires subproject c4core, as a subdirectory. c4core will be used
 # # as a separate library
-# c4_require_subproject(c4opt
-#     c4core
+# c4_require_subproject(c4core
 #     SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core
 #     )
 #
 # # c4opt requires subproject c4core, as a remote proj
-# c4_require_subproject(c4opt
-#     c4core
+# c4_require_subproject(c4core
 #     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
 #     )
-function(c4_require_subproject prefix subproject_name)
+function(c4_require_subproject subproject_name)
     set(options0arg
         INTERFACE
         EXCLUDE_FROM_ALL
@@ -458,53 +394,52 @@ function(c4_require_subproject prefix subproject_name)
     )
     cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
     #
-    _c4_handle_prefix(${prefix})
-    list(APPEND _${uprefix}_deps ${subproject_name})
-    c4_setg(_${uprefix}_deps ${_${uprefix}_deps})
+    list(APPEND _${_c4_uprefix}_deps ${subproject_name})
+    c4_setg(_${_c4_uprefix}_deps ${_${_c4_uprefix}_deps})
 
     _c4_log("-----------------------------------------------")
-    _c4_log("${lcprefix}: requires subproject ${subproject_name}!")
+    _c4_log("${_c4_lcprefix}: requires subproject ${subproject_name}!")
 
     _c4_get_subproject_property(${subproject_name} AVAILABLE _available)
     if(_available)
-        _c4_log("${lcprefix}: required subproject ${subproject_name} was already imported:")
+        _c4_log("${_c4_lcprefix}: required subproject ${subproject_name} was already imported:")
         _c4_log_subproject(${subproject_name})
     else() #elseif(NOT _${subproject_name}_available)
-        _c4_log("${lcprefix}: required subproject ${subproject_name} is unknown. Importing...")
+        _c4_log("${_c4_lcprefix}: required subproject ${subproject_name} is unknown. Importing...")
         if(_INTERFACE)
-            _c4_log("${lcprefix}: ${subproject_name} is explicitly required as INTERFACE")
+            _c4_log("${_c4_lcprefix}: ${subproject_name} is explicitly required as INTERFACE")
             c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
-        #elseif(${uprefix}STANDALONE)
-            #_c4_log("${lcprefix}: using ${uprefix}STANDALONE, so import ${subproject_name} as INTERFACE")
+        #elseif(${_c4_uprefix}STANDALONE)
+            #_c4_log("${_c4_lcprefix}: using ${_c4_uprefix}STANDALONE, so import ${subproject_name} as INTERFACE")
             #c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
         endif()
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproject_name}) # root
         if(_REMOTE)
             list(FILTER ARGN EXCLUDE REGEX REMOTE)  # remove REMOTE from ARGN
-            _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_r}/src ${_r}/build)
-            message(STATUS "${lcprefix}: importing subproject ${subproject_name} (REMOTE)... ${ARGN}")
-            c4_import_remote_proj(${prefix} ${subproject_name} ${_r} ${ARGN})
-            _c4_log("${lcprefix}: finished importing subproject ${subproject_name} (REMOTE=${${uprefix}${subproject_name}_SRC_DIR}).")
+            _c4_mark_subproject_imported(${_c4_lcprefix} ${subproject_name} ${_r}/src ${_r}/build)
+            c4_log("${_c4_lcprefix}: importing subproject ${subproject_name} (REMOTE)... ${ARGN}")
+            c4_import_remote_proj(${subproject_name} ${_r} ${ARGN})
+            _c4_log("${_c4_lcprefix}: finished importing subproject ${subproject_name} (REMOTE=${${_c4_uprefix}${subproject_name}_SRC_DIR}).")
         elseif(_SUBDIRECTORY)
             list(FILTER ARGN EXCLUDE REGEX SUBDIRECTORY)  # remove SUBDIRECTORY from ARGN
-            _c4_mark_subproject_imported(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
-            message(STATUS "${lcprefix}: importing subproject ${subproject_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
-            c4_add_subproj(${lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
-            _c4_log("${lcprefix}: finished importing subproject ${subproject_name} (SUBDIRECTORY=${${uprefix}${subproject_name}_SRC_DIR}).")
+            _c4_mark_subproject_imported(${_c4_lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
+            c4_log("${_c4_lcprefix}: importing subproject ${subproject_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
+            c4_add_subproj(${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
+            _c4_log("${_c4_lcprefix}: finished importing subproject ${subproject_name} (SUBDIRECTORY=${${_c4_uprefix}${subproject_name}_SRC_DIR}).")
         else()
             message(FATAL_ERROR "subproject type must be either REMOTE or SUBDIRECTORY")
         endif()
-        if(_INTERFACE)# OR ${uprefix}STANDALONE)
+        if(_INTERFACE)# OR ${_c4_uprefix}STANDALONE)
             c4_clean_var_tmp(C4_LIBRARY_TYPE)
         endif()
     endif()
 endfunction(c4_require_subproject)
 
 
-function(c4_add_subproj prefix proj dir bindir)
+function(c4_add_subproj proj dir bindir)
     if("${_c4_curr_subproject}" STREQUAL "")
-        set(_c4_curr_subproject ${prefix})
-        set(_c4_curr_path ${prefix})
+        set(_c4_curr_subproject ${_c4_prefix})
+        set(_c4_curr_path ${_c4_prefix})
     endif()
     set(prev_subproject ${_c4_curr_subproject})
     set(prev_path ${_c4_curr_path})
@@ -568,10 +503,10 @@ endfunction()
 # to specify url, repo, tag, or branch,
 # pass the needed arguments after dir.
 # These arguments will be forwarded to ExternalProject_Add()
-function(c4_import_remote_proj prefix name dir)
+function(c4_import_remote_proj name dir)
     set(srcdir_in_out "${dir}")
-    c4_download_remote_proj(${prefix} ${name} srcdir_in_out ${ARGN})
-    c4_add_subproj(${prefix} ${name} "${srcdir_in_out}" "${dir}/build")
+    c4_download_remote_proj(${name} srcdir_in_out ${ARGN})
+    c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build")
 endfunction()
 
 
@@ -582,34 +517,33 @@ function(c4_set_folder_remote_project_targets subfolder)
 endfunction()
 
 
-function(c4_download_remote_proj prefix name candidate_dir)
-    _c4_handle_prefix(${prefix})
+function(c4_download_remote_proj name candidate_dir)
     set(dir ${${candidate_dir}})
-    set(cvar _${uprefix}_DOWNLOAD_${name}_LOCATION)
+    set(cvar _${_c4_uprefix}_DOWNLOAD_${name}_LOCATION)
     set(cval ${${cvar}})
     #
     # was it already downloaded in this project?
     if(NOT ("${cval}" STREQUAL ""))
-        c4_log("${lcprefix}: ${name} was previously imported into this project: \"${_${uprefix}_DOWNLOAD_${name}_LOCATION}\"!")
+        c4_log("${_c4_lcprefix}: ${name} was previously imported into this project: \"${_${_c4_uprefix}_DOWNLOAD_${name}_LOCATION}\"!")
         set(${candidate_dir} "${cval}" PARENT_SCOPE)
         return()
     endif()
     #
     # try to find an existing version (downloaded by some other project)
     set(out "${dir}")
-    _c4_find_cached_proj(${prefix} ${name} out)
+    _c4_find_cached_proj(${name} out)
     if(NOT ("${out}" STREQUAL "${dir}"))
-        c4_log("${lcprefix}: using ${name} from \"${out}\"...")
+        c4_log("${_c4_lcprefix}: using ${name} from \"${out}\"...")
         set(${cvar} "${out}" CACHE INTERNAL "")
         set(${candidate_dir} "${out}" PARENT_SCOPE)
         return()
     endif()
     #
     # no version was found; need to download.
-    c4_log("${lcprefix}: downloading ${name}: not in cache...")
+    c4_log("${_c4_lcprefix}: downloading ${name}: not in cache...")
     # check for a global place to download into
     set(srcdir)
-    _c4_get_cached_srcdir_global_extern(${prefix} ${name} srcdir)
+    _c4_get_cached_srcdir_global_extern(${name} srcdir)
     if("${srcdir}" STREQUAL "")
         # none found; default to the given dir
         set(srcdir "${dir}/src")
@@ -619,11 +553,11 @@ function(c4_download_remote_proj prefix name candidate_dir)
     #if((EXISTS ${dir}/dl) AND (EXISTS ${dir}/dl/CMakeLists.txt))
     #    return()
     #endif()
-    c4_log("${lcprefix}: downloading remote project: ${name} -> \"${srcdir}\" (dir=${dir})...")
+    c4_log("${_c4_lcprefix}: downloading remote project: ${name} -> \"${srcdir}\" (dir=${dir})...")
     #
     file(WRITE ${dir}/dl/CMakeLists.txt "
 cmake_minimum_required(VERSION 2.8.2)
-project(${lcprefix}-download-${name} NONE)
+project(${_c4_lcprefix}-download-${name} NONE)
 
 # this project only downloads ${name}
 # (ie, no configure, build or install step)
@@ -645,41 +579,40 @@ ExternalProject_Add(${name}-dl
         WORKING_DIRECTORY ${dir}/dl)
     #
     set(${candidate_dir} "${srcdir}" PARENT_SCOPE)
-    set(_${uprefix}_DOWNLOAD_${name}_LOCATION "${srcdir}" CACHE INTERNAL "")
+    set(_${_c4_uprefix}_DOWNLOAD_${name}_LOCATION "${srcdir}" CACHE INTERNAL "")
 endfunction()
 
 
 # checks if the project was already downloaded. If it was, then dir_in_out is
 # changed to the directory where the project was found at.
-function(_c4_find_cached_proj prefix name dir_in_out)
-    _c4_handle_prefix(${prefix})
-    c4_log("${prefix}: downloading ${name}: searching cached project...")
+function(_c4_find_cached_proj name dir_in_out)
+    c4_log("${_c4_prefix}: downloading ${name}: searching cached project...")
     #
     # 1. search in the per-import variable, eg RYML_CACHE_DOWNLOAD_GTEST
     string(TOUPPER ${name} uname)
-    set(var ${uprefix}CACHE_DOWNLOAD_${uname})
+    set(var ${_c4_uprefix}CACHE_DOWNLOAD_${uname})
     set(val "${${var}}")
     if(NOT ("${val}" STREQUAL ""))
-        c4_log("${prefix}: downloading ${name}: searching in ${var}=${val}")
+        c4_log("${_c4_prefix}: downloading ${name}: searching in ${var}=${val}")
         if(EXISTS "${val}")
-            c4_log("${prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
+            c4_log("${_c4_prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
             set(${dir_in_out} ${sav} PARENT_SCOPE)
         endif()
     endif()
     #
     # 2. search in the global directory (if there is one)
-    _c4_get_cached_srcdir_global_extern(${prefix} ${name} sav)
+    _c4_get_cached_srcdir_global_extern(${name} sav)
     if(NOT ("${sav}" STREQUAL ""))
-        c4_log("${prefix}: downloading ${name}: searching in C4_EXTERN_DIR: ${sav}")
+        c4_log("${_c4_prefix}: downloading ${name}: searching in C4_EXTERN_DIR: ${sav}")
         if(EXISTS "${sav}")
-            c4_log("${prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
+            c4_log("${_c4_prefix}: downloading ${name}: picked ${sav} instead of ${${dir_in_out}}")
             set(${dir_in_out} ${sav} PARENT_SCOPE)
         endif()
     endif()
 endfunction()
 
 
-function(_c4_get_cached_srcdir_global_extern prefix name out)
+function(_c4_get_cached_srcdir_global_extern name out)
     set(${out} "" PARENT_SCOPE)
     if("${C4_EXTERN_DIR}" STREQUAL "")
         set(C4_EXTERN_DIR "$ENV{C4PROJ_EXTERN_DIR}")
@@ -732,21 +665,20 @@ endfunction()
 #------------------------------------------------------------------------------
 
 # a convenience alias to c4_add_target()
-function(c4_add_executable prefix name)
-    c4_add_target(${prefix} ${name} EXECUTABLE ${ARGN})
+function(c4_add_executable name)
+    c4_add_target(${name} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
 
 # a convenience alias to c4_add_target()
-function(c4_add_library prefix name)
-    c4_add_target(${prefix} ${name} LIBRARY ${ARGN})
+function(c4_add_library name)
+    c4_add_target(${name} LIBRARY ${ARGN})
 endfunction(c4_add_library)
 
 
-# example: c4_add_target(RYML ryml LIBRARY SOURCES ${SRC})
-function(c4_add_target prefix name)
-    _c4_handle_prefix(${prefix})
-    _c4_log("${lcprefix}: adding target: ${name}: ${ARGN}")
+# example: c4_add_target(ryml LIBRARY SOURCES ${SRC})
+function(c4_add_target name)
+    _c4_log("${_c4_lcprefix}: adding target: ${name}: ${ARGN}")
     set(opt0arg
         LIBRARY     # the target is a library
         EXECUTABLE  # the target is an executable
@@ -764,7 +696,7 @@ function(c4_add_target prefix name)
     )
     set(optnarg
         INCORPORATE  # incorporate these libraries into this target,
-                     # subject to ${uprefix}STANDALONE and C4_STANDALONE
+                     # subject to ${_c4_uprefix}STANDALONE and C4_STANDALONE
         SOURCES  PUBLIC_SOURCES  INTERFACE_SOURCES  PRIVATE_SOURCES
         HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
         INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
@@ -782,7 +714,7 @@ function(c4_add_target prefix name)
         message(FATAL_ERROR "must be either LIBRARY or EXECUTABLE")
     endif()
 
-    _c4_handle_arg_or_fallback(${uprefix} SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+    _c4_handle_arg_or_fallback(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     function(c4_transform_to_full_path list all)
         set(l)
         foreach(f ${${list}})
@@ -807,9 +739,9 @@ function(c4_add_target prefix name)
 
     create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${allsrc}")
 
-    if(NOT ${uprefix}SANITIZE_ONLY)
+    if(NOT ${_c4_uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
-            _c4_log("${lcprefix}: adding executable: ${name}")
+            _c4_log("${_c4_lcprefix}: adding executable: ${name}")
             if(WIN32)
                 if(${_WIN32})
                     list(APPEND _MORE_ARGS WIN32)
@@ -820,25 +752,25 @@ function(c4_add_target prefix name)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_LIBRARY})
-            _c4_log("${lcprefix}: adding library: ${name}")
+            _c4_log("${_c4_lcprefix}: adding library: ${name}")
             set(_blt ${C4_LIBRARY_TYPE})
             if(NOT "${_LIBRARY_TYPE}" STREQUAL "")
                 set(_blt ${_LIBRARY_TYPE})
             endif()
             #
             if("${_blt}" STREQUAL "INTERFACE")
-                _c4_log("${lcprefix}: adding interface library ${name}")
+                _c4_log("${_c4_lcprefix}: adding interface library ${name}")
                 add_library(${name} INTERFACE)
                 set(src_mode INTERFACE)
                 set(tgt_type INTERFACE)
                 set(compiled_target OFF)
             else()
                 if(NOT ("${_blt}" STREQUAL ""))
-                    _c4_log("${lcprefix}: adding library ${name} with type ${_blt}")
+                    _c4_log("${_c4_lcprefix}: adding library ${name} with type ${_blt}")
                     add_library(${name} ${_blt} ${_MORE_ARGS})
                 else()
                     # obey BUILD_SHARED_LIBS (ie, either static or shared library)
-                    _c4_log("${lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
+                    _c4_log("${_c4_lcprefix}: adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
                     add_library(${name} ${_MORE_ARGS})
                 endif()
                 # libraries
@@ -849,72 +781,72 @@ function(c4_add_target prefix name)
         endif(${_EXECUTABLE})
 
         if(src_mode STREQUAL "PUBLIC")
-            c4_add_target_sources(${prefix} ${name}
+            c4_add_target_sources(${name}
                 PUBLIC    "${_SOURCES};${_HEADERS};${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif(src_mode STREQUAL "INTERFACE")
-            c4_add_target_sources(${prefix} ${name}
+            c4_add_target_sources(${name}
                 PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_SOURCES};${_HEADERS};${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif(src_mode STREQUAL "PRIVATE")
-            c4_add_target_sources(${prefix} ${name}
+            c4_add_target_sources(${name}
                 PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_SOURCES};${_HEADERS};${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif()
-            message(FATAL_ERROR "${lcprefix}: adding sources for target ${target} invalid source mode")
+            message(FATAL_ERROR "${_c4_lcprefix}: adding sources for target ${target} invalid source mode")
         endif()
         set_target_properties(${name} PROPERTIES C4_SOURCE_ROOT "${_SOURCE_ROOT}")
 
         if(_INC_DIRS)
-            _c4_log("${lcprefix}: ${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
+            _c4_log("${_c4_lcprefix}: ${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
             target_include_directories(${name} "${tgt_type}" ${_INC_DIRS})
         endif()
         if(_PUBLIC_INC_DIRS)
-            _c4_log("${lcprefix}: ${name}: adding PUBLIC include dirs ${_PUBLIC_INC_DIRS}")
+            _c4_log("${_c4_lcprefix}: ${name}: adding PUBLIC include dirs ${_PUBLIC_INC_DIRS}")
             target_include_directories(${name} PUBLIC ${_PUBLIC_INC_DIRS})
         endif()
         if(_INTERFACE_INC_DIRS)
-            _c4_log("${lcprefix}: ${name}: adding INTERFACE include dirs ${_INTERFACE_INC_DIRS}")
+            _c4_log("${_c4_lcprefix}: ${name}: adding INTERFACE include dirs ${_INTERFACE_INC_DIRS}")
             target_include_directories(${name} INTERFACE ${_INTERFACE_INC_DIRS})
         endif()
         if(_PRIVATE_INC_DIRS)
-            _c4_log("${lcprefix}: ${name}: adding PRIVATE include dirs ${_PRIVATE_INC_DIRS}")
+            _c4_log("${_c4_lcprefix}: ${name}: adding PRIVATE include dirs ${_PRIVATE_INC_DIRS}")
             target_include_directories(${name} PRIVATE ${_PRIVATE_INC_DIRS})
         endif()
 
         if(_LIBS)
-            _c4_link_with_libs(${prefix} ${name} "${tgt_type}" "${_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${name} "${tgt_type}" "${_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PUBLIC_LIBS)
-            _c4_link_with_libs(${prefix} ${name} PUBLIC "${_PUBLIC_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${name} PUBLIC "${_PUBLIC_LIBS}" "${_INCORPORATE}")
         endif()
         if(_INTERFACE_LIBS)
-            _c4_link_with_libs(${prefix} ${name} INTERFACE "${_INTERFACE_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${name} INTERFACE "${_INTERFACE_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PRIVATE_LIBS)
-            _c4_link_with_libs(${prefix} ${name} PRIVATE "${_PRIVATE_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${name} PRIVATE "${_PRIVATE_LIBS}" "${_INCORPORATE}")
         endif()
 
         if(compiled_target)
             c4_target_inherit_cxx_standard(${name})
             _c4_set_target_folder(${name} "${_FOLDER}")
-            if(${uprefix}CXX_FLAGS OR ${uprefix}C_FLAGS OR ${uprefix}CXX_FLAGS_OPT)
-                #print_var(${uprefix}CXX_FLAGS)
+            if(${_c4_uprefix}CXX_FLAGS OR ${_c4_uprefix}C_FLAGS OR ${_c4_uprefix}CXX_FLAGS_OPT)
+                #print_var(${_c4_uprefix}CXX_FLAGS)
                 set_target_properties(${name} PROPERTIES
-                    COMPILE_FLAGS ${${uprefix}CXX_FLAGS} ${${uprefix}C_FLAGS} ${${uprefix}CXX_FLAGS_OPT})
+                    COMPILE_FLAGS ${${_c4_uprefix}CXX_FLAGS} ${${_c4_uprefix}C_FLAGS} ${${_c4_uprefix}CXX_FLAGS_OPT})
             endif()
-            if(${uprefix}LINT)
-                c4_static_analysis_target(${ucprefix} ${name} "${_FOLDER}" lint_targets)
+            if(${_c4_uprefix}LINT)
+                c4_static_analysis_target(${name} "${_FOLDER}" lint_targets)
             endif()
         endif(compiled_target)
-    endif(NOT ${uprefix}SANITIZE_ONLY)
+    endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
-        if(_SANITIZE OR ${uprefix}SANITIZE)
-            sanitize_target(${name} ${lcprefix}
+        if(_SANITIZE OR ${_c4_uprefix}SANITIZE)
+            c4_sanitize_target(${name}
                 ${_what}   # LIBRARY or EXECUTABLE
                 SOURCES ${allsrc}
                 INC_DIRS ${_INC_DIRS} ${_PUBLIC_INC_DIRS} ${_INTERFACE_INC_DIRS} ${_PRIVATE_INC_DIRS}
@@ -924,7 +856,7 @@ function(c4_add_target prefix name)
                 )
         endif()
 
-        if(NOT ${uprefix}SANITIZE_ONLY)
+        if(NOT ${_c4_uprefix}SANITIZE_ONLY)
             list(INSERT san_targets 0 ${name})
         endif()
 
@@ -950,7 +882,7 @@ function(c4_add_target prefix name)
                         COMMENT "${name}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${name}"
                         )
                 else()
-                    message(WARNING "dll required by ${prefix}/${name} was not found, so cannot copy: ${_dll}")
+                    message(WARNING "dll required by ${_c4_prefix}/${name} was not found, so cannot copy: ${_dll}")
                 endif()
             endforeach()
         endif()
@@ -958,35 +890,33 @@ function(c4_add_target prefix name)
 endfunction() # add_target
 
 
-function(_c4_link_with_libs prefix target link_type libs incorporate)
-    _c4_handle_prefix(${prefix})
+function(_c4_link_with_libs target link_type libs incorporate)
     foreach(lib ${libs})
         if(incorporate AND (
-                    (C4_STANDALONE OR ${uprefix}STANDALONE)
+                    (C4_STANDALONE OR ${_c4_uprefix}STANDALONE)
                     AND
                     (NOT (${lib} IN_LIST incorporate))))
-            _c4_log("${lcprefix}: -----> ${target} ${link_type} incorporating lib ${lib}")
-            _c4_incorporate_lib(${prefix} ${target} ${link_type} ${lib})
+            _c4_log("${_c4_lcprefix}: -----> ${target} ${link_type} incorporating lib ${lib}")
+            _c4_incorporate_lib(${target} ${link_type} ${lib})
         else()
-            _c4_log("${lcprefix}: ${target} ${link_type} linking with lib ${lib}")
+            _c4_log("${_c4_lcprefix}: ${target} ${link_type} linking with lib ${lib}")
             target_link_libraries(${target} ${link_type} ${lib})
         endif()
     endforeach()
 endfunction()
 
 
-function(_c4_incorporate_lib prefix target link_type splib)
-    _c4_handle_prefix(${prefix})
+function(_c4_incorporate_lib target link_type splib)
     #
     _c4_get_tgt_prop(splib_src ${splib} SOURCES)
     if(splib_src)
         create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${splib_src}")
-        c4_add_target_sources(${prefix} ${target} PRIVATE ${splib_src})
+        c4_add_target_sources(${target} PRIVATE ${splib_src})
     endif()
     #
     _c4_get_tgt_prop(splib_isrc ${splib} INTERFACE_SOURCES)
     if(splib_isrc)
-        c4_add_target_sources(${prefix} ${target} INTERFACE ${splib_isrc})
+        c4_add_target_sources(${target} INTERFACE ${splib_isrc})
     endif()
     #
     #
@@ -1027,8 +957,7 @@ endfunction()
 # see: https://cliutils.gitlab.io/modern-cmake/
 
 
-function(c4_install_target prefix target)
-    _c4_handle_prefix(${prefix})
+function(c4_install_target target)
     # zero-value macro arguments
     set(opt0arg
     )
@@ -1041,10 +970,10 @@ function(c4_install_target prefix target)
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
-    _c4_handle_arg(${uprefix} EXPORT "${prefix}-export")
+    _c4_handle_arg(EXPORT "${_c4_prefix}-export")
     #
-    _c4_setup_install_vars(${prefix})
-    # TODO: don't forget to install DLLs: _${uprefix}_${target}_DLLS
+    _c4_setup_install_vars()
+    # TODO: don't forget to install DLLs: _${_c4_uprefix}_${target}_DLLS
     install(TARGETS ${target}
         EXPORT ${_EXPORT}
         RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
@@ -1054,20 +983,20 @@ function(c4_install_target prefix target)
         INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
         )
     #
-    c4_install_sources(${prefix} ${target} include)
+    c4_install_sources(${target} include)
     #
-    set(l ${${prefix}_TARGETS})
+    set(l ${${_c4_prefix}_TARGETS})
     list(APPEND l ${target})
-    set(${prefix}_TARGETS ${l} PARENT_SCOPE)
+    set(${_c4_prefix}_TARGETS ${l} PARENT_SCOPE)
     #
 #    # pkgconfig (WIP)
 #    set(pc ${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/${target}.pc)
 #    file(WRITE ${pc} "# pkg-config: ${target}
 #
 #prefix=\"${CMAKE_INSTALL_PREFIX}\"
-#exec_prefix=\"\${prefix}\"
-#libdir=\"\${prefix}/${CMAKE_INSTALL_LIBDIR}\"
-#includedir=\"\${prefix}/include\"
+#exec_prefix=\"\${_c4_prefix}\"
+#libdir=\"\${_c4_prefix}/${CMAKE_INSTALL_LIBDIR}\"
+#includedir=\"\${_c4_prefix}/include\"
 #
 #Name: ${target}
 #Description: A library for xyzzying frobnixes
@@ -1079,13 +1008,12 @@ function(c4_install_target prefix target)
 #Libs: -L\"${libdir}\" -lmylibrary
 #Libs.private: -L\"${libdir}\" -lmylibrary @PKGCONF_LIBS_PRIV@
 #")
-#    _c4_setup_install_vars(${prefix})
+#    _c4_setup_install_vars()
 #    install(FILES ${pc} DESTINATION "${_ARCHIVE_INSTALL_DIR}/pkgconfig/")
 endfunction()
 
 
-function(c4_install_exports prefix)
-    _c4_handle_prefix(${prefix})
+function(c4_install_exports)
     # zero-value macro arguments
     set(opt0arg
     )
@@ -1101,13 +1029,13 @@ function(c4_install_exports prefix)
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
-    _c4_handle_arg(${uprefix} PREFIX    "${prefix}")
-    _c4_handle_arg(${uprefix} TARGET    "${prefix}-export")
-    _c4_handle_arg(${uprefix} NAMESPACE "${prefix}::")
+    _c4_handle_arg(PREFIX    "${_c4_prefix}")
+    _c4_handle_arg(TARGET    "${_c4_prefix}-export")
+    _c4_handle_arg(NAMESPACE "${_c4_prefix}::")
     #
-    _c4_setup_install_vars(${prefix})
+    _c4_setup_install_vars()
     #
-    list(GET ${prefix}_TARGETS 0 target)
+    list(GET ${_c4_prefix}_TARGETS 0 target)
     set(exported_target "${_NAMESPACE}${target}")
     set(targets_file "${_PREFIX}Targets.cmake")
     #
@@ -1141,11 +1069,11 @@ find_dependency(${d} REQUIRED)
         # the module below has nice docs in it; do read them
         # to understand the macro calls below
         include(CMakePackageConfigHelpers)
-        set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${case}/${lcprefix}Config.cmake)
-        set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${case}/${lcprefix}ConfigVersion.cmake)
+        set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${case}/${_PREFIX}Config.cmake)
+        set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${case}/${_PREFIX}ConfigVersion.cmake)
         #
         file(WRITE ${cfg}.in "${deps}
-set(${uprefix}VERSION ${${uprefix}VERSION})
+set(${_c4_uprefix}VERSION ${${_c4_uprefix}VERSION})
 
 @PACKAGE_INIT@
 
@@ -1160,11 +1088,11 @@ endif()
 get_filename_component(PACKAGE_PREFIX_DIR
     \"\${PACKAGE_PREFIX_DIR}/${cfg_dst_rel}\" ABSOLUTE)
 
-set_and_check(${uprefix}INCLUDE_DIR \"@PACKAGE__INCLUDE_INSTALL_DIR@\")
-set_and_check(${uprefix}LIB_DIR \"@PACKAGE__LIBRARY_INSTALL_DIR@\")
-#set_and_check(${uprefix}SYSCONFIG_DIR \"@PACKAGE__SYSCONFIG_INSTALL_DIR@\")
+set_and_check(${_c4_uprefix}INCLUDE_DIR \"@PACKAGE__INCLUDE_INSTALL_DIR@\")
+set_and_check(${_c4_uprefix}LIB_DIR \"@PACKAGE__LIBRARY_INSTALL_DIR@\")
+#set_and_check(${_c4_uprefix}SYSCONFIG_DIR \"@PACKAGE__SYSCONFIG_INSTALL_DIR@\")
 
-check_required_components(${lcprefix})
+check_required_components(${_c4_lcprefix})
 ")
         configure_package_config_file(${cfg}.in ${cfg}
             INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}"  # defaults to CMAKE_INSTALL_PREFIX
@@ -1178,7 +1106,7 @@ check_required_components(${lcprefix})
         )
         write_basic_package_version_file(
             ${cfg_ver}
-            VERSION ${${uprefix}VERSION}
+            VERSION ${${_c4_uprefix}VERSION}
             COMPATIBILITY AnyNewerVersion
         )
         install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst})
@@ -1211,26 +1139,25 @@ check_required_components(${lcprefix})
     elseif(APPLE)
         message(FATAL_ERROR "not implemented")
     elseif(UNIX)
-        __c4_install_exports(${_ARCHIVE_INSTALL_DIR}/cmake/${prefix} "../../..")
+        __c4_install_exports(${_ARCHIVE_INSTALL_DIR}/cmake/${_c4_prefix} "../../..")
     else()
         message(FATAL_ERROR "unknown platform")
     endif()
 endfunction()
 
 
-macro(_c4_setup_install_vars prefix)
-    _c4_handle_prefix(${prefix})
+macro(_c4_setup_install_vars)
     set(_RUNTIME_INSTALL_DIR   bin/)
     set(_ARCHIVE_INSTALL_DIR   lib/)
     set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
     set(_INCLUDE_INSTALL_DIR   include/)
     set(_OBJECTS_INSTALL_DIR   obj/)
-    set(_SYSCONFIG_INSTALL_DIR etc/${lcprefix}/)
+    set(_SYSCONFIG_INSTALL_DIR etc/${_c4_lcprefix}/)
 endmacro()
 
 
-function(c4_install_files prefix files destination relative_to)
-    _c4_log("${prefix}: adding files to install list, destination ${destination}: ${files}")
+function(c4_install_files files destination relative_to)
+    _c4_log("${_c4_prefix}: adding files to install list, destination ${destination}: ${files}")
     foreach(f ${files})
         file(RELATIVE_PATH rf "${relative_to}" ${f})
         get_filename_component(rd "${rf}" DIRECTORY)
@@ -1239,8 +1166,8 @@ function(c4_install_files prefix files destination relative_to)
 endfunction()
 
 
-function(c4_install_directories prefix directories destination relative_to)
-    _c4_log("${prefix}: adding directories to install list, destination ${destination}: ${directories}")
+function(c4_install_directories directories destination relative_to)
+    _c4_log("${_c4_prefix}: adding directories to install list, destination ${destination}: ${directories}")
     foreach(d ${directories})
         file(RELATIVE_PATH rf "${relative_to}" ${d})
         get_filename_component(rd "${rf}" DIRECTORY)
@@ -1249,7 +1176,7 @@ function(c4_install_directories prefix directories destination relative_to)
 endfunction()
 
 
-function(c4_install_sources prefix target destination)
+function(c4_install_sources target destination)
     # executables have no sources requiring install
     get_target_property(target_type ${target} TYPE)
     if(target_type STREQUAL "EXECUTABLE")
@@ -1261,16 +1188,16 @@ function(c4_install_sources prefix target destination)
     _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
     if(src)
         _c4cat_filter_hdrs("${src}" hdr)
-        c4_install_files(${prefix} "${hdr}" "${destination}" "${srcroot}")
+        c4_install_files("${hdr}" "${destination}" "${srcroot}")
     endif()
     if(isrc)
         _c4cat_filter_srcs_hdrs("${isrc}" isrc)
-        c4_install_files(${prefix} "${isrc}" "${destination}" "${srcroot}")
+        c4_install_files("${isrc}" "${destination}" "${srcroot}")
     endif()
 endfunction()
 
 
-function(c4_get_target_installed_headers prefix target out)
+function(c4_get_target_installed_headers target out)
     set(hdrs)
     _c4_get_tgt_prop(src ${target} SOURCES)
     _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
@@ -1296,17 +1223,16 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_testing prefix)
+function(c4_setup_testing)
     #include(GoogleTest) # this module requires at least cmake 3.9
-    _c4_handle_prefix(${prefix})
-    message(STATUS "${lcprefix}: enabling tests")
+    _c4_log(STATUS "${_c4_lcprefix}: enabling tests")
     # umbrella target for building test binaries
-    add_custom_target(${lprefix}test-build)
-    set_target_properties(${lprefix}test-build PROPERTIES FOLDER ${_c4_curr_path}/${lprefix}test)
-    _c4_set_target_folder(${lprefix}test-build ${lprefix}test)
+    add_custom_target(${_c4_lprefix}test-build)
+    set_target_properties(${_c4_lprefix}test-build PROPERTIES FOLDER ${_c4_curr_path}/${_c4_lprefix}test)
+    _c4_set_target_folder(${_c4_lprefix}test-build ${_c4_lprefix}test)
     # umbrella target for running tests
-    set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${uprefix}CTEST_OPTIONS} -C $<CONFIG>)
-    add_custom_target(${lprefix}test
+    set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
+    add_custom_target(${_c4_lprefix}test
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E echo
         COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
@@ -1314,36 +1240,35 @@ function(c4_setup_testing prefix)
         COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
         COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        DEPENDS ${lprefix}test-build
+        DEPENDS ${_c4_lprefix}test-build
         )
-    _c4_set_target_folder(${lprefix}test ${lprefix}test)
+    _c4_set_target_folder(${_c4_lprefix}test ${_c4_lprefix}test)
 
+    #if(MSVC)
+    #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
+    #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
+    #endif()
     c4_override(BUILD_GTEST ON)
     c4_override(BUILD_GMOCK OFF)
     c4_override(gtest_force_shared_crt ON)
     c4_override(gtest_build_samples OFF)
     c4_override(gtest_build_tests OFF)
-    #if(MSVC)
-    #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-    #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
-    #endif()
-    c4_import_remote_proj(${prefix} gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
+    c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
         GIT_REPOSITORY https://github.com/google/googletest.git
         #GIT_TAG release-1.8.0
         )
-    c4_set_folder_remote_project_targets(${lprefix}test gtest gtest_main)
+    c4_set_folder_remote_project_targets(${_c4_lprefix}test gtest gtest_main)
 endfunction(c4_setup_testing)
 
 
-function(c4_add_test prefix target)
-    _c4_handle_prefix(${prefix})
+function(c4_add_test target)
     #
     if(NOT ${uprefix}SANITIZE_ONLY)
         add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}>)
     endif()
     #
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-        add_dependencies(${lprefix}test-build ${target})
+        add_dependencies(${_c4_lprefix}test-build ${target})
         return()
     endif()
     #
@@ -1357,33 +1282,33 @@ function(c4_add_test prefix target)
     if(sanitized_targets)
         add_custom_target(${target}-all)
         add_dependencies(${target}-all ${target})
-        add_dependencies(${lprefix}test-build ${target}-all)
-        _c4_set_target_folder(${target}-all ${lprefix}test/${target})
+        add_dependencies(${_c4_lprefix}test-build ${target}-all)
+        _c4_set_target_folder(${target}-all ${_c4_lprefix}test/${target})
     else()
-        add_dependencies(${lprefix}test-build ${target})
+        add_dependencies(${_c4_lprefix}test-build ${target})
     endif()
     if(sanitized_targets)
         foreach(s asan msan tsan ubsan)
             set(t ${target}-${s})
             if(TARGET ${t})
                 add_dependencies(${target}-all ${t})
-                sanitize_get_target_command($<TARGET_FILE:${t}> ${ucprefix} ${s} cmd)
+                c4_sanitize_get_target_command($<TARGET_FILE:${t}> ${s} cmd)
                 #message(STATUS "adding test: ${t}-run")
                 add_test(NAME ${t}-run COMMAND ${cmd})
             endif()
         endforeach()
     endif()
-    if(NOT ${uprefix}SANITIZE_ONLY)
-        c4_add_valgrind(${prefix} ${target})
+    if(NOT ${_c4_uprefix}SANITIZE_ONLY)
+        c4_add_valgrind(${target})
     endif()
-    if(${uprefix}LINT)
-        c4_static_analysis_add_tests(${ucprefix} ${target})
+    if(${_c4_uprefix}LINT)
+        c4_static_analysis_add_tests(${target})
     endif()
 endfunction(c4_add_test)
 
 
 # every excess argument is passed on to set_target_properties()
-function(c4_add_test_fail_build prefix name srccontent_or_srcfilename)
+function(c4_add_test_fail_build name srccontent_or_srcfilename)
     #
     set(sdir ${CMAKE_CURRENT_BINARY_DIR}/test_fail_build)
     set(src ${srccontent_or_srcfilename})
@@ -1416,13 +1341,13 @@ function(c4_add_test_fail_build prefix name srccontent_or_srcfilename)
 endfunction()
 
 
-function(c4_add_install_link_test prefix library namespace exe_source_code)
-    _c4_add_library_client_test(${prefix} ${library} "${namespace}" "${prefix}-test-${library}-install-link" "${exe_source_code}")
+function(c4_add_install_link_test library namespace exe_source_code)
+    _c4_add_library_client_test(${library} "${namespace}" "${_c4_lprefix}test-${library}-install-link" "${exe_source_code}")
 endfunction()
 
 
-function(c4_add_install_include_test prefix library namespace)
-    c4_get_target_installed_headers(${prefix} ${library} incfiles)
+function(c4_add_install_include_test library namespace)
+    c4_get_target_installed_headers(${library} incfiles)
     set(incblock)
     foreach(i ${incfiles})
         set(incblock "${incblock}
@@ -1435,18 +1360,17 @@ int main()
     return 0;
 }
 ")
-    _c4_add_library_client_test(${prefix} ${library} "${namespace}" "${prefix}-test-${library}-install-include" "${src}")
+    _c4_add_library_client_test(${library} "${namespace}" "${_c4_lprefix}test-${library}-install-include" "${src}")
 endfunction()
 
 
-function(_c4_add_library_client_test prefix library namespace pname source_code)
+function(_c4_add_library_client_test library namespace pname source_code)
     if("${CMAKE_BUILD_TYPE}" STREQUAL Coverage)
         add_test(NAME ${pname}-run
             COMMAND ${CMAKE_COMMAND} -E echo "skipping this test in coverage builds"
             )
         return()
     endif()
-    _c4_handle_prefix(${prefix})
     set(pdir "${CMAKE_CURRENT_BINARY_DIR}/${pname}")
     set(bdir "${pdir}/build")
     if(NOT EXISTS "${pdir}")
@@ -1469,8 +1393,8 @@ find_package(${library} REQUIRED)
 
 message(STATUS \"
 found ${library}:
-    ${uprefix}INCLUDE_DIR=\${${uprefix}INCLUDE_DIR}
-    ${uprefix}LIB_DIR=\${${uprefix}LIB_DIR}
+    ${_c4_uprefix}INCLUDE_DIR=\${${_c4_uprefix}INCLUDE_DIR}
+    ${_c4_uprefix}LIB_DIR=\${${_c4_uprefix}LIB_DIR}
 \")
 
 add_executable(${pname} ${pname}.cpp)
@@ -1581,29 +1505,27 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_valgrind prefix umbrella_option)
+function(c4_setup_valgrind umbrella_option)
     if(UNIX AND (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Coverage"))
-        _c4_handle_prefix(${prefix})
-        cmake_dependent_option(${uprefix}VALGRIND "enable valgrind tests" ON ${umbrella_option} OFF)
-        cmake_dependent_option(${uprefix}VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool" OFF ${umbrella_option} OFF)
-        set(${uprefix}VALGRIND_OPTIONS "--gen-suppressions=all --error-exitcode=10101" CACHE STRING "options for valgrind tests")
+        cmake_dependent_option(${_c4_uprefix}VALGRIND "enable valgrind tests" ON ${umbrella_option} OFF)
+        cmake_dependent_option(${_c4_uprefix}VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool" OFF ${umbrella_option} OFF)
+        set(${_c4_uprefix}VALGRIND_OPTIONS "--gen-suppressions=all --error-exitcode=10101" CACHE STRING "options for valgrind tests")
     endif()
 endfunction(c4_setup_valgrind)
 
 
-function(c4_add_valgrind prefix target_name)
-    _c4_handle_prefix(${prefix})
+function(c4_add_valgrind target_name)
     # @todo: consider doing this for valgrind:
     # http://stackoverflow.com/questions/40325957/how-do-i-add-valgrind-tests-to-my-cmake-test-target
     # for now we explicitly run it:
-    if(${uprefix}VALGRIND)
-        separate_arguments(_vg_opts UNIX_COMMAND "${${uprefix}VALGRIND_OPTIONS}")
+    if(${_c4_uprefix}VALGRIND)
+        separate_arguments(_vg_opts UNIX_COMMAND "${${_c4_uprefix}VALGRIND_OPTIONS}")
         add_test(NAME ${target_name}-valgrind COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}>)
     endif()
-    if(${uprefix}VALGRIND_SGCHECK)
+    if(${_c4_uprefix}VALGRIND_SGCHECK)
         # stack and global array overrun detector
         # http://valgrind.org/docs/manual/sg-manual.html
-        separate_arguments(_sg_opts UNIX_COMMAND "--tool=exp-sgcheck ${${uprefix}VALGRIND_OPTIONS}")
+        separate_arguments(_sg_opts UNIX_COMMAND "--tool=exp-sgcheck ${${_c4_uprefix}VALGRIND_OPTIONS}")
         add_test(NAME ${target_name}-sgcheck COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}>)
     endif()
 endfunction(c4_add_valgrind)
@@ -1612,17 +1534,16 @@ endfunction(c4_add_valgrind)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_coverage prefix)
-    _c4_handle_prefix(${prefix})
+function(c4_setup_coverage)
     set(_covok ON)
     if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
         if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
-	    message(STATUS "${prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
+	    message(STATUS "${_c4_prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
             set(_covok OFF)
         endif()
     elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
         if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-            message(FATAL_ERROR "${prefix} coverage: compiler is not GNUCXX. No coverage available.")
+            message(FATAL_ERROR "${_c4_prefix} coverage: compiler is not GNUCXX. No coverage available.")
         endif()
         set(_covok OFF)
     endif()
@@ -1633,10 +1554,10 @@ function(c4_setup_coverage prefix)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
         set(_covon ON)
     endif()
-    option(${uprefix}COVERAGE "enable coverage targets" ${_covon})
-    cmake_dependent_option(${uprefix}COVERAGE_CODECOV "enable coverage with codecov" ON ${uprefix}COVERAGE OFF)
-    cmake_dependent_option(${uprefix}COVERAGE_COVERALLS "enable coverage with coveralls" ON ${uprefix}COVERAGE OFF)
-    if(${uprefix}COVERAGE)
+    option(${_c4_uprefix}COVERAGE "enable coverage targets" ${_covon})
+    cmake_dependent_option(${_c4_uprefix}COVERAGE_CODECOV "enable coverage with codecov" ON ${_c4_uprefix}COVERAGE OFF)
+    cmake_dependent_option(${_c4_uprefix}COVERAGE_COVERALLS "enable coverage with coveralls" ON ${_c4_uprefix}COVERAGE OFF)
+    if(${_c4_uprefix}COVERAGE)
         #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
         set(covflags "-g -O0 --coverage")
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
@@ -1648,10 +1569,10 @@ function(c4_setup_coverage prefix)
             CXX_FLAGS ${covflags}
             )
         if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-            if(${uprefix}COVERAGE_CODECOV)
+            if(${_c4_uprefix}COVERAGE_CODECOV)
                 #include(CodeCoverage)
             endif()
-            if(${uprefix}COVERAGE_COVERALLS)
+            if(${_c4_uprefix}COVERAGE_COVERALLS)
                 #include(Coveralls)
                 #coveralls_turn_on_coverage() # NOT NEEDED, we're doing this manually.
             endif()
@@ -1680,14 +1601,14 @@ function(c4_setup_coverage prefix)
                 COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
                 COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
                 COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'/usr/*'" "'*/extern/*'" --output-file final.lcov
-                COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${lcprefix}
-                #DEPENDS ${lprefix}test
+                COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${_c4_lcprefix}
+                #DEPENDS ${_c4_lprefix}test
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                COMMENT "${prefix} coverage: Running LCOV"
+                COMMENT "${_c4_prefix} coverage: Running LCOV"
                 )
-            add_custom_target(${lprefix}coverage
+            add_custom_target(${_c4_lprefix}coverage
                 DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
-                COMMENT "${lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+                COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                 )
             message(STATUS "Coverage command added")
         endif()
@@ -1698,28 +1619,27 @@ endfunction(c4_setup_coverage)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-function(c4_setup_benchmarking prefix)
-    _c4_handle_prefix(${prefix})
-    message(STATUS "${lcprefix}: enabling benchmarks: to build, ${lprefix}bm-build")
-    message(STATUS "${lcprefix}: enabling benchmarks: to run, ${lprefix}bm")
+function(c4_setup_benchmarking)
+    message(STATUS "${_c4_lcprefix}: enabling benchmarks: to build, ${_c4_lprefix}bm-build")
+    message(STATUS "${_c4_lcprefix}: enabling benchmarks: to run, ${_c4_lprefix}bm")
     # umbrella target for building test binaries
-    add_custom_target(${lprefix}bm-build)
+    add_custom_target(${_c4_lprefix}bm-build)
     # umbrella target for running benchmarks
-    add_custom_target(${lprefix}bm
+    add_custom_target(${_c4_lprefix}bm
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        DEPENDS ${lprefix}bm-build
+        DEPENDS ${_c4_lprefix}bm-build
         )
-    _c4_set_target_folder(${lprefix}bm-build ${lprefix}bm)
-    _c4_set_target_folder(${lprefix}bm ${lprefix}bm)
+    _c4_set_target_folder(${_c4_lprefix}bm-build ${_c4_lprefix}bm)
+    _c4_set_target_folder(${_c4_lprefix}bm ${_c4_lprefix}bm)
     # download google benchmark
     if(NOT TARGET benchmark)
         c4_override(BENCHMARK_ENABLE_TESTING OFF)
         c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
         c4_override(BENCHMARK_ENABLE_LTO OFF)
-        c4_import_remote_proj(${prefix} googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
+        c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
             GIT_REPOSITORY https://github.com/google/benchmark.git
             )
-        c4_set_folder_remote_project_targets(${lprefix}bm benchmark benchmark_main)
+        c4_set_folder_remote_project_targets(${_c4_lprefix}bm benchmark benchmark_main)
     endif()
     #
     if(CMAKE_COMPILER_IS_GNUCC)
@@ -1727,9 +1647,9 @@ function(c4_setup_benchmarking prefix)
     endif()
     #
     if(NOT WIN32)
-        option(${uprefix}BENCHMARK_CPUPOWER
+        option(${_c4_uprefix}BENCHMARK_CPUPOWER
             "set the cpu mode to performance before / powersave after the benchmark" OFF)
-        if(${uprefix}BENCHMARK_CPUPOWER)
+        if(${_c4_uprefix}BENCHMARK_CPUPOWER)
             find_program(C4_SUDO sudo)
             find_program(C4_CPUPOWER cpupower)
         endif()
@@ -1737,20 +1657,19 @@ function(c4_setup_benchmarking prefix)
 endfunction()
 
 
-function(c4_add_benchmark_cmd prefix casename)
-    _c4_handle_prefix(${prefix})
+function(c4_add_benchmark_cmd casename)
     add_custom_target(${casename}
         COMMAND ${ARGN}
         VERBATIM
-        COMMENT "${prefix}: running benchmark ${casename}: ${ARGN}")
-    add_dependencies(${lprefix}benchmark ${casename})
-    _c4_set_target_folder(${casename} ${lprefix}bm)
+        COMMENT "${_c4_prefix}: running benchmark ${casename}: ${ARGN}")
+    add_dependencies(${_c4_lprefix}benchmark ${casename})
+    _c4_set_target_folder(${casename} ${_c4_lprefix}bm)
 endfunction()
 
 
 # assumes this is a googlebenchmark target, and that multiple
 # benchmarks are defined from it
-function(c4_add_target_benchmark prefix target casename)
+function(c4_add_target_benchmark target casename)
     set(opt0arg
     )
     set(opt1arg
@@ -1761,6 +1680,7 @@ function(c4_add_target_benchmark prefix target casename)
         ARGS
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
+    #
     set(name "${target}-${casename}")
     set(rdir "${CMAKE_CURRENT_BINARY_DIR}/bm-results")
     set(rfile "${rdir}/${name}.json")
@@ -1772,7 +1692,7 @@ function(c4_add_target_benchmark prefix target casename)
         set(filter "--benchmark_filter=${_FILTER}")
     endif()
     set(args_fwd ${filter} --benchmark_out_format=json --benchmark_out=${rfile} ${_ARGS})
-    c4_add_benchmark(${prefix} ${target}
+    c4_add_benchmark(${target}
         "${name}"
         "${_WORKDIR}"
         "saving results in ${rfile}"
@@ -1780,8 +1700,7 @@ function(c4_add_target_benchmark prefix target casename)
 endfunction()
 
 
-function(c4_add_benchmark prefix target casename work_dir comment)
-    _c4_handle_prefix(${prefix})
+function(c4_add_benchmark target casename work_dir comment)
     if(NOT TARGET ${target})
         message(FATAL_ERROR "target ${target} does not exist...")
     endif()
@@ -1791,7 +1710,7 @@ function(c4_add_benchmark prefix target casename work_dir comment)
         endif()
     endif()
     set(exe $<TARGET_FILE:${target}>)
-    if(${uprefix}BENCHMARK_CPUPOWER)
+    if(${_c4_uprefix}BENCHMARK_CPUPOWER)
         if(C4_BM_SUDO AND C4_BM_CPUPOWER)
             set(c ${C4_SUDO} ${C4_CPUPOWER} frequency-set --governor performance)
             set(cpupow_before
@@ -1813,11 +1732,11 @@ function(c4_add_benchmark prefix target casename work_dir comment)
         VERBATIM
         WORKING_DIRECTORY "${work_dir}"
         DEPENDS ${target}
-        COMMENT "${lcprefix}: running benchmark ${target}, case ${casename}: ${comment}"
+        COMMENT "${_c4_lcprefix}: running benchmark ${target}, case ${casename}: ${comment}"
         )
-    add_dependencies(${lprefix}bm-build ${target})
-    add_dependencies(${lprefix}bm ${casename})
-    _c4_set_target_folder(${casename} ${lprefix}bm)
+    add_dependencies(${_c4_lprefix}bm-build ${target})
+    add_dependencies(${_c4_lprefix}bm ${casename})
+    _c4_set_target_folder(${casename} ${_c4_lprefix}bm)
 endfunction()
 
 
@@ -1836,8 +1755,7 @@ endfunction()
 #   * UNITY_HDR
 #   * SINGLE_HDR
 #   * SINGLE_UNIT
-function(c4_add_target_sources prefix target)
-    _c4_handle_prefix(${prefix})
+function(c4_add_target_sources target)
     set(options0arg
     )
     set(options1arg
@@ -1866,28 +1784,28 @@ function(c4_add_target_sources prefix target)
     endif()
     #
     set(out)
-    set(umbrella ${lprefix}transform-src)
+    set(umbrella ${_c4_lprefix}transform-src)
     #
     if("${_TRANSFORM}" STREQUAL "NONE")
-        _c4_log("${lcprefix}: target=${target} source transform: NONE!")
+        _c4_log("${_c4_lcprefix}: target=${target} source transform: NONE!")
         #
         # do not transform the sources
         #
         if(_PUBLIC)
-            _c4_log("${lcprefix}: target=${target} PUBLIC sources: ${_PUBLIC}")
+            _c4_log("${_c4_lcprefix}: target=${target} PUBLIC sources: ${_PUBLIC}")
             target_sources(${target} PUBLIC ${_PUBLIC})
         endif()
         if(_INTERFACE)
-            _c4_log("${lcprefix}: target=${target} INTERFACE sources: ${_INTERFACE}")
+            _c4_log("${_c4_lcprefix}: target=${target} INTERFACE sources: ${_INTERFACE}")
             target_sources(${target} INTERFACE ${_INTERFACE})
         endif()
         if(_PRIVATE)
-            _c4_log("${lcprefix}: target=${target} PRIVATE sources: ${_PRIVATE}")
+            _c4_log("${_c4_lcprefix}: target=${target} PRIVATE sources: ${_PRIVATE}")
             target_sources(${target} PRIVATE ${_PRIVATE})
         endif()
         #
     elseif("${_TRANSFORM}" STREQUAL "UNITY")
-        _c4_log("${lcprefix}: source transform: UNITY!")
+        _c4_log("${_c4_lcprefix}: source transform: UNITY!")
         message(FATAL_ERROR "source transformation not implemented")
         #
         # concatenate all compilation unit files (excluding interface)
@@ -1900,9 +1818,9 @@ function(c4_add_target_sources prefix target)
         _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
         _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
         if(cpublic OR cinterface OR cprivate)
-            _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_SRC_EXT} out)
-            _c4_log("${lcprefix}: ${target}: output unit: ${out}")
-            c4_cat_sources(${prefix} "${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
+            _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
+            _c4_log("${_c4_lcprefix}: ${target}: output unit: ${out}")
+            c4_cat_sources("${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
             add_dependencies(${target} ${out})
         endif()
         if(_PUBLIC)
@@ -1922,7 +1840,7 @@ function(c4_add_target_sources prefix target)
         endif()
         #
     elseif("${_TRANSFORM}" STREQUAL "UNITY_HDR")
-        _c4_log("${lcprefix}: source transform: UNITY_HDR!")
+        _c4_log("${_c4_lcprefix}: source transform: UNITY_HDR!")
         message(FATAL_ERROR "source transformation not implemented")
         #
         # like unity, but concatenate compilation units into
@@ -1935,38 +1853,38 @@ function(c4_add_target_sources prefix target)
         _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
         _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
         if(c)
-            _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_HDR_EXT} out)
-            _c4_log("${lcprefix}: ${target}: output hdr: ${out}")
+            _c4cat_get_outname(${target} "src" ${C4_GEN_HDR_EXT} out)
+            _c4_log("${_c4_lcprefix}: ${target}: output hdr: ${out}")
             _c4cat_filter_srcs_hdrs("${_PUBLIC}" c_h)
-            c4_cat_sources(${prefix} "${c}" "${out}" ${umbrella})
+            c4_cat_sources("${c}" "${out}" ${umbrella})
             add_dependencies(${target} ${out})
-            add_dependencies(${target} ${lprefix}cat)
+            add_dependencies(${target} ${_c4_lprefix}cat)
         endif()
         set(${src} ${out} PARENT_SCOPE)
         set(${hdr} ${h} PARENT_SCOPE)
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
-        _c4_log("${lcprefix}: source transform: SINGLE_HDR!")
+        _c4_log("${_c4_lcprefix}: source transform: SINGLE_HDR!")
         message(FATAL_ERROR "source transformation not implemented")
         #
         # concatenate everything into a single header file
         #
-        _c4cat_get_outname(${prefix} ${target} "all" ${C4_GEN_HDR_EXT} out)
+        _c4cat_get_outname(${target} "all" ${C4_GEN_HDR_EXT} out)
         _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
-        c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
+        c4_cat_sources("${ch}" "${out}" ${umbrella})
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
-        _c4_log("${lcprefix}: source transform: SINGLE_HDR!")
+        _c4_log("${_c4_lcprefix}: source transform: SINGLE_HDR!")
         message(FATAL_ERROR "source transformation not implemented")
         #
         # concatenate:
         #  * all compilation unit into a single compilation unit
         #  * all headers into a single header
         #
-        _c4cat_get_outname(${prefix} ${target} "src" ${C4_GEN_SRC_EXT} out)
-        _c4cat_get_outname(${prefix} ${target} "hdr" ${C4_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${target} "hdr" ${C4_GEN_SRC_EXT} out)
         _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
-        c4_cat_sources(${prefix} "${ch}" "${out}" ${umbrella})
+        c4_cat_sources("${ch}" "${out}" ${umbrella})
     else()
         message(FATAL_ERROR "unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
     endif()
@@ -1977,12 +1895,11 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-function(_c4cat_get_outname prefix target id ext out)
-    _c4_handle_prefix(${prefix})
-    if("${lcprefix}" STREQUAL "${target}")
+function(_c4cat_get_outname target id ext out)
+    if("${_c4_lcprefix}" STREQUAL "${target}")
         set(p "${target}")
     else()
-        set(p "${lcprefix}.${target}")
+        set(p "${_c4_lcprefix}.${target}")
     endif()
     set(${out} "${CMAKE_CURRENT_BINARY_DIR}/${p}.${id}.${ext}" PARENT_SCOPE)
 endfunction()

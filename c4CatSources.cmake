@@ -5,17 +5,16 @@ set(_c4CatSourcesIncluded ON)
 #------------------------------------------------------------------------------
 # concatenate the source files to an output file, adding preprocessor adjustment
 # for correct file/line reporting
-function(c4_cat_sources prefix files output umbrella_target)
-    _c4_handle_prefix(${prefix})
+function(c4_cat_sources files output umbrella_target)
     _c4_cat_sources_create_cat(cat)
     c4_to_full_path("${files}" full_files) # we must work with full paths
     c4_separate_list("${full_files}" sepfiles) # and use a string instead of a list
-    _c4_log("${prefix}: catting sources to ${output}")
+    _c4_log("${_c4_prefix}: catting sources to ${output}")
     if(NOT EXISTS "${output}")
         # the cat command is executed at build time, but we need the output
         # file to exist to be able to create the target. so to bootstrap, just
         # run the command now
-        _c4_log("${prefix}: creating ${output} for the first time")
+        _c4_log("${_c4_prefix}: creating ${output} for the first time")
         execute_process(
             COMMAND ${cat} "${sepfiles}" "${output}"
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
