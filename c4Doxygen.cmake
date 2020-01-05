@@ -2,14 +2,12 @@
 if(NOT _c4_doxygen_included)
 set(_c4_doxygen_included ON)
 
-include(c4Log)
-
 #------------------------------------------------------------------------------
 function(c4_setup_doxygen umbrella_option)
     cmake_dependent_option(${_c4_uprefix}BUILD_DOCS "Enable targets to build documentation for ${prefix}" ON "${umbrella_option}" OFF)
     if(${_c4_uprefix}BUILD_DOCS)
         find_package(Doxygen)
-        _c4_log("${_c4_prefix}: enabling documentation targets")
+        c4_dbg("${_c4_prefix}: enabling documentation targets")
     endif()
 endfunction()
 

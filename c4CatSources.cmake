@@ -9,18 +9,18 @@ function(c4_cat_sources files output umbrella_target)
     _c4_cat_sources_create_cat(cat)
     c4_to_full_path("${files}" full_files) # we must work with full paths
     c4_separate_list("${full_files}" sepfiles) # and use a string instead of a list
-    _c4_log("${_c4_prefix}: catting sources to ${output}")
+    c4_dbg("${_c4_prefix}: catting sources to ${output}")
     if(NOT EXISTS "${output}")
         # the cat command is executed at build time, but we need the output
         # file to exist to be able to create the target. so to bootstrap, just
         # run the command now
-        _c4_log("${_c4_prefix}: creating ${output} for the first time")
+        c4_dbg("${_c4_prefix}: creating ${output} for the first time")
         execute_process(
             COMMAND ${cat} "${sepfiles}" "${output}"
             WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
             )
     else()
-        message(STATUS "output exists: ${output}")
+        c4_dbg("output exists: ${output}")
     endif()
     # add a custom command invoking our cat script for the input files
     add_custom_command(OUTPUT ${output}

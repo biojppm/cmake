@@ -4,7 +4,6 @@ set(_c4_sanitize_target_included ON)
 
 include(CMakeDependentOption)
 include(PrintVar)
-include(c4Log)
 
 #------------------------------------------------------------------------------
 function(c4_setup_sanitize umbrella_option)
