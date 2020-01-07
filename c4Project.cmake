@@ -147,7 +147,8 @@ function(c4_declare_project prefix)
 
     if(_STANDALONE)
         option(${_c4_uprefix}STANDALONE
-            "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)" ${_STANDALONE})
+            "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)"
+            ${_STANDALONE})
     endif()
 
     option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
@@ -167,33 +168,35 @@ function(c4_declare_project prefix)
 
     # these are default compilation flags
     set(${_c4_uprefix}CXX_FLAGS "" CACHE STRING "compilation flags for ${_c4_prefix} targets")
-    # these are optional compilation flags
-    cmake_dependent_option(${_c4_uprefix}PEDANTIC "Compile in pedantic mode" ON ${_c4_uprefix}DEV OFF)
-    cmake_dependent_option(${_c4_uprefix}WERROR "Compile with warnings as errors" ON ${_c4_uprefix}DEV OFF)
-    cmake_dependent_option(${_c4_uprefix}STRICT_ALIASING "Enable strict aliasing" ON ${_c4_uprefix}DEV OFF)
-    # always append the optional flags to the project's flags
-    set(addf)
-    if(${_c4_uprefix}PEDANTIC)
-        if(MSVC)
-            set(addf "${addf} /W4")
-        else()
-            set(addf "${addf} -Wall -Wextra -Wshadow -pedantic -Wfloat-equal")
-        endif()
-    endif()
-    if(${_c4_uprefix}WERROR)
-        if(MSVC)
-            set(addf "${addf} /WX")
-        else()
-            set(addf "${addf} -Werror -pedantic-errors")
-        endif()
-    endif()
-    if(${_c4_uprefix}STRICT_ALIASING)
-        if(NOT MSVC)
-            set(addf "${addf} -fstrict-aliasing")
-        endif()
-    endif()
-    set(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT} ${addf}" PARENT_SCOPE)
+    # these are optional compilation flags, always appended to the project's flags
+    c4_optional_compile_flags_dev(PEDANTIC "Compile in pedantic mode"
+        "-Wall -Wextra -Wshadow -pedantic -Wfloat-equal"  # GCC
+        "/W4" # MSVC
+        )
+    c4_optional_compile_flags_dev(WERROR "Compile with warnings as errors"
+        "-Werror -pedantic-errors"  # GCC
+        "/WX" # MSVC
+        )
+    c4_optional_compile_flags_dev(STRICT_ALIASING "Enable strict aliasing"
+        "-fstrict-aliasing"  # GCC
+        "" # MSVC
+        )
 endfunction(c4_declare_project)
+
+
+# flags enabled only on dev mode
+function(c4_optional_compile_flags_dev tag desc gcc msvc)
+    cmake_dependent_option(${_c4_uprefix}${tag} "${desc}" ON ${_c4_uprefix}DEV OFF)
+    if(${_c4_uprefix}${tag})
+        if(MSVC)
+            set(flags "${msvc}")
+        else()
+            set(flags "${gcc}")
+        endif()
+        c4_log("flags: ${tag} ${desc}: ${flags}")
+    endif()
+    set(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT} ${flags}" PARENT_SCOPE)
+endfunction()
 
 
 function(c4_set_proj_prop prop value)
@@ -243,7 +246,7 @@ macro(_c4_handle_arg_or_fallback argname default)
                 c4_setg(_${argname} "${C4_${argname}}")
             endif()
         else()
-            c4_dbg("handle arg: _${argname}: picking ${uprefix}${argname}=${${uprefix}${argname}}")
+            c4_dbg("handle arg: _${argname}: picking ${_c4_uprefix}${argname}=${${_c4_uprefix}${argname}}")
             c4_setg(_${argname} "${${_c4_uprefix}${argname}}")
         endif()
     else()
