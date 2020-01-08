@@ -698,7 +698,6 @@ function(c4_add_target name)
         LIBRARY     # the target is a library
         EXECUTABLE  # the target is an executable
         WIN32       # the executable is WIN32
-        SANITIZE    # turn on sanitizer analysis
     )
     set(opt1arg
         LIBRARY_TYPE    # override global setting for C4_LIBRARY_TYPE
@@ -720,6 +719,10 @@ function(c4_add_target name)
         MORE_ARGS
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
+    #
+    if(_SANITIZE)
+        message(FATAL_ERROR "SANITIZE is deprecated")
+    endif()
 
     if(${_LIBRARY})
         set(_what LIBRARY)
@@ -860,7 +863,7 @@ function(c4_add_target name)
     endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
-        if(_SANITIZE OR ${_c4_uprefix}SANITIZE)
+        if(${_c4_uprefix}SANITIZE)
             c4_sanitize_target(${name}
                 ${_what}   # LIBRARY or EXECUTABLE
                 SOURCES ${allsrc}
