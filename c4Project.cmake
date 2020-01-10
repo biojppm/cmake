@@ -56,6 +56,13 @@ macro(c4_dbg_var_if varname)
 endmacro()
 
 
+function(c4_assert condition)
+    if(NOT (${condition}))
+        message(FATAL_ERROR "${_c4_prefix}: ${condition} must be true: ${ARGN}")
+    endif()
+endfunction()
+
+
 macro(_c4_show_pfx_vars)
     if(NOT ("${ARGN}" STREQUAL ""))
         message(STATUS "prefix vars: ${ARGN}")
@@ -160,10 +167,15 @@ function(c4_declare_project prefix)
         c4_setg(_c4_lprefix "${_c4_lprefix}-")
     endif()
     #
-    if(_c4_is_root_proj AND _STANDALONE)
+    if("${_c4_curr_subproject}" STREQUAL "")
+        c4_setg(_c4_curr_subproject ${_c4_prefix})
+        c4_setg(_c4_curr_path ${_c4_prefix})
+    endif()
+    #
+    if(_STANDALONE)
         option(${_c4_uprefix}STANDALONE
             "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)"
-            ${_STANDALONE})
+            ${_c4_is_root_proj})
         c4_setg(_c4_root_proj_standalone ${_c4_uprefix}STANDALONE)
     endif()
     #
@@ -184,11 +196,6 @@ function(c4_declare_project prefix)
     c4_set_proj_prop(MINOR        "${_MINOR}")
     c4_set_proj_prop(RELEASE      "${_RELEASE}")
     c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
-    #
-    if("${_c4_curr_subproject}" STREQUAL "")
-        c4_setg(_c4_curr_subproject ${_c4_prefix})
-        c4_setg(_c4_curr_path ${_c4_prefix})
-    endif()
 
     option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
     cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
@@ -211,6 +218,7 @@ function(c4_declare_project prefix)
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS)
     # these are dev compilation flags, appended to the project's flags.
     # they are enabled when in dev mode, but provided as an option when not in dev mode
+    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT_FWD)
     c4_setg(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT_FWD}")
     c4_optional_compile_flags_dev(PEDANTIC "Compile in pedantic mode"
         "-Wall;-Wextra;-Wshadow;-pedantic;-Wfloat-equal"  # GCC
@@ -224,7 +232,6 @@ function(c4_declare_project prefix)
         "-fstrict-aliasing"  # GCC
         "" # MSVC
         )
-    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT_FWD)
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT)
 endfunction(c4_declare_project)
 
@@ -459,6 +466,16 @@ function(c4_require_subproject subproj)
     c4_setg(_${_c4_uprefix}_deps ${_${_c4_uprefix}_deps})
     c4_dbg("-----------------------------------------------")
     c4_dbg("requires subproject ${subproj}!")
+    if(_INCORPORATE)
+        c4_dbg("requires subproject ${subproj} in INCORPORATE mode!")
+        c4_dbg_var(${_c4_root_uproj}_STANDALONE)
+        if(${_c4_root_uproj}_STANDALONE)
+            c4_dbg("${_c4_root_uproj} is STANDALONE: honoring INCORPORATE mode...")
+        else()
+            c4_dbg("${_c4_root_uproj} is not STANDALONE: ignoring INCORPORATE mode...")
+            set(_INCORPORATE OFF)
+        endif()
+    endif()
     _c4_get_subproject_property(${subproj} AVAILABLE _available)
     if(_available)
         c4_dbg("required subproject ${subproj} was already imported:")
@@ -505,39 +522,58 @@ function(c4_add_subproj proj dir bindir)
 endfunction()
 
 
-function(_c4_mark_subproject_imported importer_subproject subproject_name subproject_src_dir subproject_bin_dir)
-    c4_dbg("marking subproject imported: ${subproject_name} (imported by ${importer_subproject}). src=${subproject_src_dir}")
-    #
-    _c4_get_subproject_property(${importer_subproject} DEPENDENCIES deps)
-    if(deps)
-        list(APPEND deps ${subproject_name})
-    else()
-        set(deps ${subproject_name})
-    endif()
-    _c4_set_subproject_property(${importer_subproject} DEPENDENCIES "${deps}")
-    _c4_get_folder(folder ${importer_subproject} ${subproject_name})
-    #
+function(_c4_mark_subproject_imported subproject_name subproject_src_dir subproject_bin_dir incorporate)
+    c4_dbg("marking subproject imported: ${subproject_name} (imported by ${_c4_prefix}). src=${subproject_src_dir}")
+    _c4_append_subproject_property(${_c4_prefix} DEPENDENCIES ${subproject_name})
+    _c4_get_folder(folder ${_c4_prefix} ${subproject_name})
     _c4_set_subproject_property(${subproject_name} AVAILABLE ON)
-    _c4_set_subproject_property(${subproject_name} IMPORTER "${importer_subproject}")
+    _c4_set_subproject_property(${subproject_name} IMPORTER "${_c4_prefix}")
     _c4_set_subproject_property(${subproject_name} SRC_DIR "${subproject_src_dir}")
     _c4_set_subproject_property(${subproject_name} BIN_DIR "${subproject_bin_dir}")
     _c4_set_subproject_property(${subproject_name} FOLDER "${folder}")
-endfunction()
-
-
-function(_c4_set_subproject_property subproject property value)
-    set_property(GLOBAL PROPERTY _c4_subproject-${subproject}-${property} ${value})
+    _c4_set_subproject_property(${subproject_name} INCORPORATE "${incorporate}")
 endfunction()
 
 
 function(_c4_get_subproject_property subproject property value)
     get_property(v GLOBAL PROPERTY _c4_subproject-${subproject}-${property})
-    set(${value} ${v} PARENT_SCOPE)
+    set(${value} "${v}" PARENT_SCOPE)
+endfunction()
+
+
+function(_c4_set_subproject_property subproject property value)
+    c4_dbg("setting subproj prop: ${subproject}: ${property}=${value}")
+    set_property(GLOBAL PROPERTY _c4_subproject-${subproject}-${property} ${value})
+endfunction()
+
+
+function(_c4_append_subproject_property subproject property value)
+    _c4_get_subproject_property(${subproject} ${property} cval)
+    if(cval)
+        list(APPEND cval ${value})
+    else()
+        set(cval ${value})
+    endif()
+    _c4_set_subproject_property(${subproject} ${property} ${cval})
+endfunction()
+
+
+function(_c4_is_incorporated out)
+    c4_dbg("is incorporated?")
+    if(_c4_is_root_proj)
+        c4_dbg("is incorporated? root proj, no")
+        set(${out} OFF PARENT_SCOPE)
+    else()
+        c4_dbg("is incorporated? ${_c4_prefix} is not root proj")
+        _c4_get_subproject_property(${_c4_prefix} INCORPORATE inc)
+        c4_dbg("is incorporated? inc=${inc}")
+        set(${out} ${inc} PARENT_SCOPE)
+    endif()
 endfunction()
 
 
 function(c4_dbg_subproject subproject)
-    set(props AVAILABLE IMPORTER SRC_DIR BIN_DIR DEPENDENCIES FOLDER)
+    set(props AVAILABLE IMPORTER SRC_DIR BIN_DIR DEPENDENCIES FOLDER INCORPORATE)
     foreach(p ${props})
         _c4_get_subproject_property(${subproject} ${p} pv)
         c4_dbg("${subproject}: ${p}=${pv}")
@@ -559,6 +595,7 @@ endfunction()
 function(c4_import_remote_proj name dir)
     set(srcdir_in_out "${dir}")
     c4_download_remote_proj(${name} srcdir_in_out ${ARGN})
+    _c4_set_subproject_property(${name} SRC_DIR "${srcdir_in_out}")
     c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build")
 endfunction()
 
@@ -736,6 +773,7 @@ function(c4_add_target name)
         LIBRARY     # the target is a library
         EXECUTABLE  # the target is an executable
         WIN32       # the executable is WIN32
+        SANITIZE    # deprecated
     )
     set(opt1arg
         LIBRARY_TYPE    # override global setting for C4_LIBRARY_TYPE
@@ -771,7 +809,7 @@ function(c4_add_target name)
     endif()
 
     _c4_handle_arg_or_fallback(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
-    function(c4_transform_to_full_path list all)
+    function(_c4_transform_to_full_path list all)
         set(l)
         foreach(f ${${list}})
             if(NOT IS_ABSOLUTE "${f}")
@@ -784,15 +822,14 @@ function(c4_add_target name)
         list(APPEND cp ${l})
         set(${all} ${cp} PARENT_SCOPE)
     endfunction()
-    c4_transform_to_full_path(          _SOURCES allsrc)
-    c4_transform_to_full_path(          _HEADERS allsrc)
-    c4_transform_to_full_path(   _PUBLIC_SOURCES allsrc)
-    c4_transform_to_full_path(_INTERFACE_SOURCES allsrc)
-    c4_transform_to_full_path(  _PRIVATE_SOURCES allsrc)
-    c4_transform_to_full_path(   _PUBLIC_HEADERS allsrc)
-    c4_transform_to_full_path(_INTERFACE_HEADERS allsrc)
-    c4_transform_to_full_path(  _PRIVATE_HEADERS allsrc)
-
+    _c4_transform_to_full_path(          _SOURCES allsrc)
+    _c4_transform_to_full_path(          _HEADERS allsrc)
+    _c4_transform_to_full_path(   _PUBLIC_SOURCES allsrc)
+    _c4_transform_to_full_path(_INTERFACE_SOURCES allsrc)
+    _c4_transform_to_full_path(  _PRIVATE_SOURCES allsrc)
+    _c4_transform_to_full_path(   _PUBLIC_HEADERS allsrc)
+    _c4_transform_to_full_path(_INTERFACE_HEADERS allsrc)
+    _c4_transform_to_full_path(  _PRIVATE_HEADERS allsrc)
     create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${allsrc}")
 
     if(NOT ${_c4_uprefix}SANITIZE_ONLY)
@@ -959,11 +996,11 @@ function(_c4_link_with_libs target link_type libs incorporate)
         if(incorporate AND (
                     (C4_STANDALONE OR ${_c4_uprefix}STANDALONE)
                     AND
-                    (NOT (${lib} IN_LIST incorporate))))
-            c4_dbg("-----> ${target} ${link_type} incorporating lib ${lib}")
+                    ((${lib} IN_LIST incorporate))))
+            c4_log("-----> ${target} ${link_type} incorporating lib ${lib}")
             _c4_incorporate_lib(${target} ${link_type} ${lib})
         else()
-            c4_dbg("${target} ${link_type} linking with lib ${lib}")
+            c4_log("${target} ${link_type} linking with lib ${lib}")
             target_link_libraries(${target} ${link_type} ${lib})
         endif()
     endforeach()
@@ -1034,6 +1071,13 @@ function(c4_install_target target)
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
+    c4_dbg("installing target: ${target} ${ARGN}")
+    _c4_is_incorporated(inc)
+    if(inc)
+        c4_dbg("this project is INCORPORATEd. skipping install of targets")
+        return()
+    endif()
+    #
     _c4_handle_arg(EXPORT "${_c4_prefix}-export")
     #
     _c4_setup_install_vars()
@@ -1096,6 +1140,13 @@ function(c4_install_exports)
     _c4_handle_arg(PREFIX    "${_c4_prefix}")
     _c4_handle_arg(TARGET    "${_c4_prefix}-export")
     _c4_handle_arg(NAMESPACE "${_c4_prefix}::")
+    #
+    c4_dbg("installing exports: ${ARGN}")
+    _c4_is_incorporated(inc)
+    if(inc)
+        c4_dbg("this project is INCORPORATEd. skipping install of exports")
+        return()
+    endif()
     #
     _c4_setup_install_vars()
     #
