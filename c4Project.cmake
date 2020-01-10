@@ -46,6 +46,16 @@ macro(c4_dbg)
 endmacro()
 
 
+macro(c4_dbg_var varname)
+    c4_dbg("${varname}=${${varname}} ${ARGN}")
+endmacro()
+macro(c4_dbg_var_if varname)
+    if(${varname})
+        c4_dbg("${varname}=${${varname}} ${ARGN}")
+    endif()
+endmacro()
+
+
 macro(_c4_show_pfx_vars)
     if(NOT ("${ARGN}" STREQUAL ""))
         message(STATUS "prefix vars: ${ARGN}")
@@ -64,8 +74,37 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+macro(_c4_handle_args)
+    set(opt0arg
+    )
+    set(opt1arg
+        _PREFIX
+    )
+    set(optNarg
+        _ARGS0
+        _ARGS1
+        _ARGSN
+        _DEPRECATE
+        _ARGS
+    )
+    cmake_parse_arguments("__c4ha" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    cmake_parse_arguments("${__c4ha__PREFIX}" "${__c4ha__ARGS0}" "${__c4ha__ARGS1}" "${__c4ha__ARGSN}" ${__c4ha__ARGS})
+    foreach(a ${__c4ha__DEPRECATE})
+        list(FIND __c4ha__ARGS ${a} contains)
+        if(NOT (${contains} EQUAL -1))
+            message(FATAL_ERROR "${a} is deprecated")
+        endif()
+    endforeach()
+endmacro()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
 function(c4_declare_project prefix)
-    set(opt0arg  # zero-value macro arguments
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS0  # zero-value macro arguments
         STANDALONE # Declare that targets from this project MAY be
                    # compiled in standalone mode. In this mode, any
                    # designated libraries on which a target depends
@@ -80,8 +119,7 @@ function(c4_declare_project prefix)
                    # c4_add_executable(). Note also that this behavior
                    # is only enabled if this project's option
                    # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
-    )
-    set(opt1arg  # one-value macro arguments
+      _ARGS1  # one-value macro arguments
         DESC
         AUTHOR
         URL
@@ -90,37 +128,44 @@ function(c4_declare_project prefix)
         RELEASE
         CXX_STANDARD  # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD
-    )
-    set(optNarg  # multi-value macro arguments
+      _ARGSN  # multi-value macro arguments
         AUTHORS
     )
-    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
+    string(TOUPPER "${prefix}" ucprefix) # ucprefix := upper case prefix
+    string(TOLOWER "${prefix}" lcprefix) # lcprefix := lower case prefix
+    if(NOT _c4_prefix)
+        c4_setg(_c4_is_root_proj ON)
+        c4_setg(_c4_root_proj ${prefix})
+        c4_setg(_c4_root_uproj ${ucprefix})
+        c4_setg(_c4_root_lproj ${lcprefix})
+    else()
+        c4_setg(_c4_is_root_proj OFF)
+    endif()
     # get the several prefix flavors
-    string(TOUPPER "${prefix}" _c4_ucprefix) # ucprefix := upper case prefix
-    string(TOLOWER "${prefix}" _c4_lcprefix) # lcprefix := lower case prefix
-    set(_c4_uprefix  ${_c4_ucprefix})        # upper prefix: for variables
-    set(_c4_lprefix  ${_c4_lcprefix})        # lower prefix: for targets
-    set(_c4_prefix   ${prefix})              # prefix := original prefix
-    set(_c4_oprefix  ${prefix})              # oprefix := original prefix
-    set(_c4_ocprefix ${prefix})              # ocprefix := original case prefix
+    c4_setg(_c4_ucprefix ${ucprefix})
+    c4_setg(_c4_lcprefix ${lcprefix})
+    c4_setg(_c4_ocprefix ${prefix})              # ocprefix := original case prefix
+    c4_setg(_c4_prefix   ${prefix})              # prefix := original prefix
+    c4_setg(_c4_oprefix  ${prefix})              # oprefix := original prefix
+    c4_setg(_c4_uprefix  ${_c4_ucprefix})        # upper prefix: for variables
+    c4_setg(_c4_lprefix  ${_c4_lcprefix})        # lower prefix: for targets
     if(_c4_oprefix)
-        set(_c4_oprefix "${_c4_oprefix}_")
+        c4_setg(_c4_oprefix "${_c4_oprefix}_")
     endif()
     if(_c4_uprefix)
-        set(_c4_uprefix "${_c4_uprefix}_")
+        c4_setg(_c4_uprefix "${_c4_uprefix}_")
     endif()
     if(_c4_lprefix)
-        set(_c4_lprefix "${_c4_lprefix}-")
+        c4_setg(_c4_lprefix "${_c4_lprefix}-")
     endif()
-    # export the prefixes
-    set(_c4_prefix   ${_c4_prefix}   PARENT_SCOPE)
-    set(_c4_oprefix  ${_c4_oprefix}  PARENT_SCOPE)
-    set(_c4_uprefix  ${_c4_uprefix}  PARENT_SCOPE)
-    set(_c4_lprefix  ${_c4_lprefix}  PARENT_SCOPE)
-    set(_c4_ocprefix ${_c4_ocprefix} PARENT_SCOPE)
-    set(_c4_ucprefix ${_c4_ucprefix} PARENT_SCOPE)
-    set(_c4_lcprefix ${_c4_lcprefix} PARENT_SCOPE)
+    #
+    if(_c4_is_root_proj AND _STANDALONE)
+        option(${_c4_uprefix}STANDALONE
+            "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)"
+            ${_STANDALONE})
+        c4_setg(_c4_root_proj_standalone ${_c4_uprefix}STANDALONE)
+    endif()
     #
     _c4_handle_arg(DESC "${_c4_lcprefix}")
     _c4_handle_arg(AUTHOR "${_c4_lcprefix} author <author@domain.net>")
@@ -139,16 +184,10 @@ function(c4_declare_project prefix)
     c4_set_proj_prop(MINOR        "${_MINOR}")
     c4_set_proj_prop(RELEASE      "${_RELEASE}")
     c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
-
+    #
     if("${_c4_curr_subproject}" STREQUAL "")
-        set(_c4_curr_subproject ${_c4_prefix})
-        set(_c4_curr_path ${_c4_prefix})
-    endif()
-
-    if(_STANDALONE)
-        option(${_c4_uprefix}STANDALONE
-            "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)"
-            ${_STANDALONE})
+        c4_setg(_c4_curr_subproject ${_c4_prefix})
+        c4_setg(_c4_curr_path ${_c4_prefix})
     endif()
 
     option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
@@ -167,25 +206,31 @@ function(c4_declare_project prefix)
     endif()
 
     # these are default compilation flags
-    set(${_c4_uprefix}CXX_FLAGS "" CACHE STRING "compilation flags for ${_c4_prefix} targets")
-    # these are optional compilation flags, always appended to the project's flags
+    set(${_c4_uprefix}CXX_FLAGS "${${_c4_uprefix}CXX_FLAGS_FWD}" CACHE STRING "compilation flags for ${_c4_prefix} targets")
+    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_FWD)
+    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS)
+    # these are dev compilation flags, appended to the project's flags.
+    # they are enabled when in dev mode, but provided as an option when not in dev mode
+    c4_setg(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT_FWD}")
     c4_optional_compile_flags_dev(PEDANTIC "Compile in pedantic mode"
-        "-Wall -Wextra -Wshadow -pedantic -Wfloat-equal"  # GCC
+        "-Wall;-Wextra;-Wshadow;-pedantic;-Wfloat-equal"  # GCC
         "/W4" # MSVC
         )
     c4_optional_compile_flags_dev(WERROR "Compile with warnings as errors"
-        "-Werror -pedantic-errors"  # GCC
+        "-Werror;-pedantic-errors"  # GCC
         "/WX" # MSVC
         )
     c4_optional_compile_flags_dev(STRICT_ALIASING "Enable strict aliasing"
         "-fstrict-aliasing"  # GCC
         "" # MSVC
         )
+    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT_FWD)
+    c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT)
 endfunction(c4_declare_project)
 
 
 # flags enabled only on dev mode
-function(c4_optional_compile_flags_dev tag desc gcc msvc)
+macro(c4_optional_compile_flags_dev tag desc gcc msvc)
     cmake_dependent_option(${_c4_uprefix}${tag} "${desc}" ON ${_c4_uprefix}DEV OFF)
     if(${_c4_uprefix}${tag})
         if(MSVC)
@@ -193,10 +238,12 @@ function(c4_optional_compile_flags_dev tag desc gcc msvc)
         else()
             set(flags "${gcc}")
         endif()
-        c4_log("flags: ${tag} ${desc}: ${flags}")
     endif()
-    set(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT} ${flags}" PARENT_SCOPE)
-endfunction()
+    if(flags)
+        c4_dbg("${tag} flags: ${desc}: ${flags}")
+        c4_setg(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT};${flags}")
+    endif()
+endmacro()
 
 
 function(c4_set_proj_prop prop value)
@@ -396,56 +443,47 @@ endmacro()
 # c4_require_subproject(c4core
 #     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
 #     )
-function(c4_require_subproject subproject_name)
-    set(options0arg
-        INTERFACE
-        EXCLUDE_FROM_ALL
+function(c4_require_subproject subproj)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            INCORPORATE
+            EXCLUDE_FROM_ALL
+        _ARGS1
+            SUBDIRECTORY
+        _ARGSN
+            REMOTE
+        _DEPRECATE
+            INTERFACE
     )
-    set(options1arg
-        SUBDIRECTORY
-    )
-    set(optionsnarg
-        REMOTE
-    )
-    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
-    #
-    list(APPEND _${_c4_uprefix}_deps ${subproject_name})
+    list(APPEND _${_c4_uprefix}_deps ${subproj})
     c4_setg(_${_c4_uprefix}_deps ${_${_c4_uprefix}_deps})
-
     c4_dbg("-----------------------------------------------")
-    c4_dbg("requires subproject ${subproject_name}!")
-
-    _c4_get_subproject_property(${subproject_name} AVAILABLE _available)
+    c4_dbg("requires subproject ${subproj}!")
+    _c4_get_subproject_property(${subproj} AVAILABLE _available)
     if(_available)
-        c4_dbg("required subproject ${subproject_name} was already imported:")
-        c4_dbg_subproject(${subproject_name})
-    else() #elseif(NOT _${subproject_name}_available)
-        c4_dbg("required subproject ${subproject_name} is unknown. Importing...")
-        if(_INTERFACE)
-            c4_dbg("${subproject_name} is explicitly required as INTERFACE")
-            c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
-        #elseif(${_c4_uprefix}STANDALONE)
-            #c4_dbg("using ${_c4_uprefix}STANDALONE, so import ${subproject_name} as INTERFACE")
-            #c4_set_var_tmp(C4_LIBRARY_TYPE INTERFACE)
-        endif()
-        set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproject_name}) # root
+        c4_dbg("required subproject ${subproj} was already imported:")
+        c4_dbg_subproject(${subproj})
+    else() #elseif(NOT _${subproj}_available)
+        c4_dbg("required subproject ${subproj} is unknown. Importing...")
+        # forward c4 compile flags
+        string(TOUPPER ${subproj} usubproj)
+        c4_setg(${usubproj}_CXX_FLAGS_FWD "${${_c4_uprefix}CXX_FLAGS}")
+        c4_setg(${usubproj}_CXX_FLAGS_OPT_FWD "${${_c4_uprefix}CXX_FLAGS_OPT}")
+        # root dir
+        set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproj})
         if(_REMOTE)
-            list(FILTER ARGN EXCLUDE REGEX REMOTE)  # remove REMOTE from ARGN
-            _c4_mark_subproject_imported(${_c4_lcprefix} ${subproject_name} ${_r}/src ${_r}/build)
-            c4_log("importing subproject ${subproject_name} (REMOTE)... ${ARGN}")
-            c4_import_remote_proj(${subproject_name} ${_r} ${ARGN})
-            c4_dbg("finished importing subproject ${subproject_name} (REMOTE=${${_c4_uprefix}${subproject_name}_SRC_DIR}).")
+            c4_log("importing subproject ${subproj} (REMOTE)... ${_REMOTE}")
+            _c4_mark_subproject_imported(${subproj} ${_r}/src ${_r}/build ${_INCORPORATE})
+            c4_import_remote_proj(${subproj} ${_r} ${_REMOTE})
+            _c4_get_subproject_property(${subproj} SRC_DIR _srcdir)
+            c4_dbg("finished importing subproject ${subproj} (REMOTE, SRC_DIR=${_srcdir}).")
         elseif(_SUBDIRECTORY)
-            list(FILTER ARGN EXCLUDE REGEX SUBDIRECTORY)  # remove SUBDIRECTORY from ARGN
-            _c4_mark_subproject_imported(${_c4_lcprefix} ${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
-            c4_log("importing subproject ${subproject_name} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
-            c4_add_subproj(${subproject_name} ${_SUBDIRECTORY} ${_r}/build)
-            c4_dbg("finished importing subproject ${subproject_name} (SUBDIRECTORY=${${_c4_uprefix}${subproject_name}_SRC_DIR}).")
+            c4_log("importing subproject ${subproj} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
+            _c4_mark_subproject_imported(${subproj} ${_SUBDIRECTORY} ${_r}/build ${_INCORPORATE})
+            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build)
+            c4_dbg("finished importing subproject ${subproj} (SUBDIRECTORY=${_SUBDIRECTORY}).")
         else()
             message(FATAL_ERROR "subproject type must be either REMOTE or SUBDIRECTORY")
-        endif()
-        if(_INTERFACE)# OR ${_c4_uprefix}STANDALONE)
-            c4_clean_var_tmp(C4_LIBRARY_TYPE)
         endif()
     endif()
 endfunction(c4_require_subproject)
@@ -849,12 +887,20 @@ function(c4_add_target name)
         endif()
 
         if(compiled_target)
-            c4_target_inherit_cxx_standard(${name})
             _c4_set_target_folder(${name} "${_FOLDER}")
-            if(${_c4_uprefix}CXX_FLAGS OR ${_c4_uprefix}C_FLAGS OR ${_c4_uprefix}CXX_FLAGS_OPT)
-                #print_var(${_c4_uprefix}CXX_FLAGS)
+            c4_target_inherit_cxx_standard(${name})
+            set(_more_flags
+                ${${_c4_uprefix}CXX_FLAGS}
+                ${${_c4_uprefix}C_FLAGS}
+                ${${_c4_uprefix}CXX_FLAGS_OPT})
+            if(_more_flags)
+                get_target_property(_flags ${name} COMPILE_OPTIONS)
+                if(_flags)
+                    set(_more_flags ${_flags};${_more_flags})
+                endif()
+                c4_dbg("${name}: COMPILE_FLAGS=${_more_flags}")
                 set_target_properties(${name} PROPERTIES
-                    COMPILE_FLAGS ${${_c4_uprefix}CXX_FLAGS} ${${_c4_uprefix}C_FLAGS} ${${_c4_uprefix}CXX_FLAGS_OPT})
+                    COMPILE_OPTIONS "${_more_flags}")
             endif()
             if(${_c4_uprefix}LINT)
                 c4_static_analysis_target(${name} "${_FOLDER}" lint_targets)
