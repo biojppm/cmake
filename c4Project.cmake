@@ -1496,7 +1496,7 @@ function(_c4_add_library_client_test library namespace pname source_code)
     endif()
     set(psrc "${pdir}/${pname}.cpp")
     set(tsrc "${pdir}/${pname}-run.cmake")
-    set(tout "${pdir}/${pname}-run-out.log")
+    set(tout "${pdir}/${pname}-run-out")
     # generate the source file
     file(WRITE "${psrc}" "${source_code}")
     # generate the cmake project consuming this library
@@ -1571,21 +1571,26 @@ add_custom_target(${pname}-run
     # generate the cmake script with the test content
     file(WRITE "${tsrc}" "
 # run a command and check its return status
-function(runcmd)
+function(runcmd id)
+    set(cmdout \"${tout}-\${id}.log\")
     message(STATUS \"Running command: \${ARGN}\")
-    message(STATUS \"Running command: output goes to ${tout}\")
+    message(STATUS \"Running command: output goes to \${cmdout}\")
     execute_process(
         COMMAND \${ARGN}
         RESULT_VARIABLE retval
-        OUTPUT_FILE \"${tout}\"
-        ERROR_FILE \"${tout}\"
+        OUTPUT_FILE \"\${cmdout}\"
+        ERROR_FILE \"\${cmdout}\"
         # COMMAND_ECHO STDOUT  # only available from cmake-3.15
     )
-    file(READ \"${tout}\" output)
-    message(STATUS \"output:
+    message(STATUS \"Running command: exit status was \${retval}\")
+    file(READ \"\${cmdout}\" output)
+    if(\"\${cmdout}\" STREQUAL \"\")
+        message(STATUS \"Running command: no output\")
+    else()
+        message(STATUS \"Running command: output:
 --------------------
 \${output}--------------------\")
-    message(STATUS \"Exit status was \${retval}: \${ARGN}\")
+    endif()
     if(NOT (\${retval} EQUAL 0))
         message(FATAL_ERROR \"Command failed with exit status \${retval}: \${ARGN}\")
     endif()
@@ -1601,18 +1606,25 @@ set(bdir \"${bdir}\")
 # by receiving its result via the command line
 set(cfg \${CFG_IN})
 
+# remove any existing library install
+if(EXISTS \"\${pfx}\")
+    runcmd(0_rmdir \"\${cmk}\" -E remove_directory \"\${pfx}\")
+else()
+    message(STATUS \"does not exist: \${pfx}\")
+endif()
+
 # install the library
-#runcmd(\"\${cmk}\" --install \"\${idir}\" ${cfg_opt})  # requires cmake>3.13 (at least)
-runcmd(\"\${cmk}\" --build \"\${idir}\" ${cfg_opt} --target install)
+#runcmd(1_install_lib \"\${cmk}\" --install \"\${idir}\" ${cfg_opt})  # requires cmake>3.13 (at least)
+runcmd(1_install_lib \"\${cmk}\" --build \"\${idir}\" ${cfg_opt} --target install)
 
 # configure the client project
-runcmd(\"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" \"-DCMAKE_PREFIX_PATH=\${pfx}\" \"-DCMAKE_GENERATOR=${CMAKE_GENERATOR}\" ${arch} \"-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}\" \"-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}\")
+runcmd(2_config \"\${cmk}\" -S \"\${pdir}\" -B \"\${bdir}\" \"-DCMAKE_PREFIX_PATH=\${pfx}\" \"-DCMAKE_GENERATOR=${CMAKE_GENERATOR}\" ${arch} \"-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}\" \"-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}\")
 
 # build the client project
-runcmd(\"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
+runcmd(3_build \"\${cmk}\" --build \"\${bdir}\" ${cfg_opt})
 
 # run the client executable
-runcmd(\"\${cmk}\" --build \"\${bdir}\" --target \"${pname}-run\" ${cfg_opt})
+runcmd(4_install \"\${cmk}\" --build \"\${bdir}\" --target \"${pname}-run\" ${cfg_opt})
 ")
 endfunction()
 
