@@ -755,20 +755,20 @@ endfunction()
 #------------------------------------------------------------------------------
 
 # a convenience alias to c4_add_target()
-function(c4_add_executable name)
-    c4_add_target(${name} EXECUTABLE ${ARGN})
+function(c4_add_executable target)
+    c4_add_target(${target} EXECUTABLE ${ARGN})
 endfunction(c4_add_executable)
 
 
 # a convenience alias to c4_add_target()
-function(c4_add_library name)
-    c4_add_target(${name} LIBRARY ${ARGN})
+function(c4_add_library target)
+    c4_add_target(${target} LIBRARY ${ARGN})
 endfunction(c4_add_library)
 
 
 # example: c4_add_target(ryml LIBRARY SOURCES ${SRC})
-function(c4_add_target name)
-    c4_dbg("adding target: ${name}: ${ARGN}")
+function(c4_add_target target)
+    c4_dbg("adding target: ${target}: ${ARGN}")
     set(opt0arg
         LIBRARY     # the target is a library
         EXECUTABLE  # the target is an executable
@@ -834,37 +834,37 @@ function(c4_add_target name)
 
     if(NOT ${_c4_uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
-            c4_dbg("adding executable: ${name}")
+            c4_dbg("adding executable: ${target}")
             if(WIN32)
                 if(${_WIN32})
                     list(APPEND _MORE_ARGS WIN32)
                 endif()
             endif()
-	    add_executable(${name} ${_MORE_ARGS})
+	    add_executable(${target} ${_MORE_ARGS})
 	    set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
         elseif(${_LIBRARY})
-            c4_dbg("adding library: ${name}")
+            c4_dbg("adding library: ${target}")
             set(_blt ${C4_LIBRARY_TYPE})
             if(NOT "${_LIBRARY_TYPE}" STREQUAL "")
                 set(_blt ${_LIBRARY_TYPE})
             endif()
             #
             if("${_blt}" STREQUAL "INTERFACE")
-                c4_dbg("adding interface library ${name}")
-                add_library(${name} INTERFACE)
+                c4_dbg("adding interface library ${target}")
+                add_library(${target} INTERFACE)
                 set(src_mode INTERFACE)
                 set(tgt_type INTERFACE)
                 set(compiled_target OFF)
             else()
                 if(NOT ("${_blt}" STREQUAL ""))
-                    c4_dbg("adding library ${name} with type ${_blt}")
-                    add_library(${name} ${_blt} ${_MORE_ARGS})
+                    c4_dbg("adding library ${target} with type ${_blt}")
+                    add_library(${target} ${_blt} ${_MORE_ARGS})
                 else()
                     # obey BUILD_SHARED_LIBS (ie, either static or shared library)
-                    c4_dbg("adding library ${name} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
-                    add_library(${name} ${_MORE_ARGS})
+                    c4_dbg("adding library ${target} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
+                    add_library(${target} ${_MORE_ARGS})
                 endif()
                 # libraries
                 set(src_mode PRIVATE)
@@ -874,80 +874,80 @@ function(c4_add_target name)
         endif(${_EXECUTABLE})
 
         if(src_mode STREQUAL "PUBLIC")
-            c4_add_target_sources(${name}
+            c4_add_target_sources(${target}
                 PUBLIC    "${_SOURCES};${_HEADERS};${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif(src_mode STREQUAL "INTERFACE")
-            c4_add_target_sources(${name}
+            c4_add_target_sources(${target}
                 PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_SOURCES};${_HEADERS};${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif(src_mode STREQUAL "PRIVATE")
-            c4_add_target_sources(${name}
+            c4_add_target_sources(${target}
                 PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_SOURCES};${_HEADERS};${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif()
             message(FATAL_ERROR "${_c4_lcprefix}: adding sources for target ${target} invalid source mode")
         endif()
-        set_target_properties(${name} PROPERTIES C4_SOURCE_ROOT "${_SOURCE_ROOT}")
+        set_target_properties(${target} PROPERTIES C4_SOURCE_ROOT "${_SOURCE_ROOT}")
 
         if(_INC_DIRS)
-            c4_dbg("${name}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
-            target_include_directories(${name} "${tgt_type}" ${_INC_DIRS})
+            c4_dbg("${target}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
+            target_include_directories(${target} "${tgt_type}" ${_INC_DIRS})
         endif()
         if(_PUBLIC_INC_DIRS)
-            c4_dbg("${name}: adding PUBLIC include dirs ${_PUBLIC_INC_DIRS}")
-            target_include_directories(${name} PUBLIC ${_PUBLIC_INC_DIRS})
+            c4_dbg("${target}: adding PUBLIC include dirs ${_PUBLIC_INC_DIRS}")
+            target_include_directories(${target} PUBLIC ${_PUBLIC_INC_DIRS})
         endif()
         if(_INTERFACE_INC_DIRS)
-            c4_dbg("${name}: adding INTERFACE include dirs ${_INTERFACE_INC_DIRS}")
-            target_include_directories(${name} INTERFACE ${_INTERFACE_INC_DIRS})
+            c4_dbg("${target}: adding INTERFACE include dirs ${_INTERFACE_INC_DIRS}")
+            target_include_directories(${target} INTERFACE ${_INTERFACE_INC_DIRS})
         endif()
         if(_PRIVATE_INC_DIRS)
-            c4_dbg("${name}: adding PRIVATE include dirs ${_PRIVATE_INC_DIRS}")
-            target_include_directories(${name} PRIVATE ${_PRIVATE_INC_DIRS})
+            c4_dbg("${target}: adding PRIVATE include dirs ${_PRIVATE_INC_DIRS}")
+            target_include_directories(${target} PRIVATE ${_PRIVATE_INC_DIRS})
         endif()
 
         if(_LIBS)
-            _c4_link_with_libs(${name} "${tgt_type}" "${_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${target} "${tgt_type}" "${_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PUBLIC_LIBS)
-            _c4_link_with_libs(${name} PUBLIC "${_PUBLIC_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${target} PUBLIC "${_PUBLIC_LIBS}" "${_INCORPORATE}")
         endif()
         if(_INTERFACE_LIBS)
-            _c4_link_with_libs(${name} INTERFACE "${_INTERFACE_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${target} INTERFACE "${_INTERFACE_LIBS}" "${_INCORPORATE}")
         endif()
         if(_PRIVATE_LIBS)
-            _c4_link_with_libs(${name} PRIVATE "${_PRIVATE_LIBS}" "${_INCORPORATE}")
+            _c4_link_with_libs(${target} PRIVATE "${_PRIVATE_LIBS}" "${_INCORPORATE}")
         endif()
 
         if(compiled_target)
-            _c4_set_target_folder(${name} "${_FOLDER}")
-            c4_target_inherit_cxx_standard(${name})
+            _c4_set_target_folder(${target} "${_FOLDER}")
+            c4_target_inherit_cxx_standard(${target})
             set(_more_flags
                 ${${_c4_uprefix}CXX_FLAGS}
                 ${${_c4_uprefix}C_FLAGS}
                 ${${_c4_uprefix}CXX_FLAGS_OPT})
             if(_more_flags)
-                get_target_property(_flags ${name} COMPILE_OPTIONS)
+                get_target_property(_flags ${target} COMPILE_OPTIONS)
                 if(_flags)
                     set(_more_flags ${_flags};${_more_flags})
                 endif()
-                c4_dbg("${name}: COMPILE_FLAGS=${_more_flags}")
-                set_target_properties(${name} PROPERTIES
+                c4_dbg("${target}: COMPILE_FLAGS=${_more_flags}")
+                set_target_properties(${target} PROPERTIES
                     COMPILE_OPTIONS "${_more_flags}")
             endif()
             if(${_c4_uprefix}LINT)
-                c4_static_analysis_target(${name} "${_FOLDER}" lint_targets)
+                c4_static_analysis_target(${target} "${_FOLDER}" lint_targets)
             endif()
         endif(compiled_target)
     endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
         if(${_c4_uprefix}SANITIZE)
-            c4_sanitize_target(${name}
+            c4_sanitize_target(${target}
                 ${_what}   # LIBRARY or EXECUTABLE
                 SOURCES ${allsrc}
                 INC_DIRS ${_INC_DIRS} ${_PUBLIC_INC_DIRS} ${_INTERFACE_INC_DIRS} ${_PRIVATE_INC_DIRS}
@@ -958,7 +958,7 @@ function(c4_add_target name)
         endif()
 
         if(NOT ${_c4_uprefix}SANITIZE_ONLY)
-            list(INSERT san_targets 0 ${name})
+            list(INSERT san_targets 0 ${target})
         endif()
 
         if(_SANITIZERS)
@@ -968,22 +968,22 @@ function(c4_add_target name)
 
     # gather dlls so that they can be automatically copied to the target directory
     if(_DLLS)
-        c4_set_transitive_property(${name} _C4_DLLS "${_DLLS}")
-        get_target_property(vd ${name} _C4_DLLS)
+        c4_set_transitive_property(${target} _C4_DLLS "${_DLLS}")
+        get_target_property(vd ${target} _C4_DLLS)
     endif()
 
     if(${_EXECUTABLE})
         if(WIN32)
-            c4_get_transitive_property(${name} _C4_DLLS transitive_dlls)
+            c4_get_transitive_property(${target} _C4_DLLS transitive_dlls)
             foreach(_dll ${transitive_dlls})
                 if(_dll)
-                    c4_dbg("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${name}>")
-                    add_custom_command(TARGET ${name} POST_BUILD
-                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${name}>
-                        COMMENT "${name}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${name}"
+                    c4_dbg("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${target}>")
+                    add_custom_command(TARGET ${target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${target}>
+                        COMMENT "${target}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${target}"
                         )
                 else()
-                    message(WARNING "dll required by ${_c4_prefix}/${name} was not found, so cannot copy: ${_dll}")
+                    message(WARNING "dll required by ${_c4_prefix}/${target} was not found, so cannot copy: ${_dll}")
                 endif()
             endforeach()
         endif()
