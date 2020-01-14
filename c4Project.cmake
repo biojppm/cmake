@@ -26,6 +26,7 @@ set(C4_LIBRARY_TYPE "" CACHE STRING "default library type: either \"\"(defer to 
 set(C4_SOURCE_TRANSFORM NONE CACHE STRING "global source transform method")
 set(C4_HDR_EXTS "h;hpp;hh;h++;hxx" CACHE STRING "list of header extensions for determining which files are headers")
 set(C4_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit extensions for determining which files are sources")
+set(C4_ADD_EXTS "natvis" CACHE STRING "list of additional file extensions that might be added as sources to targets")
 set(C4_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
 
@@ -56,13 +57,6 @@ macro(c4_dbg_var_if varname)
 endmacro()
 
 
-function(c4_assert condition)
-    if(NOT (${condition}))
-        message(FATAL_ERROR "${_c4_prefix}: ${condition} must be true: ${ARGN}")
-    endif()
-endfunction()
-
-
 macro(_c4_show_pfx_vars)
     if(NOT ("${ARGN}" STREQUAL ""))
         message(STATUS "prefix vars: ${ARGN}")
@@ -91,8 +85,8 @@ macro(_c4_handle_args)
         _ARGS0
         _ARGS1
         _ARGSN
-        _DEPRECATE
         _ARGS
+        _DEPRECATE
     )
     cmake_parse_arguments("__c4ha" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     cmake_parse_arguments("${__c4ha__PREFIX}" "${__c4ha__ARGS0}" "${__c4ha__ARGS1}" "${__c4ha__ARGSN}" ${__c4ha__ARGS})
@@ -253,32 +247,69 @@ macro(c4_optional_compile_flags_dev tag desc gcc msvc)
 endmacro()
 
 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# set project-wide property
 function(c4_set_proj_prop prop value)
+    c4_dbg("set ${prop}=${value}")
     set(C4PROJ_${_c4_prefix}_${prop} ${value})
 endfunction()
 
-
+# set project-wide property
 function(c4_get_proj_prop prop var)
+    c4_dbg("get ${prop}=${C4PROJ_${_c4_prefix}_${prop}}")
     set(${var} ${C4PROJ_${_c4_prefix}_${prop}} PARENT_SCOPE)
 endfunction()
 
 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# set target-wide c4 property
 function(c4_set_target_prop target prop value)
-    set_target_properties(${target} PROPERTIES C4_TGT_${prop} ${value})
+    _c4_set_tgt_prop(${target} C4_TGT_${prop} "${value}")
+endfunction()
+function(c4_append_target_prop target prop value)
+    _c4_append_tgt_prop(${target} C4_TGT_${prop} "${value}")
 endfunction()
 
-
+# get target-wide c4 property
 function(c4_get_target_prop target prop var)
-    get_target_property(val ${target} C4_TGT_${prop})
+    _c4_get_tgt_prop(val ${target} C4_TGT_${prop})
     set(${var} ${val} PARENT_SCOPE)
 endfunction()
 
 
+# set target-wide property
+function(_c4_set_tgt_prop tgt prop propval)
+    c4_dbg("target ${tgt}: set ${prop}=${propval}")
+    set_target_properties(${tgt} PROPERTIES ${prop} "${propval}")
+endfunction()
+function(_c4_append_tgt_prop tgt prop propval)
+    c4_dbg("target ${tgt}: appending ${prop}=${propval}")
+    _c4_get_tgt_prop(curr ${tgt} ${prop})
+    if(curr)
+        list(APPEND curr "${propval}")
+    else()
+        set(curr "${propval}")
+    endif()
+    _c4_set_tgt_prop(${tgt} ${prop} "${curr}")
+endfunction()
+
+# get target-wide property
+function(_c4_get_tgt_prop out tgt prop)
+    get_target_property(val ${tgt} ${prop})
+    c4_dbg("target ${tgt}: get ${prop}=${val}")
+    set(${out} "${val}" PARENT_SCOPE)
+endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
 
 macro(_c4_handle_arg argname default)
      if("${_${argname}}" STREQUAL "")
@@ -411,13 +442,11 @@ endfunction()
 
 
 macro(_c4_handle_cxx_standard_args)
-    set(opt0arg
-        OPTIONAL
-        EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            OPTIONAL
+            EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
     )
-    set(opt1arg)
-    set(optNarg)
-    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     # default values for args
     set(_REQUIRED ON)
     if(NOT "${_OPTIONAL}" STREQUAL "")
@@ -558,15 +587,13 @@ function(_c4_append_subproject_property subproject property value)
 endfunction()
 
 
-function(_c4_is_incorporated out)
-    c4_dbg("is incorporated?")
-    if(_c4_is_root_proj)
-        c4_dbg("is incorporated? root proj, no")
+function(_c4_is_incorporated subproj out)
+    if("${subproj}" STREQUAL "${_c4_root_proj}")
+        c4_dbg("${subproj} is incorporated? root proj, no")
         set(${out} OFF PARENT_SCOPE)
     else()
-        c4_dbg("is incorporated? ${_c4_prefix} is not root proj")
-        _c4_get_subproject_property(${_c4_prefix} INCORPORATE inc)
-        c4_dbg("is incorporated? inc=${inc}")
+        _c4_get_subproject_property(${subproj} INCORPORATE inc)
+        c4_dbg("${subproj} is incorporated? not root proj, incorporate=${inc}")
         set(${out} ${inc} PARENT_SCOPE)
     endif()
 endfunction()
@@ -993,60 +1020,225 @@ endfunction() # add_target
 
 function(_c4_link_with_libs target link_type libs incorporate)
     foreach(lib ${libs})
-        if(incorporate AND (
-                    (C4_STANDALONE OR ${_c4_uprefix}STANDALONE)
-                    AND
-                    ((${lib} IN_LIST incorporate))))
-            c4_log("-----> ${target} ${link_type} incorporating lib ${lib}")
+        if(incorporate AND ${_c4_uprefix}STANDALONE)
+            c4_log("-----> target ${target} ${link_type} incorporating lib ${lib}")
             _c4_incorporate_lib(${target} ${link_type} ${lib})
         else()
-            c4_log("${target} ${link_type} linking with lib ${lib}")
+            c4_dbg("${target} ${link_type} linking with lib ${lib}")
             target_link_libraries(${target} ${link_type} ${lib})
         endif()
     endforeach()
 endfunction()
 
 
-function(_c4_incorporate_lib target link_type splib)
+function(_c4_incorporate_lib target link_type lib)
+    c4_dbg("target ${target}: incorporating lib ${lib} [${link_type}]")
     #
-    _c4_get_tgt_prop(splib_src ${splib} SOURCES)
-    if(splib_src)
-        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${splib_src}")
-        c4_add_target_sources(${target} PRIVATE ${splib_src})
+    c4_append_target_prop(${target} INCORPORATED_TARGETS ${lib})
+    #
+    _c4_get_tgt_prop(lib_src ${lib} SOURCES)
+    if(lib_src)
+        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${lib_src}") # FIXME
+        c4_add_target_sources(${target} INCORPORATED_FROM ${lib} PRIVATE ${lib_src})
     endif()
     #
-    _c4_get_tgt_prop(splib_isrc ${splib} INTERFACE_SOURCES)
-    if(splib_isrc)
-        c4_add_target_sources(${target} INTERFACE ${splib_isrc})
-    endif()
-    #
-    #
-    _c4_get_tgt_prop(splib_incs ${splib} INCLUDE_DIRECTORIES)
-    if(splib_incs)
-        target_include_directories(${target} PUBLIC ${splib_incs})
-    endif()
-    #
-    _c4_get_tgt_prop(splib_iincs ${splib} INTERFACE_INCLUDE_DIRECTORIES)
-    if(splib_iincs)
-        target_include_directories(${target} INTERFACE ${splib_iincs})
+    _c4_get_tgt_prop(lib_isrc ${lib} INTERFACE_SOURCES)
+    if(lib_isrc)
+        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${lib_isrc}") # FIXME
+        c4_add_target_sources(${target} INCORPORATED_FROM ${lib} INTERFACE ${lib_isrc})
     endif()
     #
     #
-    _c4_get_tgt_prop(splib_lib ${splib} LINK_LIBRARIES)
-    if(splib_lib)
-        target_link_libraries(${target} PUBLIC ${splib_lib})
+    _c4_get_tgt_prop(lib_incs ${lib} INCLUDE_DIRECTORIES)
+    if(lib_incs)
+        target_include_directories(${target} PUBLIC ${lib_incs})
     endif()
-    _c4_get_tgt_prop(splib_ilib ${splib} INTERFACE_LIBRARY)
-    if(splib_ilib)
-        target_link_libraries(${target} INTERFACE ${splib_ilib})
+    #
+    _c4_get_tgt_prop(lib_iincs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
+    if(lib_iincs)
+        target_include_directories(${target} INTERFACE ${lib_iincs})
+    endif()
+    #
+    #
+    _c4_get_tgt_prop(lib_lib ${lib} LINK_LIBRARIES)
+    if(lib_lib)
+        target_link_libraries(${target} PUBLIC ${lib_lib})
+    endif()
+    _c4_get_tgt_prop(lib_ilib ${lib} INTERFACE_LIBRARY)
+    if(lib_ilib)
+        target_link_libraries(${target} INTERFACE ${lib_ilib})
     endif()
 endfunction()
 
 
-function(_c4_get_tgt_prop out tgt prop)
-    get_target_property(val ${tgt} ${prop})
-    c4_dbg("${tgt}: ${prop}=${val}")
-    set(${out} ${val} PARENT_SCOPE)
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#
+#
+function(c4_add_target_sources target)
+    # https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS1  # one-value macro arguments
+        INCORPORATED_FROM
+        TRANSFORM # Transform types:
+                  #   * NONE - do not transform the sources
+                  #   * UNITY
+                  #   * UNITY_HDR
+                  #   * SINGLE_HDR
+                  #   * SINGLE_UNIT
+      _ARGSN  # multi-value macro arguments
+        PUBLIC
+        INTERFACE
+        PRIVATE
+    )
+    if(("${_TRANSFORM}" STREQUAL "GLOBAL") OR ("${_TRANSFORM}" STREQUAL ""))
+        set(_TRANSFORM ${C4_SOURCE_TRANSFORM})
+    endif()
+    if("${_TRANSFORM}" STREQUAL "")
+        set(_TRANSFORM NONE)
+    endif()
+    #
+    # is this target an interface?
+    set(_is_iface FALSE)
+    _c4_get_tgt_prop(target_type ${target} TYPE)
+    if("${target_type}" STREQUAL "INTERFACE_LIBRARY")
+        set(_is_iface TRUE)
+    elseif("${prop_name}" STREQUAL "LINK_LIBRARIES")
+        set(_is_iface FALSE)
+    endif()
+    #
+    set(out)
+    set(umbrella ${_c4_lprefix}transform-src)
+    #
+    if("${_TRANSFORM}" STREQUAL "NONE")
+        c4_dbg("target ${target}: source transform: NONE!")
+        #
+        # do not transform the sources
+        #
+        if(_PUBLIC)
+            c4_dbg("target=${target} PUBLIC sources: ${_PUBLIC}")
+            c4_append_target_prop(${target} PUBLIC_SRC "${_PUBLIC}")
+            if(_INCORPORATED_FROM)
+                c4_append_target_prop(${target} PUBLIC_SRC_${_INCORPORATED_FROM} "${_PUBLIC}")
+            else()
+                c4_append_target_prop(${target} PUBLIC_SRC_${target} "${_PUBLIC}")
+            endif()
+            target_sources(${target} PUBLIC "${_PUBLIC}")
+        endif()
+        if(_INTERFACE)
+            c4_dbg("target=${target} INTERFACE sources: ${_INTERFACE}")
+            c4_append_target_prop(${target} INTERFACE_SRC "${_INFERFACE}")
+            if(_INCORPORATED_FROM)
+                c4_append_target_prop(${target} INTERFACE_SRC_${_INCORPORATED_FROM} "${_INTERFACE}")
+            else()
+                c4_append_target_prop(${target} INTERFACE_SRC_${target} "${_INFERFACE}")
+            endif()
+            target_sources(${target} INTERFACE "${_INTERFACE}")
+        endif()
+        if(_PRIVATE)
+            c4_dbg("target=${target} PRIVATE sources: ${_PRIVATE}")
+            c4_append_target_prop(${target} PRIVATE_SRC "${_PRIVATE}")
+            if(_INCORPORATED_FROM)
+                c4_append_target_prop(${target} PRIVATE_SRC_${_INCORPORATED_FROM} "${_PRIVATE}")
+            else()
+                c4_append_target_prop(${target} PRIVATE_SRC_${target} "${_PRIVATE}")
+            endif()
+            target_sources(${target} PRIVATE "${_PRIVATE}")
+        endif()
+        #
+    elseif("${_TRANSFORM}" STREQUAL "UNITY")
+        c4_dbg("target ${target}: source transform: UNITY!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate all compilation unit files (excluding interface)
+        # into a single compilation unit
+        #
+        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
+        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
+        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
+        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
+        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
+        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
+        if(cpublic OR cinterface OR cprivate)
+            _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
+            c4_dbg("${target}: output unit: ${out}")
+            c4_cat_sources("${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
+            add_dependencies(${target} ${out})
+        endif()
+        if(_PUBLIC)
+            c4_append_target_prop(${target} PUBLIC_SRC
+                $<BUILD_INTERFACE:${hpublic};${out}>
+                $<INSTALL_INTERFACE:${hpublic};${out}>)
+            target_sources(${target} PUBLIC
+                $<BUILD_INTERFACE:${hpublic};${out}>
+                $<INSTALL_INTERFACE:${hpublic};${out}>)
+        endif()
+        if(_INTERFACE)
+            c4_append_target_prop(${target} INTERFACE_SRC
+                $<BUILD_INTERFACE:${hinterface}>
+                $<INSTALL_INTERFACE:${hinterface}>)
+            target_sources(${target} INTERFACE
+                $<BUILD_INTERFACE:${hinterface}>
+                $<INSTALL_INTERFACE:${hinterface}>)
+        endif()
+        if(_PRIVATE)
+            c4_append_target_prop(${target} PRIVATE_SRC
+                $<BUILD_INTERFACE:${hprivate}>
+                $<INSTALL_INTERFACE:${hprivate}>)
+            target_sources(${target} PRIVATE
+                $<BUILD_INTERFACE:${hprivate}>
+                $<INSTALL_INTERFACE:${hprivate}>)
+        endif()
+    elseif("${_TRANSFORM}" STREQUAL "UNITY_HDR")
+        c4_dbg("target ${target}: source transform: UNITY_HDR!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # like unity, but concatenate compilation units into
+        # a header file, leaving other header files untouched
+        #
+        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
+        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
+        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
+        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
+        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
+        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
+        if(c)
+            _c4cat_get_outname(${target} "src" ${C4_GEN_HDR_EXT} out)
+            c4_dbg("${target}: output hdr: ${out}")
+            _c4cat_filter_srcs_hdrs("${_PUBLIC}" c_h)
+            c4_cat_sources("${c}" "${out}" ${umbrella})
+            add_dependencies(${target} ${out})
+            add_dependencies(${target} ${_c4_lprefix}cat)
+        endif()
+        set(${src} ${out} PARENT_SCOPE)
+        set(${hdr} ${h} PARENT_SCOPE)
+        #
+    elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
+        c4_dbg("target ${target}: source transform: SINGLE_HDR!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate everything into a single header file
+        #
+        _c4cat_get_outname(${target} "all" ${C4_GEN_HDR_EXT} out)
+        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
+        c4_cat_sources("${ch}" "${out}" ${umbrella})
+        #
+    elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
+        c4_dbg("target ${target}: source transform: SINGLE_UNIT!")
+        message(FATAL_ERROR "source transformation not implemented")
+        #
+        # concatenate:
+        #  * all compilation units into a single compilation unit
+        #  * all headers into a single header
+        #
+        _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
+        _c4cat_get_outname(${target} "hdr" ${C4_GEN_SRC_EXT} out)
+        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
+        c4_cat_sources("${ch}" "${out}" ${umbrella})
+    else()
+        message(FATAL_ERROR "unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
+    endif()
 endfunction()
 
 
@@ -1057,28 +1249,19 @@ endfunction()
 # see: https://github.com/pr0g/cmake-examples
 # see: https://cliutils.gitlab.io/modern-cmake/
 
-
 function(c4_install_target target)
-    # zero-value macro arguments
-    set(opt0arg
-    )
-    # one-value macro arguments
-    set(opt1arg
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS1  # one-value macro arguments
         EXPORT # the name of the export target. default: see below.
     )
-    # multi-value macro arguments
-    set(optNarg
-    )
-    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    _c4_handle_arg(EXPORT "${_c4_prefix}-export")
     #
     c4_dbg("installing target: ${target} ${ARGN}")
-    _c4_is_incorporated(inc)
+    _c4_is_incorporated(${_c4_prefix} inc)
     if(inc)
         c4_dbg("this project is INCORPORATEd. skipping install of targets")
         return()
     endif()
-    #
-    _c4_handle_arg(EXPORT "${_c4_prefix}-export")
     #
     _c4_setup_install_vars()
     # TODO: don't forget to install DLLs: _${_c4_uprefix}_${target}_DLLS
@@ -1121,28 +1304,146 @@ function(c4_install_target target)
 endfunction()
 
 
+function(c4_install_sources target destination)
+    c4_dbg("target ${target}: installing sources to ${destination}")
+    # executables have no sources requiring install
+    _c4_get_tgt_prop(target_type ${target} TYPE)
+    if(target_type STREQUAL "EXECUTABLE")
+        c4_dbg("target ${target}: is executable, skipping source install")
+        return()
+    endif()
+    # install source from the target and incorporated targets
+    c4_get_target_prop(${target} INCORPORATED_TARGETS inctargets)
+    if(inctargets)
+        set(targets "${inctargets};${target}")
+    else()
+        set(targets "${target}")
+    endif()
+    foreach(t ${targets})
+        _c4_get_tgt_prop(srcroot ${t} C4_SOURCE_ROOT)
+        # get the sources from the target
+        #
+        c4_get_target_prop(${t} PUBLIC_SRC_${t} src)
+        if(src)
+            _c4cat_filter_hdrs("${src}" srcf)
+            c4_install_files("${srcf}" "${destination}" "${srcroot}")
+            _c4cat_filter_additional_exts("${src}" add)
+            if(add)
+                c4_install_files("${add}" "${destination}" "${srcroot}")
+            endif()
+        endif()
+        #
+        c4_get_target_prop(${t} PRIVATE_SRC_${t} psrc)
+        if(psrc)
+            _c4cat_filter_hdrs("${psrc}" psrcf)
+            c4_install_files("${psrcf}" "${destination}" "${srcroot}")
+            _c4cat_filter_additional_exts("${psrc}" add)
+            if(add)
+                c4_install_files("${add}" "${destination}" "${srcroot}")
+            endif()
+        endif()
+        #
+        c4_get_target_prop(${t} INTERFACE_SRC_${t} isrc)
+        if(isrc)
+            _c4cat_filter_srcs_hdrs("${isrc}" isrcf)
+            c4_install_files("${isrcf}" "${destination}" "${srcroot}")
+            _c4cat_filter_additional_exts("${isrc}" add)
+            if(add)
+                c4_install_files("${add}" "${destination}" "${srcroot}")
+            endif()
+        endif()
+        #
+        c4_get_target_prop(${t} ADDFILES addfiles)
+        if(addfiles)
+            foreach(af ${addfiles})
+                string(REGEX REPLACE "(.*)!!(.*)!!(.*)" "\\1;\\2;\\3" li "${af}")
+                list(GET li 0 files)
+                list(GET li 1 dst)
+                list(GET li 2 relative_to)
+                string(REPLACE "%%%" ";" files "${files}")
+                c4_install_files("${files}" "${dst}" "${relative_to}")
+            endforeach()
+        endif()
+        #
+        c4_get_target_prop(${t} ADDDIRS adddirs)
+        if(adddirs)
+            foreach(af ${adddirs})
+                string(REGEX REPLACE "(.*)!!(.*)!!(.*)" "\\1;\\2;\\3" li "${af}")
+                list(GET li 0 dirs)
+                list(GET li 1 dst)
+                list(GET li 2 relative_to)
+                string(REPLACE "%%%" ";" dirs "${files}")
+                c4_install_dirs("${dirs}" "${dst}" "${relative_to}")
+            endforeach()
+        endif()
+    endforeach()
+endfunction()
+
+
+function(c4_install_target_add_files target files destination relative_to)
+    c4_dbg("installing additional files for target ${target}, destination=${destination}: ${files}")
+    string(REPLACE ";" "%%%" rfiles "${files}")
+    c4_append_target_prop(${target} ADDFILES "${rfiles}!!${destination}!!${relative_to}")
+    #
+    _c4_is_incorporated(${_c4_prefix} inc)
+    if(inc)
+        c4_dbg("this project is INCORPORATEd. skipping install of targets")
+        return()
+    endif()
+    c4_install_files("${files}" "${destination}" "${relative_to}")
+endfunction()
+
+
+function(c4_install_target_add_dirs target dirs destination relative_to)
+    c4_dbg("installing additional dirs for target ${target}, destination=${destination}: ${dirs}")
+    string(REPLACE ";" "%%%" rdirs "${dirs}")
+    c4_append_target_prop(${target} ADDDIRS "${rdirs}!!${destination}!!${relative_to}")
+    #
+    _c4_is_incorporated(${_c4_prefix} inc)
+    if(inc)
+        c4_dbg("this project is INCORPORATEd. skipping install of targets")
+        return()
+    endif()
+    c4_install_dirs("${dirs}" "${destination}" "${relative_to}")
+endfunction()
+
+
+function(c4_install_files files destination relative_to)
+    c4_dbg("adding files to install list, destination ${destination}: ${files}")
+    foreach(f ${files})
+        file(RELATIVE_PATH rf "${relative_to}" ${f})
+        get_filename_component(rd "${rf}" DIRECTORY)
+        install(FILES ${f} DESTINATION "${destination}/${rd}" ${ARGN})
+    endforeach()
+endfunction()
+
+
+function(c4_install_directories directories destination relative_to)
+    c4_dbg("adding directories to install list, destination ${destination}: ${directories}")
+    foreach(d ${directories})
+        file(RELATIVE_PATH rf "${relative_to}" ${d})
+        get_filename_component(rd "${rf}" DIRECTORY)
+        install(DIRECTORY ${d} DESTINATION "${destination}/${rd}" ${ARGN})
+    endforeach()
+endfunction()
+
+
 function(c4_install_exports)
-    # zero-value macro arguments
-    set(opt0arg
-    )
-    # one-value macro arguments
-    set(opt1arg
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS1  # one-value macro arguments
         PREFIX     # override the c4 project-wide prefix. This will be used in the cmake
         TARGET     # the name of the exports target
         NAMESPACE  # the namespace for the targets
-    )
-    # multi-value macro arguments
-    set(optNarg
+      _ARGSN  # multi-value macro arguments
         DEPENDENCIES
     )
-    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
     #
     _c4_handle_arg(PREFIX    "${_c4_prefix}")
     _c4_handle_arg(TARGET    "${_c4_prefix}-export")
     _c4_handle_arg(NAMESPACE "${_c4_prefix}::")
     #
     c4_dbg("installing exports: ${ARGN}")
-    _c4_is_incorporated(inc)
+    _c4_is_incorporated(${_c4_prefix} inc)
     if(inc)
         c4_dbg("this project is INCORPORATEd. skipping install of exports")
         return()
@@ -1157,14 +1458,19 @@ function(c4_install_exports)
     set(deps)
     if(_DEPENDENCIES)
         set(deps "#-----------------------------
-include(CMakeFindDependencyMacro)")
+include(CMakeFindDependencyMacro)
+")
         foreach(d ${_DEPENDENCIES})
-            set(deps "${deps}
-find_dependency(${d} REQUIRED)
+            _c4_is_incorporated(${d} inc)
+            if(inc)
+                c4_dbg("install: dependency ${d} is INCORPORATEd, skipping check")
+                continue()
+            endif()
+            c4_dbg("install: adding dependency check for ${d}")
+            set(deps "${deps}find_dependency(${d} REQUIRED)
 ")
         endforeach()
-        set(deps "${deps}
-#-----------------------------")
+        set(deps "${deps}#-----------------------------")
     endif()
     #
     # cfg_dst is the path relative to install root where the export
@@ -1271,66 +1577,52 @@ macro(_c4_setup_install_vars)
 endmacro()
 
 
-function(c4_install_files files destination relative_to)
-    c4_dbg("adding files to install list, destination ${destination}: ${files}")
-    foreach(f ${files})
-        file(RELATIVE_PATH rf "${relative_to}" ${f})
-        get_filename_component(rd "${rf}" DIRECTORY)
-        install(FILES ${f} DESTINATION "${destination}/${rd}" ${ARGN})
-    endforeach()
-endfunction()
-
-
-function(c4_install_directories directories destination relative_to)
-    c4_dbg("adding directories to install list, destination ${destination}: ${directories}")
-    foreach(d ${directories})
-        file(RELATIVE_PATH rf "${relative_to}" ${d})
-        get_filename_component(rd "${rf}" DIRECTORY)
-        install(DIRECTORY ${d} DESTINATION "${destination}/${rd}" ${ARGN})
-    endforeach()
-endfunction()
-
-
-function(c4_install_sources target destination)
-    # executables have no sources requiring install
-    get_target_property(target_type ${target} TYPE)
-    if(target_type STREQUAL "EXECUTABLE")
-        return() # nothing to do
-    endif()
-    # get the sources from the target
-    _c4_get_tgt_prop(src ${target} SOURCES)
-    _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
-    _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
-    if(src)
-        _c4cat_filter_hdrs("${src}" hdr)
-        c4_install_files("${hdr}" "${destination}" "${srcroot}")
-    endif()
-    if(isrc)
-        _c4cat_filter_srcs_hdrs("${isrc}" isrc)
-        c4_install_files("${isrc}" "${destination}" "${srcroot}")
-    endif()
-endfunction()
-
-
 function(c4_get_target_installed_headers target out)
+    c4_get_target_prop(${target} INCORPORATED_TARGETS inctargets)
+    if(inctargets)
+        set(targets "${inctargets};${target}")
+    else()
+        set(targets "${target}")
+    endif()
     set(hdrs)
-    _c4_get_tgt_prop(src ${target} SOURCES)
-    _c4_get_tgt_prop(isrc ${target} INTERFACE_SOURCES)
-    _c4_get_tgt_prop(srcroot ${target} C4_SOURCE_ROOT)
-    if(src)
-        _c4cat_filter_hdrs("${src}" h_)
-        foreach(h ${h_})
+    foreach(t ${targets})
+        _c4_get_tgt_prop(srcroot ${t} C4_SOURCE_ROOT)
+        #
+        c4_get_target_prop(${t} PUBLIC_SRC_${t} src)
+        if(src)
+            _c4cat_filter_hdrs("${src}" srcf)
+            if(thdrs)
+                set(thdrs "${thdrs};${srcf}")
+            else()
+                set(thdrs "${srcf}")
+            endif()
+        endif()
+        #
+        c4_get_target_prop(${t} PRIVATE_SRC_${t} psrc)
+        if(src)
+            _c4cat_filter_hdrs("${psrc}" psrcf)
+            if(thdrs)
+                set(thdrs "${thdrs};${psrcf}")
+            else()
+                set(thdrs "${psrcf}")
+            endif()
+        endif()
+        #
+        c4_get_target_prop(${t} INTERFACE_SRC_${t} isrc)
+        if(src)
+            _c4cat_filter_hdrs("${isrc}" isrcf)
+            if(thdrs)
+                set(thdrs "${thdrs};${isrcf}")
+            else()
+                set(thdrs "${isrcf}")
+            endif()
+        endif()
+        #
+        foreach(h ${thdrs})
             file(RELATIVE_PATH rf "${srcroot}" "${h}")
             list(APPEND hdrs "${rf}")
         endforeach()
-    endif()
-    if(isrc)
-        _c4cat_filter_hdrs("${isrc}" h_)
-        foreach(h ${h_})
-            file(RELATIVE_PATH rf "${srcroot}" "${h}")
-            list(APPEND hdrs "${rf}")
-        endforeach()
-    endif()
+    endforeach()
     set(${out} ${hdrs} PARENT_SCOPE)
 endfunction()
 
@@ -1867,157 +2159,6 @@ function(c4_add_benchmark target casename work_dir comment)
 endfunction()
 
 
-
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#------------------------------------------------------------------------------
-#
-
-#
-# https://steveire.wordpress.com/2016/08/09/opt-in-header-only-libraries-with-cmake/
-#
-# Transform types:
-#   * NONE
-#   * UNITY
-#   * UNITY_HDR
-#   * SINGLE_HDR
-#   * SINGLE_UNIT
-function(c4_add_target_sources target)
-    set(options0arg
-    )
-    set(options1arg
-        TRANSFORM
-    )
-    set(optionsnarg
-        PUBLIC
-        INTERFACE
-        PRIVATE
-    )
-    cmake_parse_arguments("" "${options0arg}" "${options1arg}" "${optionsnarg}" ${ARGN})
-    if(("${_TRANSFORM}" STREQUAL "GLOBAL") OR ("${_TRANSFORM}" STREQUAL ""))
-        set(_TRANSFORM ${C4_SOURCE_TRANSFORM})
-    endif()
-    if("${_TRANSFORM}" STREQUAL "")
-        set(_TRANSFORM NONE)
-    endif()
-    #
-    # is this target an interface?
-    set(_is_iface FALSE)
-    get_target_property(target_type ${target} TYPE)
-    if("${target_type}" STREQUAL "INTERFACE_LIBRARY")
-        set(_is_iface TRUE)
-    elseif("${prop_name}" STREQUAL "LINK_LIBRARIES")
-        set(_is_iface FALSE)
-    endif()
-    #
-    set(out)
-    set(umbrella ${_c4_lprefix}transform-src)
-    #
-    if("${_TRANSFORM}" STREQUAL "NONE")
-        c4_dbg("target=${target} source transform: NONE!")
-        #
-        # do not transform the sources
-        #
-        if(_PUBLIC)
-            c4_dbg("target=${target} PUBLIC sources: ${_PUBLIC}")
-            target_sources(${target} PUBLIC ${_PUBLIC})
-        endif()
-        if(_INTERFACE)
-            c4_dbg("target=${target} INTERFACE sources: ${_INTERFACE}")
-            target_sources(${target} INTERFACE ${_INTERFACE})
-        endif()
-        if(_PRIVATE)
-            c4_dbg("target=${target} PRIVATE sources: ${_PRIVATE}")
-            target_sources(${target} PRIVATE ${_PRIVATE})
-        endif()
-        #
-    elseif("${_TRANSFORM}" STREQUAL "UNITY")
-        c4_dbg("source transform: UNITY!")
-        message(FATAL_ERROR "source transformation not implemented")
-        #
-        # concatenate all compilation unit files (excluding interface)
-        # into a single compilation unit
-        #
-        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
-        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
-        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
-        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
-        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
-        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
-        if(cpublic OR cinterface OR cprivate)
-            _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
-            c4_dbg("${target}: output unit: ${out}")
-            c4_cat_sources("${cpublic};${cinterface};${cprivate}" "${out}" ${umbrella})
-            add_dependencies(${target} ${out})
-        endif()
-        if(_PUBLIC)
-            target_sources(${target} PUBLIC
-                $<BUILD_INTERFACE:${hpublic};${out}>
-                $<INSTALL_INTERFACE:${hpublic};${out}>)
-        endif()
-        if(_INTERFACE)
-            target_sources(${target} INTERFACE
-                $<BUILD_INTERFACE:${hinterface}>
-                $<INSTALL_INTERFACE:${hinterface}>)
-        endif()
-        if(_PRIVATE)
-            target_sources(${target} PRIVATE
-                $<BUILD_INTERFACE:${hprivate}>
-                $<INSTALL_INTERFACE:${hprivate}>)
-        endif()
-        #
-    elseif("${_TRANSFORM}" STREQUAL "UNITY_HDR")
-        c4_dbg("source transform: UNITY_HDR!")
-        message(FATAL_ERROR "source transformation not implemented")
-        #
-        # like unity, but concatenate compilation units into
-        # a header file, leaving other header files untouched
-        #
-        _c4cat_filter_srcs("${_PUBLIC}"    cpublic)
-        _c4cat_filter_hdrs("${_PUBLIC}"    hpublic)
-        _c4cat_filter_srcs("${_INTERFACE}" cinterface)
-        _c4cat_filter_hdrs("${_INTERFACE}" hinterface)
-        _c4cat_filter_srcs("${_PRIVATE}"   cprivate)
-        _c4cat_filter_hdrs("${_PRIVATE}"   hprivate)
-        if(c)
-            _c4cat_get_outname(${target} "src" ${C4_GEN_HDR_EXT} out)
-            c4_dbg("${target}: output hdr: ${out}")
-            _c4cat_filter_srcs_hdrs("${_PUBLIC}" c_h)
-            c4_cat_sources("${c}" "${out}" ${umbrella})
-            add_dependencies(${target} ${out})
-            add_dependencies(${target} ${_c4_lprefix}cat)
-        endif()
-        set(${src} ${out} PARENT_SCOPE)
-        set(${hdr} ${h} PARENT_SCOPE)
-        #
-    elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
-        c4_dbg("source transform: SINGLE_HDR!")
-        message(FATAL_ERROR "source transformation not implemented")
-        #
-        # concatenate everything into a single header file
-        #
-        _c4cat_get_outname(${target} "all" ${C4_GEN_HDR_EXT} out)
-        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
-        c4_cat_sources("${ch}" "${out}" ${umbrella})
-        #
-    elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
-        c4_dbg("source transform: SINGLE_HDR!")
-        message(FATAL_ERROR "source transformation not implemented")
-        #
-        # concatenate:
-        #  * all compilation unit into a single compilation unit
-        #  * all headers into a single header
-        #
-        _c4cat_get_outname(${target} "src" ${C4_GEN_SRC_EXT} out)
-        _c4cat_get_outname(${target} "hdr" ${C4_GEN_SRC_EXT} out)
-        _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
-        c4_cat_sources("${ch}" "${out}" ${umbrella})
-    else()
-        message(FATAL_ERROR "unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
-    endif()
-endfunction()
-
-
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
@@ -2043,6 +2184,13 @@ endfunction()
 
 function(_c4cat_filter_srcs_hdrs in out)
     _c4cat_filter_extensions("${in}" "${C4_HDR_EXTS};${C4_SRC_EXTS}" l)
+    set(${out} ${l} PARENT_SCOPE)
+endfunction()
+
+function(_c4cat_filter_additional_exts in out)
+    c4_dbg("fdx filter ${in}")
+    _c4cat_filter_extensions("${in}" "${C4_ADD_EXTS}" l)
+    c4_dbg("fdx filter ${l}")
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
