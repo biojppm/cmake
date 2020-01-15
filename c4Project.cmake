@@ -283,10 +283,27 @@ function(c4_get_target_prop target prop var)
 endfunction()
 
 
+# get target-wide property
+function(_c4_get_tgt_prop out tgt prop)
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "INTERFACE_LIBRARY")
+        get_property(val GLOBAL PROPERTY C4_TGT_${tgt}_${prop})
+    else()
+        get_target_property(val ${tgt} ${prop})
+    endif()
+    c4_dbg("target ${tgt}: get ${prop}=${val}")
+    set(${out} "${val}" PARENT_SCOPE)
+endfunction()
+
 # set target-wide property
 function(_c4_set_tgt_prop tgt prop propval)
     c4_dbg("target ${tgt}: set ${prop}=${propval}")
-    set_target_properties(${tgt} PROPERTIES ${prop} "${propval}")
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "INTERFACE_LIBRARY")
+        set_property(GLOBAL PROPERTY C4_TGT_${tgt}_${prop} "${propval}")
+    else()
+        set_target_properties(${tgt} PROPERTIES ${prop} "${propval}")
+    endif()
 endfunction()
 function(_c4_append_tgt_prop tgt prop propval)
     c4_dbg("target ${tgt}: appending ${prop}=${propval}")
@@ -297,13 +314,6 @@ function(_c4_append_tgt_prop tgt prop propval)
         set(curr "${propval}")
     endif()
     _c4_set_tgt_prop(${tgt} ${prop} "${curr}")
-endfunction()
-
-# get target-wide property
-function(_c4_get_tgt_prop out tgt prop)
-    get_target_property(val ${tgt} ${prop})
-    c4_dbg("target ${tgt}: get ${prop}=${val}")
-    set(${out} "${val}" PARENT_SCOPE)
 endfunction()
 
 
@@ -471,13 +481,12 @@ endmacro()
 #
 # # c4opt requires subproject c4core, as a subdirectory. c4core will be used
 # # as a separate library
-# c4_require_subproject(c4core
-#     SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core
-#     )
+# c4_require_subproject(c4core SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core)
 #
 # # c4opt requires subproject c4core, as a remote proj
-# c4_require_subproject(c4core
-#     REMOTE GIT_REPOSITORY https://github.com/biojppm/c4core GIT_TAG master
+# c4_require_subproject(c4core REMOTE
+#     GIT_REPOSITORY https://github.com/biojppm/c4core
+#     GIT_TAG master
 #     )
 function(c4_require_subproject subproj)
     _c4_handle_args(_ARGS ${ARGN}
@@ -918,7 +927,7 @@ function(c4_add_target target)
         elseif()
             message(FATAL_ERROR "${_c4_lcprefix}: adding sources for target ${target} invalid source mode")
         endif()
-        set_target_properties(${target} PROPERTIES C4_SOURCE_ROOT "${_SOURCE_ROOT}")
+        _c4_set_tgt_prop(${target} C4_SOURCE_ROOT "${_SOURCE_ROOT}")
 
         if(_INC_DIRS)
             c4_dbg("${target}: adding include dirs ${_INC_DIRS} [from target: ${tgt_type}]")
@@ -1128,11 +1137,11 @@ function(c4_add_target_sources target)
         endif()
         if(_INTERFACE)
             c4_dbg("target=${target} INTERFACE sources: ${_INTERFACE}")
-            c4_append_target_prop(${target} INTERFACE_SRC "${_INFERFACE}")
+            c4_append_target_prop(${target} INTERFACE_SRC "${_INTERFACE}")
             if(_INCORPORATED_FROM)
                 c4_append_target_prop(${target} INTERFACE_SRC_${_INCORPORATED_FROM} "${_INTERFACE}")
             else()
-                c4_append_target_prop(${target} INTERFACE_SRC_${target} "${_INFERFACE}")
+                c4_append_target_prop(${target} INTERFACE_SRC_${target} "${_INTERFACE}")
             endif()
             target_sources(${target} INTERFACE "${_INTERFACE}")
         endif()
@@ -1264,15 +1273,20 @@ function(c4_install_target target)
     endif()
     #
     _c4_setup_install_vars()
-    # TODO: don't forget to install DLLs: _${_c4_uprefix}_${target}_DLLS
-    install(TARGETS ${target}
-        EXPORT ${_EXPORT}
-        RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
-        ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}
-        LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}
-        OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
-        INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
-        )
+    get_target_property(target_type ${target} TYPE)
+    if(target_type STREQUAL "INTERFACE_LIBRARY")
+        c4_dbg("target ${target} is an interface library; can't be installed by cmake ")
+    else()
+        # TODO: don't forget to install DLLs: _${_c4_uprefix}_${target}_DLLS
+        install(TARGETS ${target}
+            EXPORT ${_EXPORT}
+            RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
+            ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}
+            LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}
+            OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
+            INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
+            )
+    endif()
     #
     c4_install_sources(${target} include)
     #
@@ -1326,31 +1340,25 @@ function(c4_install_sources target destination)
         c4_get_target_prop(${t} PUBLIC_SRC_${t} src)
         if(src)
             _c4cat_filter_hdrs("${src}" srcf)
-            c4_install_files("${srcf}" "${destination}" "${srcroot}")
             _c4cat_filter_additional_exts("${src}" add)
-            if(add)
-                c4_install_files("${add}" "${destination}" "${srcroot}")
-            endif()
+            c4_install_files("${srcf}" "${destination}" "${srcroot}")
+            c4_install_files("${add}" "${destination}" "${srcroot}")
         endif()
         #
         c4_get_target_prop(${t} PRIVATE_SRC_${t} psrc)
         if(psrc)
             _c4cat_filter_hdrs("${psrc}" psrcf)
-            c4_install_files("${psrcf}" "${destination}" "${srcroot}")
             _c4cat_filter_additional_exts("${psrc}" add)
-            if(add)
-                c4_install_files("${add}" "${destination}" "${srcroot}")
-            endif()
+            c4_install_files("${psrcf}" "${destination}" "${srcroot}")
+            c4_install_files("${add}" "${destination}" "${srcroot}")
         endif()
         #
         c4_get_target_prop(${t} INTERFACE_SRC_${t} isrc)
         if(isrc)
             _c4cat_filter_srcs_hdrs("${isrc}" isrcf)
-            c4_install_files("${isrcf}" "${destination}" "${srcroot}")
             _c4cat_filter_additional_exts("${isrc}" add)
-            if(add)
-                c4_install_files("${add}" "${destination}" "${srcroot}")
-            endif()
+            c4_install_files("${isrcf}" "${destination}" "${srcroot}")
+            c4_install_files("${add}" "${destination}" "${srcroot}")
         endif()
         #
         c4_get_target_prop(${t} ADDFILES addfiles)
