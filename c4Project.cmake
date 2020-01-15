@@ -1015,8 +1015,7 @@ function(c4_add_target target)
                 if(_dll)
                     c4_dbg("enable copy of dll to target file dir: ${_dll} ---> $<TARGET_FILE_DIR:${target}>")
                     add_custom_command(TARGET ${target} POST_BUILD
-                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" $<TARGET_FILE_DIR:${target}>
-                        COMMENT "${target}: requires dll: ${_dll} ---> $<TARGET_FILE_DIR:${target}"
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_dll}" "$<TARGET_FILE_DIR:${target}>"
                         )
                 else()
                     message(WARNING "dll required by ${_c4_prefix}/${target} was not found, so cannot copy: ${_dll}")
