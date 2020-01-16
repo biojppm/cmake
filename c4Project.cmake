@@ -1039,9 +1039,15 @@ function(_c4_link_with_libs target link_type libs incorporate)
 endfunction()
 
 
+function(_c4_lib_is_incorporated lib)
+    c4_get_target_prop(${lib} INCORPORATING_TARGETS inc)
+endfunction()
+
+
 function(_c4_incorporate_lib target link_type lib)
     c4_dbg("target ${target}: incorporating lib ${lib} [${link_type}]")
     #
+    c4_append_target_prop(${lib} INCORPORATING_TARGETS ${target})
     c4_append_target_prop(${target} INCORPORATED_TARGETS ${lib})
     #
     _c4_get_tgt_prop(lib_src ${lib} SOURCES)
@@ -1265,11 +1271,11 @@ function(c4_install_target target)
     _c4_handle_arg(EXPORT "${_c4_prefix}-export")
     #
     c4_dbg("installing target: ${target} ${ARGN}")
-    _c4_is_incorporated(${_c4_prefix} inc)
-    if(inc)
-        c4_dbg("this project is INCORPORATEd. skipping install of targets")
-        return()
-    endif()
+    #_c4_is_incorporated(${_c4_prefix} inc)
+    #if(inc)
+    #    c4_dbg("this project is INCORPORATEd. skipping install of targets")
+    #    return()
+    #endif()
     #
     _c4_setup_install_vars()
     get_target_property(target_type ${target} TYPE)
@@ -1450,11 +1456,11 @@ function(c4_install_exports)
     _c4_handle_arg(NAMESPACE "${_c4_prefix}::")
     #
     c4_dbg("installing exports: ${ARGN}")
-    _c4_is_incorporated(${_c4_prefix} inc)
-    if(inc)
-        c4_dbg("this project is INCORPORATEd. skipping install of exports")
-        return()
-    endif()
+    #_c4_is_incorporated(${_c4_prefix} inc)
+    #if(inc)
+    #    c4_dbg("this project is INCORPORATEd. skipping install of exports")
+    #    return()
+    #endif()
     #
     _c4_setup_install_vars()
     #
