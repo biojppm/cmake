@@ -2075,18 +2075,18 @@ function(c4_setup_benchmarking)
             GIT_REPOSITORY https://github.com/google/benchmark.git
             )
         c4_set_folder_remote_project_targets(${_c4_lprefix}bm benchmark benchmark_main)
-    endif()
-    #
-    if(CMAKE_COMPILER_IS_GNUCC)
-        target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
-    endif()
-    #
-    if(NOT WIN32)
-        option(${_c4_uprefix}BENCHMARK_CPUPOWER
-            "set the cpu mode to performance before / powersave after the benchmark" OFF)
-        if(${_c4_uprefix}BENCHMARK_CPUPOWER)
-            find_program(C4_SUDO sudo)
-            find_program(C4_CPUPOWER cpupower)
+        #
+        if(CMAKE_COMPILER_IS_GNUCC)
+            target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
+        endif()
+        #
+        if(NOT WIN32)
+            option(${_c4_uprefix}BENCHMARK_CPUPOWER
+                "set the cpu mode to performance before / powersave after the benchmark" OFF)
+            if(${_c4_uprefix}BENCHMARK_CPUPOWER)
+                find_program(C4_SUDO sudo)
+                find_program(C4_CPUPOWER cpupower)
+            endif()
         endif()
     endif()
 endfunction()
