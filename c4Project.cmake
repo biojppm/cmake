@@ -1660,25 +1660,27 @@ function(c4_setup_testing)
         COMMAND ${CMAKE_COMMAND} -E echo ${ctest_cmd}
         COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
         COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd}
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_c4_lprefix}test-build
         )
     _c4_set_target_folder(${_c4_lprefix}test ${_c4_lprefix}test)
 
-    #if(MSVC)
-    #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-    #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
-    #endif()
-    c4_override(BUILD_GTEST ON)
-    c4_override(BUILD_GMOCK OFF)
-    c4_override(gtest_force_shared_crt ON)
-    c4_override(gtest_build_samples OFF)
-    c4_override(gtest_build_tests OFF)
-    c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        #GIT_TAG release-1.8.0
-        )
-    c4_set_folder_remote_project_targets(${_c4_lprefix}test gtest gtest_main)
+    if(NOT TARGET gtest)
+        #if(MSVC)
+        #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
+        #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
+        #endif()
+        c4_override(BUILD_GTEST ON)
+        c4_override(BUILD_GMOCK OFF)
+        c4_override(gtest_force_shared_crt ON)
+        c4_override(gtest_build_samples OFF)
+        c4_override(gtest_build_tests OFF)
+        c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            #GIT_TAG release-1.8.0
+            )
+        c4_set_folder_remote_project_targets(${_c4_lprefix}test gtest gtest_main)
+    endif()
 endfunction(c4_setup_testing)
 
 
