@@ -191,7 +191,10 @@ function(c4_declare_project prefix)
     c4_set_proj_prop(RELEASE      "${_RELEASE}")
     c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
 
-    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" OFF)
+    if("${C4_DEV}" STREQUAL "")
+        option(C4_DEV "enable development targets for all c4 projects" OFF)
+    endif()
+    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" ${C4_DEV})
     cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
     cmake_dependent_option(${_c4_uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${_c4_uprefix}DEV OFF)
     c4_setup_coverage()
@@ -573,18 +576,16 @@ function(_c4_mark_subproject_imported subproject_name subproject_src_dir subproj
 endfunction()
 
 
-function(_c4_get_subproject_property subproject property value)
+function(_c4_get_subproject_property subproject property var)
     get_property(v GLOBAL PROPERTY _c4_subproject-${subproject}-${property})
-    set(${value} "${v}" PARENT_SCOPE)
+    set(${var} "${v}" PARENT_SCOPE)
 endfunction()
 
 
 function(_c4_set_subproject_property subproject property value)
     c4_dbg("setting subproj prop: ${subproject}: ${property}=${value}")
-    set_property(GLOBAL PROPERTY _c4_subproject-${subproject}-${property} ${value})
+    set_property(GLOBAL PROPERTY _c4_subproject-${subproject}-${property} "${value}")
 endfunction()
-
-
 function(_c4_append_subproject_property subproject property value)
     _c4_get_subproject_property(${subproject} ${property} cval)
     if(cval)

@@ -5,6 +5,12 @@ set(_c4_sanitize_target_included ON)
 include(CMakeDependentOption)
 include(PrintVar)
 
+function(_c4_default_if_not_set var dft)
+    if("${${var}}" STREQUAL "")
+        option(${var} "" ${dft})
+    endif()
+endfunction()
+
 #------------------------------------------------------------------------------
 function(c4_setup_sanitize umbrella_option)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
@@ -13,21 +19,37 @@ function(c4_setup_sanitize umbrella_option)
     if(NOT ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
         return()
     endif()
-    cmake_dependent_option(${_c4_uprefix}SANITIZE "turn on clang sanitizer targets" ON ${umbrella_option} OFF)
-    cmake_dependent_option(${_c4_uprefix}SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" OFF ${umbrella_option} OFF)
+
+    _c4_default_if_not_set(C4_SANITIZE ON)
+    _c4_default_if_not_set(C4_SANITIZE_ONLY OFF)
+    _c4_default_if_not_set(C4_ASAN ON)
+    _c4_default_if_not_set(C4_TSAN ON)
+    _c4_default_if_not_set(C4_MSAN ON)
+    _c4_default_if_not_set(C4_UBSAN ON)
+
+    cmake_dependent_option(${_c4_uprefix}SANITIZE "turn on clang sanitizer targets" ${C4_SANITIZE} ${umbrella_option} OFF)
+    cmake_dependent_option(${_c4_uprefix}SANITIZE_ONLY "compile only sanitize targets (not the regular unsanitized targets)" ${C4_SANITIZE_ONLY} ${umbrella_option} OFF)
 
     # options for individual sanitizers - contingent on sanitize on/off
-    cmake_dependent_option(${_c4_uprefix}ASAN  "" ON "${_c4_uprefix}SANITIZE" OFF)
-    cmake_dependent_option(${_c4_uprefix}TSAN  "" ON "${_c4_uprefix}SANITIZE" OFF)
-    cmake_dependent_option(${_c4_uprefix}MSAN  "" ON "${_c4_uprefix}SANITIZE" OFF)
-    cmake_dependent_option(${_c4_uprefix}UBSAN "" ON "${_c4_uprefix}SANITIZE" OFF)
+    cmake_dependent_option(${_c4_uprefix}ASAN  "" ${C4_ASAN} "${_c4_uprefix}SANITIZE" OFF)
+    cmake_dependent_option(${_c4_uprefix}TSAN  "" ${C4_TSAN} "${_c4_uprefix}SANITIZE" OFF)
+    cmake_dependent_option(${_c4_uprefix}MSAN  "" ${C4_MSAN} "${_c4_uprefix}SANITIZE" OFF)
+    cmake_dependent_option(${_c4_uprefix}UBSAN "" ${C4_UBSAN} "${_c4_uprefix}SANITIZE" OFF)
 
     if(${_c4_uprefix}SANITIZE)
-
         string(REGEX REPLACE "([0-9]+\\.[0-9]+).*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
         find_program(LLVM_SYMBOLIZER llvm-symbolizer
             NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer
             DOC "symbolizer to use in sanitize tools")
+        if(NOT LLVM_SYMBOLIZER)
+            string(REGEX REPLACE "([0-9]+)\\.[0-9]+.*" "\\1" LLVM_VERSION "${CMAKE_CXX_COMPILER_VERSION}")
+            find_program(LLVM_SYMBOLIZER llvm-symbolizer
+                NAMES llvm-symbolizer-${LLVM_VERSION} llvm-symbolizer
+                DOC "symbolizer to use in sanitize tools")
+            if(NOT LLVM_SYMBOLIZER)
+                message(FATAL_ERROR "could not find symbolizer. LLVM_VERSION=${LLVM_VERSION}")
+            endif()
+        endif()
 
         set(ss) # string to report enabled sanitizers
 
@@ -69,7 +91,7 @@ function(c4_setup_sanitize umbrella_option)
             separate_arguments(${_c4_uprefix}UBSAN_LFLAGS_SEP UNIX_COMMAND ${${_c4_uprefix}UBSAN_LFLAGS})
         endif()
 
-        message(STATUS "${prefix}: enabled clang sanitizers: ${ss}")
+        c4_dbg("enabled clang sanitizers: ${ss}")
     endif() # ${_c4_uprefix}SANITIZE
 
 endfunction()
