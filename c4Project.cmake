@@ -1492,7 +1492,7 @@ include(CMakeFindDependencyMacro)
     # the install root
     macro(__c4_install_exports cfg_dst cfg_dst_rel)
         # make sure that different exports are staged in different directories
-        set(case export_cases/${cfg_dst})
+        set(case ${CMAKE_CURRENT_BINARY_DIR}/export_cases/${cfg_dst})
         file(MAKE_DIRECTORY ${case})
         #
         install(EXPORT "${_TARGET}"
@@ -1504,8 +1504,8 @@ include(CMakeFindDependencyMacro)
         # the module below has nice docs in it; do read them
         # to understand the macro calls below
         include(CMakePackageConfigHelpers)
-        set(cfg ${CMAKE_CURRENT_BINARY_DIR}/${case}/${_PREFIX}Config.cmake)
-        set(cfg_ver ${CMAKE_CURRENT_BINARY_DIR}/${case}/${_PREFIX}ConfigVersion.cmake)
+        set(cfg ${case}/${_PREFIX}Config.cmake)
+        set(cfg_ver ${case}/${_PREFIX}ConfigVersion.cmake)
         #
         file(WRITE ${cfg}.in "${deps}
 set(${_c4_uprefix}VERSION ${${_c4_uprefix}VERSION})
