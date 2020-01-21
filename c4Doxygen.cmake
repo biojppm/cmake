@@ -3,11 +3,16 @@ if(NOT _c4_doxygen_included)
 set(_c4_doxygen_included ON)
 
 #------------------------------------------------------------------------------
+# TODO use customizations from https://cmake.org/cmake/help/v3.9/module/FindDoxygen.html
 function(c4_setup_doxygen umbrella_option)
     cmake_dependent_option(${_c4_uprefix}BUILD_DOCS "Enable targets to build documentation for ${prefix}" ON "${umbrella_option}" OFF)
     if(${_c4_uprefix}BUILD_DOCS)
         find_package(Doxygen QUIET)
-        c4_dbg("${_c4_prefix}: enabling documentation targets")
+        if(DOXYGEN_FOUND)
+            c4_dbg("enabling documentation targets")
+        else()
+            c4_dbg("doxygen not found")
+        endif()
     endif()
 endfunction()
 
@@ -19,9 +24,14 @@ function(_c4_doxy_list_to_str var)
     set(${var} "${il}" PARENT_SCOPE)
 endfunction()
 
+
 #------------------------------------------------------------------------------
 function(c4_add_doxygen doc_name)
     if(NOT ${_c4_uprefix}BUILD_DOCS)
+        return()
+    endif()
+    if(NOT DOXYGEN_FOUND)
+        c4_dbg("doxygen not found, skipping generation of ${doc}")
         return()
     endif()
     #
@@ -42,7 +52,7 @@ function(c4_add_doxygen doc_name)
     )
     cmake_parse_arguments("" "${opt0}" "${opt1}" "${optN}" ${ARGN})
     if(NOT _PROJ)
-        set(_PROJ ${_c4__c4_ucprefix})
+        set(_PROJ ${_c4_ucprefix})
     endif()
     if(NOT _DOXYFILE)
         set(_DOXYFILE ${CMAKE_CURRENT_LIST_DIR}/Doxyfile.in)
@@ -75,6 +85,7 @@ function(c4_add_doxygen doc_name)
         WORKING_DIRECTORY ${_OUTPUT_DIR}
         COMMENT "${tgt}: docs will be placed in ${_OUTPUT_DIR}"
         VERBATIM)
+    _c4_set_target_folder(${tgt} doc)
 endfunction()
 
 

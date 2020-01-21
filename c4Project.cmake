@@ -1,5 +1,7 @@
 if(NOT _c4_project_included)
 set(_c4_project_included ON)
+set(_c4_project_file ${CMAKE_CURRENT_LIST_FILE})
+set(_c4_project_dir  ${CMAKE_CURRENT_LIST_DIR})
 
 cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
 
@@ -161,11 +163,6 @@ function(c4_declare_project prefix)
         c4_setg(_c4_lprefix "${_c4_lprefix}-")
     endif()
     #
-    if("${_c4_curr_subproject}" STREQUAL "")
-        c4_setg(_c4_curr_subproject ${_c4_prefix})
-        c4_setg(_c4_curr_path ${_c4_prefix})
-    endif()
-    #
     if(_STANDALONE)
         option(${_c4_uprefix}STANDALONE
             "Enable compilation of opting-in targets from ${_c4_lcprefix} in standalone mode (ie, incorporate subprojects as specified in the INCORPORATE clause to c4_add_library/c4_add_target)"
@@ -191,23 +188,41 @@ function(c4_declare_project prefix)
     c4_set_proj_prop(RELEASE      "${_RELEASE}")
     c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
 
-    if("${C4_DEV}" STREQUAL "")
-        option(C4_DEV "enable development targets for all c4 projects" OFF)
-    endif()
-    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" ${C4_DEV})
-    cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
-    cmake_dependent_option(${_c4_uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${_c4_uprefix}DEV OFF)
-    c4_setup_coverage()
-    c4_setup_valgrind(${_c4_uprefix}DEV)
-    c4_setup_sanitize(${_c4_uprefix}DEV)
-    c4_setup_static_analysis(${_c4_uprefix}DEV)
-    c4_setup_doxygen(${_c4_uprefix}DEV)
-
     # CXX standard
     c4_setg(${_c4_uprefix}CXX_STANDARD "${_CXX_STANDARD}")
     if(${_CXX_STANDARD})
         c4_set_cxx(${_CXX_STANDARD})
     endif()
+
+    c4_setg(${_c4_uprefix}SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
+    c4_setg(${_c4_uprefix}EXT_DIR ${CMAKE_CURRENT_LIST_DIR}/ext)
+    c4_setg(${_c4_uprefix}API_DIR ${CMAKE_CURRENT_LIST_DIR}/api)
+
+    if("${C4_DEV}" STREQUAL "")
+        option(C4_DEV "enable development targets for all c4 projects" OFF)
+    endif()
+    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" ${C4_DEV})
+
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test")
+        cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
+    else()
+        c4_dbg("no tests: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/test")
+    endif()
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/bm")
+        cmake_dependent_option(${_c4_uprefix}BUILD_BENCHMARKS "build benchmarks" ON ${_c4_uprefix}DEV OFF)
+    else()
+        c4_dbg("no benchmarks: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/bm")
+    endif()
+    if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/api")
+        cmake_dependent_option(${_c4_uprefix}BUILD_API "build API" ON ${_c4_uprefix}DEV OFF)
+    else()
+        c4_dbg("no API generation: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/api")
+    endif()
+    c4_setup_coverage()
+    c4_setup_valgrind(${_c4_uprefix}DEV)
+    c4_setup_sanitize(${_c4_uprefix}DEV)
+    c4_setup_static_analysis(${_c4_uprefix}DEV)
+    c4_setup_doxygen(${_c4_uprefix}DEV)
 
     # these are default compilation flags
     set(${_c4_uprefix}CXX_FLAGS "${${_c4_uprefix}CXX_FLAGS_FWD}" CACHE STRING "compilation flags for ${_c4_prefix} targets")
@@ -231,6 +246,49 @@ function(c4_declare_project prefix)
         )
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT)
 endfunction(c4_declare_project)
+
+
+function(c4_add_dev_targets)
+    if(NOT CMAKE_CURRENT_LIST_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        message(FATAL_ERROR "this macro needs to be called on the project's main CMakeLists.txt file")
+    endif()
+    #
+    if(${_c4_uprefix}BUILD_TESTS)
+        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test")
+            c4_dbg("adding tests: ${d}")
+            enable_testing() # this must be done here (and not inside the test dir)
+                             # so that the test targets are available at the top level
+            add_subdirectory(test)
+        endif()
+    endif()
+    #
+    if(${_c4_uprefix}BUILD_BENCHMARKS)
+        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/bm")
+            c4_dbg("adding benchmarks!")
+            add_subdirectory(bm)
+        endif()
+    endif()
+    #
+    if(${_c4_uprefix}BUILD_API)
+        if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/api")
+            c4_dbg("adding API: ${d}")
+            add_subdirectory(api)
+        endif()
+    endif()
+    #
+    # FIXME
+    set(docdirs ${${_c4_uprefix}SRC_DIR} ${${_c4_uprefix}EXT_DIR})
+    c4_add_doxygen(doc
+        PROJ c4core
+        DOXYFILE ${_c4_project_dir}/Doxyfile.in
+        INPUT ${docdirs}
+        STRIP_FROM_PATH ${docdirs})
+    c4_add_doxygen(doc-full
+        PROJ c4core
+        DOXYFILE ${_c4_project_dir}/Doxyfile.full.in
+        INPUT ${docdirs}
+        STRIP_FROM_PATH ${docdirs})
+endfunction()
 
 
 # flags enabled only on dev mode
