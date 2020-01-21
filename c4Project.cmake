@@ -142,9 +142,16 @@ function(c4_declare_project prefix)
         c4_setg(_c4_root_proj ${prefix})
         c4_setg(_c4_root_uproj ${ucprefix})
         c4_setg(_c4_root_lproj ${lcprefix})
+        c4_setg(_c4_curr_path "")
     else()
         c4_setg(_c4_is_root_proj OFF)
+        if(_c4_curr_path)
+            c4_setg(_c4_curr_path "${_c4_curr_path}/${prefix}")
+        else()
+            c4_setg(_c4_curr_path "${prefix}")
+        endif()
     endif()
+    c4_setg(_c4_curr_subproject ${prefix})
     # get the several prefix flavors
     c4_setg(_c4_ucprefix ${ucprefix})
     c4_setg(_c4_lcprefix ${lcprefix})
@@ -214,7 +221,7 @@ function(c4_declare_project prefix)
         c4_dbg("no benchmarks: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/bm")
     endif()
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/api")
-        cmake_dependent_option(${_c4_uprefix}BUILD_API "build API" ON ${_c4_uprefix}DEV OFF)
+        cmake_dependent_option(${_c4_uprefix}BUILD_API "build API" OFF ${_c4_uprefix}DEV OFF)
     else()
         c4_dbg("no API generation: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/api")
     endif()
@@ -606,14 +613,16 @@ endfunction(c4_require_subproject)
 
 
 function(c4_add_subproj proj dir bindir)
-    if("${_c4_curr_subproject}" STREQUAL "")
-        set(_c4_curr_subproject ${_c4_prefix})
-        set(_c4_curr_path ${_c4_prefix})
-    endif()
     set(prev_subproject ${_c4_curr_subproject})
     set(prev_path ${_c4_curr_path})
     set(_c4_curr_subproject ${proj})
-    set(_c4_curr_path ${_c4_curr_path}/${proj})
+    string(REGEX MATCH ".*/${proj}\$" pos "${_c4_curr_path}")
+    if(pos EQUAL -1)
+        string(REGEX MATCH "^${proj}\$" pos "${_c4_curr_path}")
+        if(pos EQUAL -1)
+            set(_c4_curr_path ${_c4_curr_path}/${proj})
+        endif()
+    endif()
     c4_dbg("adding subproj: ${prev_subproject}->${_c4_curr_subproject}. path=${_c4_curr_path}")
     add_subdirectory(${dir} ${bindir})
     set(_c4_curr_subproject ${prev_subproject})
@@ -697,7 +706,8 @@ endfunction()
 
 function(c4_set_folder_remote_project_targets subfolder)
     foreach(target ${ARGN})
-        set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${subfolder})
+        set_target_properties(${target} PROPERTIES
+            FOLDER ${_c4_curr_path}/${subfolder})
     endforeach()
 endfunction()
 
@@ -823,14 +833,21 @@ function(_c4_get_folder output importer_subproject subproject_name)
 endfunction()
 
 
-function(_c4_set_target_folder target name_to_append)
-    if("${name_to_append}" STREQUAL "")
-        set_target_properties(${name} PROPERTIES FOLDER "${_c4_curr_path}")
+function(_c4_set_target_folder target subfolder)
+    string(FIND "${subfolder}" "/" pos)
+    if(pos EQUAL 0)
+        set_target_properties(${target} PROPERTIES
+            FOLDER "${subfolder}")
+    elseif("${subfolder}" STREQUAL "")
+        set_target_properties(${target} PROPERTIES
+            FOLDER "${_c4_curr_path}")
     else()
         if("${_c4_curr_path}" STREQUAL "")
-            set_target_properties(${target} PROPERTIES FOLDER ${name_to_append})
+            set_target_properties(${target} PROPERTIES
+                FOLDER ${subfolder})
         else()
-            set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${name_to_append})
+            set_target_properties(${target} PROPERTIES
+                FOLDER ${_c4_curr_path}/${subfolder})
         endif()
     endif()
 endfunction()
@@ -925,7 +942,7 @@ function(c4_add_target target)
     _c4_transform_to_full_path(   _PUBLIC_HEADERS allsrc)
     _c4_transform_to_full_path(_INTERFACE_HEADERS allsrc)
     _c4_transform_to_full_path(  _PRIVATE_HEADERS allsrc)
-    create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${allsrc}")
+    create_source_group("" "${_SOURCE_ROOT}" "${allsrc}")
 
     if(NOT ${_c4_uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
@@ -1019,7 +1036,11 @@ function(c4_add_target target)
         endif()
 
         if(compiled_target)
-            _c4_set_target_folder(${target} "${_FOLDER}")
+            if(_FOLDER)
+                _c4_set_target_folder(${target} "${_FOLDER}")
+            else()
+                _c4_set_target_folder(${target} "")
+            endif()
             c4_target_inherit_cxx_standard(${target})
             set(_more_flags
                 ${${_c4_uprefix}CXX_FLAGS}
@@ -1105,20 +1126,27 @@ endfunction()
 
 function(_c4_incorporate_lib target link_type lib)
     c4_dbg("target ${target}: incorporating lib ${lib} [${link_type}]")
+    _c4_get_tgt_prop(srcroot ${lib} C4_SOURCE_ROOT)
     #
     c4_append_target_prop(${lib} INCORPORATING_TARGETS ${target})
     c4_append_target_prop(${target} INCORPORATED_TARGETS ${lib})
     #
     _c4_get_tgt_prop(lib_src ${lib} SOURCES)
     if(lib_src)
-        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${lib_src}") # FIXME
+        create_source_group("${lib}" "${srcroot}" "${lib_src}")
         c4_add_target_sources(${target} INCORPORATED_FROM ${lib} PRIVATE ${lib_src})
     endif()
     #
     _c4_get_tgt_prop(lib_isrc ${lib} INTERFACE_SOURCES)
     if(lib_isrc)
-        create_source_group("" "${CMAKE_CURRENT_SOURCE_DIR}" "${lib_isrc}") # FIXME
+        create_source_group("${lib}" "${srcroot}" "${lib_isrc}")
         c4_add_target_sources(${target} INCORPORATED_FROM ${lib} INTERFACE ${lib_isrc})
+    endif()
+    #
+    _c4_get_tgt_prop(lib_psrc ${lib} PRIVATE_SOURCES)
+    if(lib_psrc)
+        create_source_group("${lib}" "${srcroot}" "${lib_psrc}")
+        c4_add_target_sources(${target} INCORPORATED_FROM ${lib} INTERFACE ${lib_psrc})
     endif()
     #
     #
@@ -1707,8 +1735,7 @@ function(c4_setup_testing)
     c4_dbg("enabling tests")
     # umbrella target for building test binaries
     add_custom_target(${_c4_lprefix}test-build)
-    set_target_properties(${_c4_lprefix}test-build PROPERTIES FOLDER ${_c4_curr_path}/${_c4_lprefix}test)
-    _c4_set_target_folder(${_c4_lprefix}test-build ${_c4_lprefix}test)
+    _c4_set_target_folder(${_c4_lprefix}test-build test)
     # umbrella target for running tests
     set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_custom_target(${_c4_lprefix}test
@@ -1721,7 +1748,7 @@ function(c4_setup_testing)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_c4_lprefix}test-build
         )
-    _c4_set_target_folder(${_c4_lprefix}test ${_c4_lprefix}test)
+    _c4_set_target_folder(${_c4_lprefix}test test)
 
     if(NOT TARGET gtest)
         #if(MSVC)
@@ -1737,7 +1764,7 @@ function(c4_setup_testing)
             GIT_REPOSITORY https://github.com/google/googletest.git
             #GIT_TAG release-1.8.0
             )
-        c4_set_folder_remote_project_targets(${_c4_lprefix}test gtest gtest_main)
+        c4_set_folder_remote_project_targets(test gtest gtest_main)
     endif()
 endfunction(c4_setup_testing)
 
@@ -1764,7 +1791,7 @@ function(c4_add_test target)
         add_custom_target(${target}-all)
         add_dependencies(${target}-all ${target})
         add_dependencies(${_c4_lprefix}test-build ${target}-all)
-        _c4_set_target_folder(${target}-all ${_c4_lprefix}test/${target})
+        _c4_set_target_folder(${target}-all test/${target})
     else()
         add_dependencies(${_c4_lprefix}test-build ${target})
     endif()
@@ -2037,7 +2064,7 @@ function(c4_setup_coverage)
     set(_covok ON)
     if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
         if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
-	    message(STATUS "${_c4_prefix} coverage: clang version must be 3.0.0 or greater. No coverage available.")
+	    c4_log("coverage: clang version must be 3.0.0 or greater. No coverage available.")
             set(_covok OFF)
         endif()
     elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
@@ -2109,7 +2136,7 @@ function(c4_setup_coverage)
                 DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
                 COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                 )
-            message(STATUS "Coverage command added")
+            c4_dbg(STATUS "Coverage command added")
         endif()
     endif()
 endfunction(c4_setup_coverage)
@@ -2125,11 +2152,11 @@ function(c4_setup_benchmarking)
     add_custom_target(${_c4_lprefix}bm-build)
     # umbrella target for running benchmarks
     add_custom_target(${_c4_lprefix}bm
-        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
+        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_c4_lprefix}bm-build
         )
-    _c4_set_target_folder(${_c4_lprefix}bm-build ${_c4_lprefix}bm)
-    _c4_set_target_folder(${_c4_lprefix}bm ${_c4_lprefix}bm)
+    _c4_set_target_folder(${_c4_lprefix}bm-build bm)
+    _c4_set_target_folder(${_c4_lprefix}bm bm)
     # download google benchmark
     if(NOT TARGET benchmark)
         c4_override(BENCHMARK_ENABLE_TESTING OFF)
@@ -2138,7 +2165,7 @@ function(c4_setup_benchmarking)
         c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
             GIT_REPOSITORY https://github.com/google/benchmark.git
             )
-        c4_set_folder_remote_project_targets(${_c4_lprefix}bm benchmark benchmark_main)
+        c4_set_folder_remote_project_targets(bm benchmark benchmark_main)
         #
         if(CMAKE_COMPILER_IS_GNUCC)
             target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
@@ -2162,7 +2189,7 @@ function(c4_add_benchmark_cmd casename)
         VERBATIM
         COMMENT "${_c4_prefix}: running benchmark ${casename}: ${ARGN}")
     add_dependencies(${_c4_lprefix}benchmark ${casename})
-    _c4_set_target_folder(${casename} ${_c4_lprefix}bm)
+    _c4_set_target_folder(${casename} bm)
 endfunction()
 
 
@@ -2235,7 +2262,7 @@ function(c4_add_benchmark target casename work_dir comment)
         )
     add_dependencies(${_c4_lprefix}bm-build ${target})
     add_dependencies(${_c4_lprefix}bm ${casename})
-    _c4_set_target_folder(${casename} ${_c4_lprefix}bm)
+    _c4_set_target_folder(${casename} bm)
 endfunction()
 
 
