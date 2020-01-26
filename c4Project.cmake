@@ -2174,16 +2174,24 @@ endfunction(c4_setup_coverage)
 #------------------------------------------------------------------------------
 function(c4_setup_benchmarking)
     c4_log("enabling benchmarks: to build, ${_c4_lprefix}bm-build")
-    c4_log("enabling benchmarks: to run, ${_c4_lprefix}bm")
+    c4_log("enabling benchmarks: to run, ${_c4_lprefix}bm-run")
     # umbrella target for building test binaries
     add_custom_target(${_c4_lprefix}bm-build)
     # umbrella target for running benchmarks
-    add_custom_target(${_c4_lprefix}bm
+    add_custom_target(${_c4_lprefix}bm-run
         ${CMAKE_COMMAND} -E echo CWD=${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_c4_lprefix}bm-build
         )
+    if(NOT TARGET bm-run)
+        add_custom_target(bm-run)
+        add_custom_target(bm-build)
+    endif()
+    add_dependencies(bm-run ${_c4_lprefix}bm-run)
+    add_dependencies(bm-build ${_c4_lprefix}bm-build)
+    _c4_set_target_folder(${_c4_lprefix}bm-run bm)
     _c4_set_target_folder(${_c4_lprefix}bm-build bm)
-    _c4_set_target_folder(${_c4_lprefix}bm bm)
+    _c4_set_target_folder(bm-build "/bm")
+    _c4_set_target_folder(bm-run "/bm")
     # download google benchmark
     if(NOT TARGET benchmark)
         c4_override(BENCHMARK_ENABLE_TESTING OFF)
@@ -2215,7 +2223,7 @@ function(c4_add_benchmark_cmd casename)
         COMMAND ${ARGN}
         VERBATIM
         COMMENT "${_c4_prefix}: running benchmark ${casename}: ${ARGN}")
-    add_dependencies(${_c4_lprefix}benchmark ${casename})
+    add_dependencies(${_c4_lprefix}bm-build ${casename})
     _c4_set_target_folder(${casename} bm)
 endfunction()
 
@@ -2288,7 +2296,7 @@ function(c4_add_benchmark target casename work_dir comment)
         COMMENT "${_c4_lcprefix}: running benchmark ${target}, case ${casename}: ${comment}"
         )
     add_dependencies(${_c4_lprefix}bm-build ${target})
-    add_dependencies(${_c4_lprefix}bm ${casename})
+    add_dependencies(${_c4_lprefix}bm-run ${casename})
     _c4_set_target_folder(${casename} bm)
 endfunction()
 
