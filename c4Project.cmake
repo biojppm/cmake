@@ -1736,19 +1736,46 @@ function(c4_setup_testing)
     # umbrella target for building test binaries
     add_custom_target(${_c4_lprefix}test-build)
     _c4_set_target_folder(${_c4_lprefix}test-build test)
-    # umbrella target for running tests
+    # umbrella targets for running tests
     set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
-    add_custom_target(${_c4_lprefix}test
-        ${CMAKE_COMMAND} -E echo CWD=${CMAKE_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E echo
-        COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
-        COMMAND ${CMAKE_COMMAND} -E echo ${ctest_cmd}
-        COMMAND ${CMAKE_COMMAND} -E echo ----------------------------------
+    set(ctest_cmd_vv ${CMAKE_CTEST_COMMAND} -VV ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
+    add_custom_target(${_c4_lprefix}test-run
+        ${CMAKE_COMMAND} -E echo "
+echo ----------------------------------
+CWD=${CMAKE_CURRENT_BINARY_DIR}
+echo ${ctest_cmd_vv}
+echo ----------------------------------
+"
         COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd}
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         DEPENDS ${_c4_lprefix}test-build
         )
-    _c4_set_target_folder(${_c4_lprefix}test test)
+    add_custom_target(${_c4_lprefix}test-run-verbose
+        ${CMAKE_COMMAND} -E echo "
+echo ----------------------------------
+CWD=${CMAKE_CURRENT_BINARY_DIR}
+echo ${ctest_cmd_vv}
+echo ----------------------------------
+"
+        COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd_vv}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        DEPENDS ${_c4_lprefix}test-build
+        )
+    _c4_set_target_folder(${_c4_lprefix}test-run test)
+    _c4_set_target_folder(${_c4_lprefix}test-run-verbose test)
+    if(NOT TARGET test-build)
+        add_custom_target(test-build)
+        add_custom_target(test-verbose)
+        _c4_set_target_folder(test-build "/test")
+        _c4_set_target_folder(test-verbose "/test")
+    endif()
+    if(NOT TARGET test)
+        add_custom_target(test)
+        _c4_set_target_folder(test "/test")
+    endif()
+    add_dependencies(test ${_c4_lprefix}test-run)
+    add_dependencies(test-verbose ${_c4_lprefix}test-run-verbose)
+    add_dependencies(test-build ${_c4_lprefix}test-build)
 
     if(NOT TARGET gtest)
         #if(MSVC)
