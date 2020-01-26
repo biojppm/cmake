@@ -1737,32 +1737,6 @@ function(c4_setup_testing)
     add_custom_target(${_c4_lprefix}test-build)
     _c4_set_target_folder(${_c4_lprefix}test-build test)
     # umbrella targets for running tests
-    set(ctest_cmd env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
-    set(ctest_cmd_vv ${CMAKE_CTEST_COMMAND} -VV ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
-    add_custom_target(${_c4_lprefix}test-run
-        ${CMAKE_COMMAND} -E echo "
-echo ----------------------------------
-CWD=${CMAKE_CURRENT_BINARY_DIR}
-echo ${ctest_cmd_vv}
-echo ----------------------------------
-"
-        COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        DEPENDS ${_c4_lprefix}test-build
-        )
-    add_custom_target(${_c4_lprefix}test-run-verbose
-        ${CMAKE_COMMAND} -E echo "
-echo ----------------------------------
-CWD=${CMAKE_CURRENT_BINARY_DIR}
-echo ${ctest_cmd_vv}
-echo ----------------------------------
-"
-        COMMAND ${CMAKE_COMMAND} -E ${ctest_cmd_vv}
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        DEPENDS ${_c4_lprefix}test-build
-        )
-    _c4_set_target_folder(${_c4_lprefix}test-run test)
-    _c4_set_target_folder(${_c4_lprefix}test-run-verbose test)
     if(NOT TARGET test-build)
         add_custom_target(test-build)
         add_custom_target(test-verbose)
@@ -1773,6 +1747,23 @@ echo ----------------------------------
         add_custom_target(test)
         _c4_set_target_folder(test "/test")
     endif()
+    function(_def_runner runner)
+        set(echo "
+CWD=${CMAKE_CURRENT_BINARY_DIR}
+----------------------------------
+${ARGN}
+----------------------------------
+")
+        add_custom_target(${runner}
+            #${CMAKE_COMMAND} -E echo "${echo}"
+            COMMAND ${ARGN}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            DEPENDS ${_c4_lprefix}test-build
+            )
+        _c4_set_target_folder(${runner} test)
+    endfunction()
+    _def_runner(${_c4_lprefix}test-run env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
+    _def_runner(${_c4_lprefix}test-run-verbose ${CMAKE_CTEST_COMMAND} -VV ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_dependencies(test ${_c4_lprefix}test-run)
     add_dependencies(test-verbose ${_c4_lprefix}test-run-verbose)
     add_dependencies(test-build ${_c4_lprefix}test-build)
