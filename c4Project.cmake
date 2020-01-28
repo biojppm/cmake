@@ -1762,7 +1762,7 @@ ${ARGN}
             )
         _c4_set_target_folder(${runner} test)
     endfunction()
-    _def_runner(${_c4_lprefix}test-run env CTEST_OUTPUT_ON_FAILURE=1 ${CMAKE_CTEST_COMMAND} ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
+    _def_runner(${_c4_lprefix}test-run ${CMAKE_CTEST_COMMAND} --output-on-failure ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     _def_runner(${_c4_lprefix}test-run-verbose ${CMAKE_CTEST_COMMAND} -VV ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     add_dependencies(test ${_c4_lprefix}test-run)
     add_dependencies(test-verbose ${_c4_lprefix}test-run-verbose)
