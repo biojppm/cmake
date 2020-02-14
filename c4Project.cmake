@@ -3,7 +3,7 @@ set(_c4_project_included ON)
 set(_c4_project_file ${CMAKE_CURRENT_LIST_FILE})
 set(_c4_project_dir  ${CMAKE_CURRENT_LIST_DIR})
 
-cmake_minimum_required(VERSION 3.11 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
