@@ -31,6 +31,7 @@ set(C4_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit ex
 set(C4_ADD_EXTS "natvis" CACHE STRING "list of additional file extensions that might be added as sources to targets")
 set(C4_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
+set(C4_CXX_STANDARDS "17;14;11" CACHE STRING "list of CXX standards")
 
 
 #------------------------------------------------------------------------------
@@ -129,8 +130,11 @@ function(c4_declare_project prefix)
         MAJOR
         MINOR
         RELEASE
-        CXX_STANDARD  # if this is not provided, falls back on
-                      # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD
+        CXX_STANDARD  # one of latest or ${C4_VALID_CXX_STANDARDS}
+                      # if this is not provided, falls back on
+                      # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD,
+                      # then CXX_STANDARD. if none are provided,
+                      # defaults to 11
       _ARGSN  # multi-value macro arguments
         AUTHORS
     )
@@ -185,7 +189,7 @@ function(c4_declare_project prefix)
     _c4_handle_arg(MINOR 0)
     _c4_handle_arg(RELEASE 1)
     c4_setg(${_c4_uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
-    _c4_handle_arg_or_fallback(CXX_STANDARD "11")
+    _c4_handle_arg_or_fallback(CXX_STANDARD 11)
     #
     c4_set_proj_prop(DESC         "${_DESC}")
     c4_set_proj_prop(AUTHOR       "${_AUTHOR}")
@@ -193,9 +197,13 @@ function(c4_declare_project prefix)
     c4_set_proj_prop(MAJOR        "${_MAJOR}")
     c4_set_proj_prop(MINOR        "${_MINOR}")
     c4_set_proj_prop(RELEASE      "${_RELEASE}")
-    c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
 
     # CXX standard
+    if("${_CXX_STANDARD}" STREQUAL "latest")
+        _c4_find_latest_supported_cxx_standard(_CXX_STANDARD)
+        c4_log("picking latest detected C++ standard: C++${_CXX_STANDARD}")
+    endif()
+    c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
     c4_setg(${_c4_uprefix}CXX_STANDARD "${_CXX_STANDARD}")
     if(${_CXX_STANDARD})
         c4_set_cxx(${_CXX_STANDARD})
@@ -399,22 +407,23 @@ endmacro()
 
 
 macro(_c4_handle_arg_or_fallback argname default)
-    if("${_${argname}}" STREQUAL "")
-        if("${${_c4_uprefix}${argname}}" STREQUAL "")
-            if("${C4_${argname}}" STREQUAL "")
-                c4_dbg("handle arg: _${argname}: picking default=${default}")
-                c4_setg(_${argname} "${default}")
-            else()
-                c4_dbg("handle arg: _${argname}: picking C4_${argname}=${C4_${argname}}")
-                c4_setg(_${argname} "${C4_${argname}}")
-            endif()
-        else()
-            c4_dbg("handle arg: _${argname}: picking ${_c4_uprefix}${argname}=${${_c4_uprefix}${argname}}")
-            c4_setg(_${argname} "${${_c4_uprefix}${argname}}")
-        endif()
+    if(NOT ("${_${argname}}" STREQUAL ""))
+        c4_dbg("handle arg ${argname}: picking explicit value _${argname}=${_${argname}}")
     else()
-        c4_dbg("handle arg: _${argname}: picking explicit value _${argname}=${_${argname}}")
-        #c4_setg(_${argname} "${_${argname}}")
+        foreach(_c4haf_varname "${_c4_uprefix}${argname}" "C4_${argname}" "${argname}")
+            set(v ${${_c4haf_varname}})
+            if("${v}" STREQUAL "")
+                c4_dbg("handle arg ${argname}: ${_c4haf_varname}: empty, continuing")
+            else()
+                c4_dbg("handle arg ${argname}: ${_c4haf_varname}=${v} not empty!")
+                c4_setg(_${argname} "${v}")
+                break()
+            endif()
+        endforeach()
+        if("${_${argname}}" STREQUAL "")
+            c4_dbg("handle arg ${argname}: picking default: ${default}")
+            c4_setg(_${argname} "${default}")
+        endif()
     endif()
 endmacro()
 
@@ -479,7 +488,9 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+
 # examples:
+# c4_set_cxx(latest) # find the latest standard supported by the compiler, and use that
 # c4_set_cxx(11) # required, no extensions (eg c++11)
 # c4_set_cxx(14) # required, no extensions (eg c++14)
 # c4_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
@@ -493,7 +504,9 @@ macro(c4_set_cxx standard)
     c4_setg(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
 endmacro()
 
+
 # examples:
+# c4_target_set_cxx(latest) # find the latest standard supported by the compiler, and use that
 # c4_target_set_cxx(11) # required, no extensions (eg c++11)
 # c4_target_set_cxx(14) # required, no extensions (eg c++14)
 # c4_target_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
@@ -534,6 +547,38 @@ macro(_c4_handle_cxx_standard_args)
         set(_EXTENSIONS OFF)
     endif()
 endmacro()
+
+
+function(_c4_find_latest_supported_cxx_standard out)
+    if(NOT c4_latest_supported_cxx_standard)
+        include(CheckCXXCompilerFlag)
+        # make sure CMAKE_CXX_FLAGS is clean here
+        # see https://cmake.org/cmake/help/v3.16/module/CheckCXXCompilerFlag.html
+        # Note: since this is a function, we don't need to reset CMAKE_CXX_FLAGS
+        # back to its previous value
+        set(CMAKE_CXX_FLAGS)
+        set(standard 11)  # default to C++11 if everything fails
+        foreach(s 17 14 11)
+            if(MSVC)
+                set(flag /std:c++${s})
+            else()
+                # assume GNU-style compiler
+                set(flag -std=c++${s})
+            endif()
+            c4_log("checking CXX standard: C++${s} flag=${flag}")
+            check_cxx_compiler_flag(${flag} has${s})
+            if(has${s})
+                c4_log("checking CXX standard: C++${s} is supported! flag=${flag}")
+                set(standard ${s})
+                break()
+            else()
+                c4_log("checking CXX standard: C++${s}: no support for flag=${flag} no")
+            endif()
+        endforeach()
+        set(c4_latest_supported_cxx_standard ${standard} CACHE INTERNAL "")
+    endif()
+    set(${out} ${c4_latest_supported_cxx_standard} PARENT_SCOPE)
+endfunction()
 
 
 #------------------------------------------------------------------------------
