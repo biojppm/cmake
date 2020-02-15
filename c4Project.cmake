@@ -201,8 +201,8 @@ function(c4_declare_project prefix)
     # CXX standard
     if("${_CXX_STANDARD}" STREQUAL "latest")
         _c4_find_latest_supported_cxx_standard(_CXX_STANDARD)
-        c4_log("picking latest detected C++ standard: C++${_CXX_STANDARD}")
     endif()
+    c4_log("using C++ standard: C++${_CXX_STANDARD}")
     c4_set_proj_prop(CXX_STANDARD "${_CXX_STANDARD}")
     c4_setg(${_c4_uprefix}CXX_STANDARD "${_CXX_STANDARD}")
     if(${_CXX_STANDARD})
@@ -558,7 +558,7 @@ function(_c4_find_latest_supported_cxx_standard out)
         # back to its previous value
         set(CMAKE_CXX_FLAGS)
         set(standard 11)  # default to C++11 if everything fails
-        foreach(s 17 14 11)
+        foreach(s ${C4_CXX_STANDARDS})
             if(MSVC)
                 set(flag /std:c++${s})
             else()
