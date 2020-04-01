@@ -1156,7 +1156,8 @@ endfunction() # add_target
 
 function(_c4_link_with_libs target link_type libs incorporate)
     foreach(lib ${libs})
-        if(incorporate AND ${_c4_uprefix}STANDALONE)
+        _c4_lib_is_incorporated(${lib} isinc)
+        if(isinc OR (incorporate AND ${_c4_uprefix}STANDALONE))
             c4_log("-----> target ${target} ${link_type} incorporating lib ${lib}")
             _c4_incorporate_lib(${target} ${link_type} ${lib})
         else()
@@ -1167,8 +1168,16 @@ function(_c4_link_with_libs target link_type libs incorporate)
 endfunction()
 
 
-function(_c4_lib_is_incorporated lib)
+function(_c4_lib_is_incorporated lib ret)
+    c4_dbg("${lib}: is incorporated?")
     c4_get_target_prop(${lib} INCORPORATING_TARGETS inc)
+    if(inc)
+        c4_dbg("${lib}: is incorporated!")
+        set(${ret} ON PARENT_SCOPE)
+    else()
+        c4_dbg("${lib}: is not incorporated!")
+        set(${ret} OFF PARENT_SCOPE)
+    endif()
 endfunction()
 
 
@@ -2369,9 +2378,7 @@ function(_c4cat_filter_srcs_hdrs in out)
 endfunction()
 
 function(_c4cat_filter_additional_exts in out)
-    c4_dbg("fdx filter ${in}")
     _c4cat_filter_extensions("${in}" "${C4_ADD_EXTS}" l)
-    c4_dbg("fdx filter ${l}")
     set(${out} ${l} PARENT_SCOPE)
 endfunction()
 
