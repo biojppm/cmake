@@ -498,6 +498,7 @@ endfunction()
 # c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
 # c4_set_cxx(11 OPTIONAL EXTENSIONS)
 macro(c4_set_cxx standard)
+    c4_log("setting global C++ standard: ${standard}")
     _c4_handle_cxx_standard_args(${ARGN})
     c4_setg(CMAKE_CXX_STANDARD ${standard})
     c4_setg(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
@@ -514,6 +515,7 @@ endmacro()
 # c4_target_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
 # c4_target_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
 function(c4_target_set_cxx target standard)
+    c4_dbg("setting C++ standard for target ${target}: ${standard}")
     _c4_handle_cxx_standard_args(${ARGN})
     set_target_properties(${target} PROPERTIES
         CXX_STANDARD ${standard}
@@ -524,6 +526,7 @@ endfunction()
 
 
 function(c4_target_inherit_cxx_standard target)
+    c4_dbg("inheriting C++ standard for target ${target}: ${CMAKE_CXX_STANDARD}")
     set_target_properties(${target} PROPERTIES
         CXX_STANDARD "${CMAKE_CXX_STANDARD}"
         CXX_STANDARD_REQUIRED "${CMAKE_CXX_STANDARD_REQUIRED}"
