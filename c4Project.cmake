@@ -1835,7 +1835,7 @@ ${ARGN}
         c4_override(gtest_force_shared_crt ON)
         c4_override(gtest_build_samples OFF)
         c4_override(gtest_build_tests OFF)
-        c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/extern/gtest
+        c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
             GIT_REPOSITORY https://github.com/google/googletest.git
             #GIT_TAG release-1.8.0
             )
@@ -2198,12 +2198,12 @@ function(c4_setup_coverage)
             add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
                 COMMAND ${LCOV} -q --zerocounters --directory .
                 COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
-                COMMAND ${CTEST} --force-new-ctest-process
+                COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
                 COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
                 COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-                COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'/usr/*'" "'*/extern/*'" --output-file final.lcov
+                COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'${CMAKE_SOURCE_DIR}/ext/*'" "'*/extern/*'" "'${CMAKE_BINARY_DIR}/*'" "'/usr/*'" --output-file final.lcov
                 COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${_c4_lcprefix}
-                #DEPENDS ${_c4_lprefix}test
+                DEPENDS ${_c4_lprefix}test-build
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                 COMMENT "${_c4_prefix} coverage: Running LCOV"
                 )
@@ -2245,7 +2245,7 @@ function(c4_setup_benchmarking)
         c4_override(BENCHMARK_ENABLE_TESTING OFF)
         c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
         c4_override(BENCHMARK_ENABLE_LTO OFF)
-        c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/extern/googlebenchmark
+        c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/ext/googlebenchmark
             GIT_REPOSITORY https://github.com/google/benchmark.git
             )
         c4_set_folder_remote_project_targets(bm benchmark benchmark_main)
