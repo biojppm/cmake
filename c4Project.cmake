@@ -43,6 +43,11 @@ macro(c4_log)
 endmacro()
 
 
+macro(c4_err)
+    message(FATAL_ERROR "${_c4_prefix}: ${ARGN}")
+endmacro()
+
+
 macro(c4_dbg)
     if(C4_DBG_ENABLED)
         message(STATUS "${_c4_prefix}: ${ARGN}")
@@ -397,6 +402,54 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+
+
+function(c4_get_config var name)
+    c4_dbg("get_config: ${var} ${name}")
+    c4_get_from_first_of(config ${ARGN} VARS ${_c4_uprefix}${name} C4_${name} ${name})
+    c4_dbg("get_config: ${var} ${name} = ${config}")
+    set(${var} ${config} PARENT_SCOPE)
+endfunction()
+
+
+function(c4_get_from_first_of var)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            REQUIRED  # raise an error if no set variable was found
+            ENV  # if none of the provided vars is given,
+                 # then search next on environment variables
+                 # of the same name
+        _ARGS1
+            DEFAULT
+        _ARGSN
+            VARS
+    )
+    c4_dbg("get_from_first(): ${var}: searching ${_var}=${val}")
+    foreach(_var ${_VARS})
+        set(val ${${_var}})
+        c4_dbg("${var}: searching ${_var}=${val}")
+        if(NOT ("${val}" STREQUAL ""))
+            set(${var} "${val}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    if(_ENV)
+        foreach(_envvar ${_VARS})
+            set(val $ENV{${_envvar}})
+            c4_dbg("${var}: searching environment variable ${_envvar}=${val}")
+            if(NOT ("${val}" STREQUAL ""))
+                set(${var} "${val}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    endif()
+    if(_REQUIRED)
+        c4_err("could not find a value for the variable ${var}")
+    endif()
+    set(${var} ${_DEFAULT} PARENT_SCOPE)
+endfunction()
+
+
 macro(_c4_handle_arg argname default)
      if("${_${argname}}" STREQUAL "")
          set(_${argname} "${default}")
@@ -426,6 +479,7 @@ macro(_c4_handle_arg_or_fallback argname default)
         endif()
     endif()
 endmacro()
+
 
 
 function(c4_set_var_tmp var value)
@@ -2156,11 +2210,10 @@ function(c4_setup_coverage)
         set(_covon ON)
     endif()
     option(${_c4_uprefix}COVERAGE "enable coverage targets" ${_covon})
-    cmake_dependent_option(${_c4_uprefix}COVERAGE_CODECOV "enable coverage with codecov" ON ${_c4_uprefix}COVERAGE OFF)
-    cmake_dependent_option(${_c4_uprefix}COVERAGE_COVERALLS "enable coverage with coveralls" ON ${_c4_uprefix}COVERAGE OFF)
     if(${_c4_uprefix}COVERAGE)
-        #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
-        set(covflags "-g -O0 --coverage")
+        option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
+        option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
+        set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
             set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
         endif()
@@ -2170,13 +2223,6 @@ function(c4_setup_coverage)
             CXX_FLAGS ${covflags}
             )
         if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-            if(${_c4_uprefix}COVERAGE_CODECOV)
-                #include(CodeCoverage)
-            endif()
-            if(${_c4_uprefix}COVERAGE_COVERALLS)
-                #include(Coveralls)
-                #coveralls_turn_on_coverage() # NOT NEEDED, we're doing this manually.
-            endif()
             find_program(GCOV gcov)
             find_program(LCOV lcov)
             find_program(GENHTML genhtml)
@@ -2187,8 +2233,7 @@ function(c4_setup_coverage)
                 else()
                     set(CXX_FLAG_COVERAGE_MESSAGE unavailable)
                 endif()
-                message(WARNING
-                    "Coverage not available:\n"
+                c4_err("Coverage not available:\n"
                     "  gcov: ${GCOV}\n"
                     "  lcov: ${LCOV}\n"
                     "  genhtml: ${GENHTML}\n"
@@ -2205,16 +2250,98 @@ function(c4_setup_coverage)
                 COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${_c4_lcprefix}
                 DEPENDS ${_c4_lprefix}test-build
                 WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                COMMENT "${_c4_prefix} coverage: Running LCOV"
+                COMMENT "${_c4_lprefix} coverage: Running LCOV"
                 )
             add_custom_target(${_c4_lprefix}coverage
                 DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
                 COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                 )
+            if(${_c4_uprefix}COVERAGE_CODECOV)
+                set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
+                c4_download_file("https://codecov.io/bash" "${submitcc}")
+                c4_get_config(_token CODECOV_REPO_TOKEN ENV REQUIRED)
+                add_custom_target(${_c4_lprefix}coverage-submit-codecov
+                    COMMAND bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
+                    DEPENDS ${_c4_lprefix}coverage
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                    COMMENT "${_c4_lcprefix} coverage: submit to codecov"
+                    )
+                c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
+            endif()
+            if(${_c4_uprefix}COVERAGE_COVERALLS)
+                c4_get_config(_token COVERALLS_REPO_TOKEN ENV REQUIRED)
+                add_custom_target(${_c4_lprefix}coverage-submit-coveralls
+                    COMMAND coveralls --repo-token ${_token} --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
+                    DEPENDS ${_c4_lprefix}coverage
+                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                    COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
+                    )
+                c4_add_umbrella_target(coverage-submit-coveralls coverage-submit)  # uses the current prefix
+            endif()
             c4_dbg(STATUS "Coverage command added")
         endif()
     endif()
 endfunction(c4_setup_coverage)
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+
+function(c4_add_umbrella_target target umbrella_target)
+    _c4_handle_args(_ARGS ${ARGN}
+      # zero-value macro arguments
+      _ARGS0
+        ALWAYS  # Add the umbrella target even if this is the only one under it.
+                # The default behavior is to add the umbrella target only if
+                # there is more than one target under it.
+      # one-value macro arguments
+      _ARGS1
+        PREFIX  # The project prefix. Defaults to ${_c4_lprefix}
+      # multi-value macro arguments
+      _ARGSN
+        ARGS    # more args to add_custom_target()
+    )
+    if(NOT _PREFIX)
+        set(_PREFIX "${_c4_lprefix}")
+    endif()
+    set(t ${_PREFIX}${target})
+    set(ut ${_PREFIX}${umbrella_target})
+    # if the umbrella target already exists, just add the dependency
+    if(TARGET ${ut})
+        add_dependencies(${ut} ${t})
+    else()
+        if(_ALWAYS)
+            add_custom_target(${ut} ${_ARGS})
+            add_dependencies(${ut} ${t})
+        else()
+            # check if there is more than one under the same umbrella
+            c4_get_proj_prop(${ut}_subtargets sub)
+            if(sub)
+                add_custom_target(${ut} ${_ARGS})
+                add_dependencies(${ut} ${sub})
+                add_dependencies(${ut} ${t})
+            else()
+                c4_set_proj_prop(${ut}_subtargets ${t})
+            endif()
+        endif()
+    endif()
+endfunction()
+
+
+
+function(c4_download_file url dstpath)
+    c4_dbg("downloading file: ${url} ---> ${dstpath}")
+    get_filename_component(abspath ${dstpath} ABSOLUTE)
+    if(NOT EXISTS ${abspath})
+        c4_dbg("downloading file: does not exist: ${dstpath}")
+        file(DOWNLOAD ${url} ${abspath} LOG dl_log STATUS status ${ARGN})
+        if((NOT (status EQUAL 0)) OR (NOT EXISTS ${abspath}))
+            c4_err("error downloading file: ${url} -> ${abspath}:\n${dl_log}")
+        endif()
+    endif()
+endfunction()
 
 
 #------------------------------------------------------------------------------
