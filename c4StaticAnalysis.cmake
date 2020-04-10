@@ -5,7 +5,7 @@ include(c4GetTargetPropertyRecursive)
 
 function(_c4sta_default_if_not_set var dft)
     if("${${var}}" STREQUAL "")
-        option(${var} "" ${dft})
+        set(${var} "" ${dft} PARENT_SCOPE)
     endif()
 endfunction()
 
@@ -19,9 +19,9 @@ function(c4_setup_static_analysis umbrella_option)
         c4_dbg("Coverage build: disabling static analyzers")
         return()
     endif()
-    _c4sta_default_if_not_set(C4_LINT ON)
-    _c4sta_default_if_not_set(C4_LINT_TESTS ON)
-    _c4sta_default_if_not_set(C4_LINT_CLANG_TIDY ON)
+    _c4sta_default_if_not_set(C4_LINT ${umbrella_option})
+    _c4sta_default_if_not_set(C4_LINT_TESTS ${umbrella_option})
+    _c4sta_default_if_not_set(C4_LINT_CLANG_TIDY ${umbrella_option})
     _c4sta_default_if_not_set(C4_LINT_PVS_STUDIO OFF)
     # option to turn lints on/off
     cmake_dependent_option(${_c4_uprefix}LINT "add static analyzer targets" ${C4_LINT} ${umbrella_option} OFF)
@@ -103,6 +103,7 @@ function(c4_static_analysis_clang_tidy subj_target lint_target umbrella_target f
     c4_static_analysis_clang_tidy_get_cmd(${subj_target} ${lint_target} cmd)
     add_custom_target(${lint_target}
         COMMAND ${cmd}
+        VERBATIM
         COMMENT "clang-tidy: analyzing sources of ${subj_target}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     if(folder)
@@ -119,20 +120,25 @@ function(c4_static_analysis_clang_tidy_get_cmd subj_target lint_target cmd)
     get_target_property(_clt_opts ${subj_target} COMPILE_OPTIONS)
     c4_get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
     list(REMOVE_DUPLICATES _clt_incs)
-    get_include_flags(_clt_incs ${_clt_incs})
+    c4_get_include_flags(_clt_iflags ${_clt_incs})
     if(NOT _clt_opts)
-        set(_clt_opts)
+        set(_clt_opts) # prevent NOTFOUND et al
     endif()
-    separate_arguments(_clt_opts UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${_clt_opts}")
-    separate_arguments(_clt_incs UNIX_COMMAND "${_clt_incs}")
-    set(${cmd} clang-tidy ${_clt_srcs} --config='' -- ${_clt_incs} ${_clt_opts} PARENT_SCOPE)
+    # NOTE: maybe these calls to separate_arguments() are the ones responsible
+    # for incompatibility with generator expression lists as a means to filter
+    # empty include directories (which result as -I inc_a -I -I inc_b).
+    # This requires careful investigation.
+    separate_arguments(_clt_iflags_args UNIX_COMMAND "${_clt_iflags}")
+    separate_arguments(_clt_opts_args   UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${_clt_opts}")
+    set(result clang-tidy ${_clt_srcs} -- ${_clt_iflags_args} ${_clt_opts_args})
+    set(${cmd} ${result} PARENT_SCOPE)
 endfunction()
 
 
 #------------------------------------------------------------------------------
 function(c4_static_analysis_pvs_studio subj_target lint_target umbrella_target folder)
     c4_get_target_property_recursive(_c4al_pvs_incs ${subj_target} INCLUDE_DIRECTORIES)
-    get_include_flags(_c4al_pvs_incs ${_c4al_pvs_incs})
+    c4_get_include_flags(_c4al_pvs_incs ${_c4al_pvs_incs})
     separate_arguments(_c4al_cxx_flags_sep UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${_c4al_pvs_incs}")
     separate_arguments(_c4al_c_flags_sep UNIX_COMMAND "${CMAKE_C_FLAGS} ${_c4al_pvs_incs}")
     pvs_studio_add_target(TARGET ${lint_target}
