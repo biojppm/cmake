@@ -2229,6 +2229,7 @@ function(c4_setup_coverage)
     endif()
     option(${_c4_uprefix}COVERAGE "enable coverage targets" ${_covon})
     if(${_c4_uprefix}COVERAGE)
+        c4_log("enabling coverage targets")
         option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
         option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
         set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
@@ -2274,12 +2275,20 @@ function(c4_setup_coverage)
                 DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
                 COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                 )
+            function(_c4_get_envvar var out)
+                c4_get_config(_token ${var} ENV)
+                if(NOT _token)
+                    c4_err("coverage: environment variable is empty: ${var}")
+                endif()
+                c4_log("coverage: ${var}=${_token}")
+                set(${out} ${_token} PARENT_SCOPE)
+            endfunction()
             if(${_c4_uprefix}COVERAGE_CODECOV)
+                _c4_get_envvar(CODECOV_TOKEN _codecov_token)
                 set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
                 c4_download_file("https://codecov.io/bash" "${submitcc}")
-                c4_get_config(_token CODECOV_REPO_TOKEN ENV REQUIRED)
                 add_custom_target(${_c4_lprefix}coverage-submit-codecov
-                    COMMAND bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
+                    COMMAND bash ${submitcc} -t "${_codecov_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
                     DEPENDS ${_c4_lprefix}coverage
                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                     COMMENT "${_c4_lcprefix} coverage: submit to codecov"
@@ -2287,9 +2296,9 @@ function(c4_setup_coverage)
                 c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
             endif()
             if(${_c4_uprefix}COVERAGE_COVERALLS)
-                c4_get_config(_token COVERALLS_REPO_TOKEN ENV REQUIRED)
+                _c4_get_envvar(COVERALLS_REPO_TOKEN _coveralls_token)
                 add_custom_target(${_c4_lprefix}coverage-submit-coveralls
-                    COMMAND coveralls --repo-token ${_token} --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
+                    COMMAND coveralls --repo-token ${_coveralls_token} --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
                     DEPENDS ${_c4_lprefix}coverage
                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                     COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
