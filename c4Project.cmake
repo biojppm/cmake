@@ -2275,16 +2275,21 @@ function(c4_setup_coverage)
                 DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
                 COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
                 )
-            function(_c4_get_envvar var out)
-                c4_get_config(_token ${var} ENV)
-                if(NOT _token)
-                    c4_err("coverage: environment variable is empty: ${var}")
+            #
+            function(_c4cov_get_token service out)
+                set(service_token_file ${CMAKE_SOURCE_DIR}/.ci/${service}.token)
+                if(EXISTS ${service_token_file})
+                    file(READ ${service_token_file} token)
+                    c4_log("found token for ${service} coverage report: ${token}")
+                else()
+                    c4_err("could not find token for ${service} coverage report: ${service_token_file}")
                 endif()
-                c4_log("coverage: ${var}=${_token}")
-                set(${out} ${_token} PARENT_SCOPE)
+                set(${out} ${token} PARENT_SCOPE)
             endfunction()
+            #
             if(${_c4_uprefix}COVERAGE_CODECOV)
-                _c4_get_envvar(CODECOV_TOKEN _codecov_token)
+                _c4cov_get_token(codecov _codecov_token)
+                c4_log("coverage: enabling submission of results to https://codecov.io")
                 set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
                 c4_download_file("https://codecov.io/bash" "${submitcc}")
                 add_custom_target(${_c4_lprefix}coverage-submit-codecov
@@ -2295,8 +2300,10 @@ function(c4_setup_coverage)
                     )
                 c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
             endif()
+            #
             if(${_c4_uprefix}COVERAGE_COVERALLS)
-                _c4_get_envvar(COVERALLS_REPO_TOKEN _coveralls_token)
+                _c4cov_get_token(coveralls _coveralls_token)
+                c4_log("coverage: enabling submission of results to https://coveralls.io")
                 add_custom_target(${_c4_lprefix}coverage-submit-coveralls
                     COMMAND coveralls --repo-token ${_coveralls_token} --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
                     DEPENDS ${_c4_lprefix}coverage
