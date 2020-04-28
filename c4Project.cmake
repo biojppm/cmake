@@ -2288,12 +2288,14 @@ function(c4_setup_coverage)
             endfunction()
             #
             if(${_c4_uprefix}COVERAGE_CODECOV)
-                _c4cov_get_token(codecov _codecov_token)
-                c4_log("coverage: enabling submission of results to https://codecov.io")
+                set(_subm ${_c4_lprefix}coverage-submit-codecov)
+                _c4cov_get_token(codecov _token)
+                c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
                 set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
                 c4_download_file("https://codecov.io/bash" "${submitcc}")
-                add_custom_target(${_c4_lprefix}coverage-submit-codecov
-                    COMMAND bash ${submitcc} -t "${_codecov_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
+                add_custom_target(${_subm}
+                    COMMAND echo bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
+                    COMMAND bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
                     DEPENDS ${_c4_lprefix}coverage
                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                     COMMENT "${_c4_lcprefix} coverage: submit to codecov"
@@ -2302,10 +2304,12 @@ function(c4_setup_coverage)
             endif()
             #
             if(${_c4_uprefix}COVERAGE_COVERALLS)
-                _c4cov_get_token(coveralls _coveralls_token)
-                c4_log("coverage: enabling submission of results to https://coveralls.io")
-                add_custom_target(${_c4_lprefix}coverage-submit-coveralls
-                    COMMAND coveralls --repo-token ${_coveralls_token} --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
+                set(_subm ${_c4_lprefix}coverage-submit-coveralls)
+                _c4cov_get_token(coveralls _token)
+                c4_log("coverage: enabling submission of results to https://coveralls.io: ${_subm}")
+                add_custom_target(${_subm}
+                    COMMAND echo coveralls --repo-token "${_token}" --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
+                    COMMAND coveralls --repo-token "${_token}" --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
                     DEPENDS ${_c4_lprefix}coverage
                     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
                     COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
