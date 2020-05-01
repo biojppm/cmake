@@ -101,10 +101,95 @@ macro(_c4_handle_args)
     foreach(a ${__c4ha__DEPRECATE})
         list(FIND __c4ha__ARGS ${a} contains)
         if(NOT (${contains} EQUAL -1))
-            message(FATAL_ERROR "${a} is deprecated")
+            c4err("${a} is deprecated")
         endif()
     endforeach()
 endmacro()
+
+# fallback to provided default(s) if argument is not set
+macro(_c4_handle_arg argname)
+     if("${_${argname}}" STREQUAL "")
+         set(_${argname} "${ARGN}")
+     else()
+         c4_setg(_${argname} "${_${argname}}")
+     endif()
+endmacro()
+
+
+# if ${_${argname}} is non empty, return it
+# otherwise, fallback to ${_c4_uprefix}${argname}
+# otherwise, fallback to C4_${argname}
+# otherwise, fallback to provided default
+macro(_c4_handle_arg_or_fallback argname)
+    if(NOT ("${_${argname}}" STREQUAL ""))
+        c4_dbg("handle arg ${argname}: picking explicit value _${argname}=${_${argname}}")
+    else()
+        foreach(_c4haf_varname "${_c4_uprefix}${argname}" "C4_${argname}" "${argname}")
+            set(v ${${_c4haf_varname}})
+            if("${v}" STREQUAL "")
+                c4_dbg("handle arg ${argname}: ${_c4haf_varname}: empty, continuing")
+            else()
+                c4_dbg("handle arg ${argname}: ${_c4haf_varname}=${v} not empty!")
+                c4_setg(_${argname} "${v}")
+                break()
+            endif()
+        endforeach()
+        if("${_${argname}}" STREQUAL "")
+            c4_dbg("handle arg ${argname}: picking default: ${ARGN}")
+            c4_setg(_${argname} "${ARGN}")
+        endif()
+    endif()
+endmacro()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+function(c4_get_config var name)
+    c4_dbg("get_config: ${var} ${name}")
+    c4_get_from_first_of(config ${ARGN} VARS ${_c4_uprefix}${name} C4_${name} ${name})
+    c4_dbg("get_config: ${var} ${name}=${config}")
+    set(${var} ${config} PARENT_SCOPE)
+endfunction()
+
+
+function(c4_get_from_first_of var)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            REQUIRED  # raise an error if no set variable was found
+            ENV  # if none of the provided vars is given,
+                 # then search next on environment variables
+                 # of the same name
+        _ARGS1
+            DEFAULT
+        _ARGSN
+            VARS
+    )
+    c4_dbg("get_from_first(): ${var}: searching ${_var}=${val}")
+    foreach(_var ${_VARS})
+        set(val ${${_var}})
+        c4_dbg("${var}: searching ${_var}=${val}")
+        if(NOT ("${val}" STREQUAL ""))
+            set(${var} "${val}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    if(_ENV)
+        foreach(_envvar ${_VARS})
+            set(val $ENV{${_envvar}})
+            c4_dbg("${var}: searching environment variable ${_envvar}=${val}")
+            if(NOT ("${val}" STREQUAL ""))
+                set(${var} "${val}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+    endif()
+    if(_REQUIRED)
+        c4_err("could not find a value for the variable ${var}")
+    endif()
+    set(${var} ${_DEFAULT} PARENT_SCOPE)
+endfunction()
 
 
 #------------------------------------------------------------------------------
@@ -401,86 +486,6 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
-
-
-function(c4_get_config var name)
-    c4_dbg("get_config: ${var} ${name}")
-    c4_get_from_first_of(config ${ARGN} VARS ${_c4_uprefix}${name} C4_${name} ${name})
-    c4_dbg("get_config: ${var} ${name} = ${config}")
-    set(${var} ${config} PARENT_SCOPE)
-endfunction()
-
-
-function(c4_get_from_first_of var)
-    _c4_handle_args(_ARGS ${ARGN}
-        _ARGS0
-            REQUIRED  # raise an error if no set variable was found
-            ENV  # if none of the provided vars is given,
-                 # then search next on environment variables
-                 # of the same name
-        _ARGS1
-            DEFAULT
-        _ARGSN
-            VARS
-    )
-    c4_dbg("get_from_first(): ${var}: searching ${_var}=${val}")
-    foreach(_var ${_VARS})
-        set(val ${${_var}})
-        c4_dbg("${var}: searching ${_var}=${val}")
-        if(NOT ("${val}" STREQUAL ""))
-            set(${var} "${val}" PARENT_SCOPE)
-            return()
-        endif()
-    endforeach()
-    if(_ENV)
-        foreach(_envvar ${_VARS})
-            set(val $ENV{${_envvar}})
-            c4_dbg("${var}: searching environment variable ${_envvar}=${val}")
-            if(NOT ("${val}" STREQUAL ""))
-                set(${var} "${val}" PARENT_SCOPE)
-                return()
-            endif()
-        endforeach()
-    endif()
-    if(_REQUIRED)
-        c4_err("could not find a value for the variable ${var}")
-    endif()
-    set(${var} ${_DEFAULT} PARENT_SCOPE)
-endfunction()
-
-
-macro(_c4_handle_arg argname default)
-     if("${_${argname}}" STREQUAL "")
-         set(_${argname} "${default}")
-     else()
-         c4_setg(_${argname} "${_${argname}}")
-     endif()
-endmacro()
-
-
-macro(_c4_handle_arg_or_fallback argname default)
-    if(NOT ("${_${argname}}" STREQUAL ""))
-        c4_dbg("handle arg ${argname}: picking explicit value _${argname}=${_${argname}}")
-    else()
-        foreach(_c4haf_varname "${_c4_uprefix}${argname}" "C4_${argname}" "${argname}")
-            set(v ${${_c4haf_varname}})
-            if("${v}" STREQUAL "")
-                c4_dbg("handle arg ${argname}: ${_c4haf_varname}: empty, continuing")
-            else()
-                c4_dbg("handle arg ${argname}: ${_c4haf_varname}=${v} not empty!")
-                c4_setg(_${argname} "${v}")
-                break()
-            endif()
-        endforeach()
-        if("${_${argname}}" STREQUAL "")
-            c4_dbg("handle arg ${argname}: picking default: ${default}")
-            c4_setg(_${argname} "${default}")
-        endif()
-    endif()
-endmacro()
-
-
 
 function(c4_set_var_tmp var value)
     c4_dbg("tmp-setting ${var} to ${value} (was ${${value}})")
@@ -2207,125 +2212,181 @@ endfunction(c4_add_valgrind)
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
+
 function(c4_setup_coverage)
-    set(_covok ON)
-    if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
-        if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
-	    c4_log("coverage: clang version must be 3.0.0 or greater. No coverage available.")
-            set(_covok OFF)
-        endif()
-    elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
-        if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-            message(FATAL_ERROR "${_c4_prefix} coverage: compiler is not GNUCXX. No coverage available.")
-        endif()
-        set(_covok OFF)
-    endif()
-    if(NOT _covok)
+    if(NOT ("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage"))
         return()
     endif()
-    set(_covon OFF)
-    if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-        set(_covon ON)
+    #
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS0  # zero-value macro arguments
+      _ARGS1  # one-value macro arguments
+      _ARGSN  # multi-value macro arguments
+        INCLUDE       # patterns to include in the coverage, relative to CMAKE_SOURCE_DIR
+        EXCLUDE       # patterns to exclude in the coverage, relative to CMAKE_SOURCE_DIR
+        EXCLUDE_ABS   # absolute paths to exclude in the coverage
+        GENHTML_ARGS  # options to pass to genhtml
+    )
+    # defaults for the macro arguments
+    _c4_handle_arg(INCLUDE src)
+    _c4_handle_arg(EXCLUDE test ext extern)
+    _c4_handle_arg(EXCLUDE_ABS /usr "${CMAKE_BINARY_DIR}")
+    _c4_handle_arg(GENHTML_ARGS --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage
+        --prefix "'${CMAKE_SOURCE_DIR}'"
+        --prefix "'${CMAKE_BINARY_DIR}'")
+    #
+    if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
+        if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
+	    c4_err("coverage: clang version must be 3.0.0 or greater")
+        endif()
+    elseif(NOT CMAKE_COMPILER_IS_GNUCXX)
+        c4_err("coverage: compiler is not GNUCXX")
     endif()
-    option(${_c4_uprefix}COVERAGE "enable coverage targets" ${_covon})
-    if(${_c4_uprefix}COVERAGE)
-        c4_log("enabling coverage targets")
-        option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
-        option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
-        set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
-        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-            set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+    #
+    find_program(GCOV gcov)
+    find_program(LCOV lcov)
+    find_program(GENHTML genhtml)
+    find_program(CTEST ctest)
+    set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+    endif()
+    if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
+        c4_err("Coverage tools not available:
+    gcov: ${GCOV}
+    lcov: ${LCOV}
+    genhtml: ${GENHTML}
+    ctest: ${CTEST}
+    --coverage flag: ${covflags}")
+    endif()
+    #
+    add_configuration_type(Coverage
+        DEFAULT_FROM DEBUG
+        C_FLAGS ${covflags}
+        CXX_FLAGS ${covflags}
+        )
+    #
+    c4_dbg("adding coverage targets")
+    option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
+    option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
+    #
+    set(_excs)
+    foreach(exc ${_EXCLUDE})
+        list(APPEND _excs "'${CMAKE_SOURCE_DIR}/${exc}/*'")
+    endforeach()
+    foreach(exc ${_EXCLUDE_ABS})
+        list(APPEND _excs "'${exc}/*'")
+    endforeach()
+    #
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
+        COMMAND ${LCOV} -q --zerocounters --directory .
+        COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
+        COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
+        COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
+        COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
+        COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov ${_excs}
+        COMMAND ${GENHTML} final.lcov -o lcov ${_GENHTML_ARGS}
+        DEPENDS ${_c4_lprefix}test-build
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "${_c4_lprefix} coverage: Running LCOV"
+        )
+    add_custom_target(${_c4_lprefix}coverage
+        DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
+        COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+        )
+    #
+    if(${_c4_uprefix}COVERAGE_CODECOV)
+        set(_subm ${_c4_lprefix}coverage-submit-codecov)
+        _c4cov_get_service_token(codecov _token)
+        if(NOT ("${_token}" STREQUAL ""))
+            set(_token -t "${_token}")
         endif()
-        add_configuration_type(Coverage
-            DEFAULT_FROM DEBUG
-            C_FLAGS ${covflags}
-            CXX_FLAGS ${covflags}
+        #
+        set(_incs)
+        foreach(inc ${_INCLUDE})
+            list(APPEND _incs -G "'${inc}'")
+        endforeach()
+        set(_excs)
+        foreach(exc ${_EXCLUDE};${_EXCLUDE_ABS})
+            list(APPEND _excs -g "'${exc}'")
+        endforeach()
+        set(_excs)
+        foreach(exc ${_EXCLUDE};${_EXCLUDE_ABS})
+            list(APPEND _excs -g "'${exc}/*'")
+        endforeach()
+        #
+        c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
+        set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
+        c4_download_file("https://codecov.io/bash" "${submitcc}")
+        set(submit_cmd bash ${submitcc} ${_token} -a '\\-lp' -p ${CMAKE_SOURCE_DIR} ${_incs} ${_excs})
+        add_custom_target(${_subm}
+            COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
+            COMMAND ${submit_cmd}
+            DEPENDS ${_c4_lprefix}coverage
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "${_c4_lcprefix} coverage: submit to codecov"
             )
-        if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-            find_program(GCOV gcov)
-            find_program(LCOV lcov)
-            find_program(GENHTML genhtml)
-            find_program(CTEST ctest)
-            if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
-                if (HAVE_CXX_FLAG_COVERAGE)
-                    set(CXX_FLAG_COVERAGE_MESSAGE supported)
-                else()
-                    set(CXX_FLAG_COVERAGE_MESSAGE unavailable)
-                endif()
-                c4_err("Coverage not available:\n"
-                    "  gcov: ${GCOV}\n"
-                    "  lcov: ${LCOV}\n"
-                    "  genhtml: ${GENHTML}\n"
-                    "  ctest: ${CTEST}\n"
-                    "  --coverage flag: ${CXX_FLAG_COVERAGE_MESSAGE}")
-            endif()
-            add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
-                COMMAND ${LCOV} -q --zerocounters --directory .
-                COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
-                COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
-                COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
-                COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-                COMMAND ${LCOV} -q --remove final.lcov "'${CMAKE_SOURCE_DIR}/test/*'" "'${CMAKE_SOURCE_DIR}/ext/*'" "'*/extern/*'" "'${CMAKE_BINARY_DIR}/*'" "'/usr/*'" --output-file final.lcov
-                COMMAND ${GENHTML} final.lcov -o lcov --demangle-cpp --sort -p "${CMAKE_BINARY_DIR}" -t ${_c4_lcprefix}
-                DEPENDS ${_c4_lprefix}test-build
-                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                COMMENT "${_c4_lprefix} coverage: Running LCOV"
-                )
-            add_custom_target(${_c4_lprefix}coverage
-                DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
-                COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
-                )
-            #
-            function(_c4cov_get_token service out)
-                set(service_token_file ${CMAKE_SOURCE_DIR}/.ci/${service}.token)
-                if(EXISTS ${service_token_file})
-                    file(READ ${service_token_file} token)
-                    c4_log("found token for ${service} coverage report: ${token}")
-                else()
-                    c4_err("could not find token for ${service} coverage report: ${service_token_file}")
-                endif()
-                set(${out} ${token} PARENT_SCOPE)
-            endfunction()
-            #
-            if(${_c4_uprefix}COVERAGE_CODECOV)
-                set(_subm ${_c4_lprefix}coverage-submit-codecov)
-                _c4cov_get_token(codecov _token)
-                c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
-                set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
-                c4_download_file("https://codecov.io/bash" "${submitcc}")
-                add_custom_target(${_subm}
-                    COMMAND echo bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
-                    COMMAND bash ${submitcc} -t "${_token}" -g test -G src -p ${CMAKE_SOURCE_DIR} -a '\\-lp'
-                    DEPENDS ${_c4_lprefix}coverage
-                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                    COMMENT "${_c4_lcprefix} coverage: submit to codecov"
-                    )
-                c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
-            endif()
-            #
-            if(${_c4_uprefix}COVERAGE_COVERALLS)
-                set(_subm ${_c4_lprefix}coverage-submit-coveralls)
-                _c4cov_get_token(coveralls _token)
-                c4_log("coverage: enabling submission of results to https://coveralls.io: ${_subm}")
-                add_custom_target(${_subm}
-                    COMMAND echo coveralls --repo-token "${_token}" --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
-                    COMMAND coveralls --repo-token "${_token}" --root ${CMAKE_SOURCE_DIR} --include src --build-root ${CMAKE_BINARY_DIR} --gcov-options '\\-lp'
-                    DEPENDS ${_c4_lprefix}coverage
-                    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-                    COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
-                    )
-                c4_add_umbrella_target(coverage-submit-coveralls coverage-submit)  # uses the current prefix
-            endif()
-            c4_dbg(STATUS "Coverage command added")
+        c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
+    endif()
+    #
+    if(${_c4_uprefix}COVERAGE_COVERALLS)
+        set(_subm ${_c4_lprefix}coverage-submit-coveralls)
+        _c4cov_get_service_token(coveralls _token)
+        if(NOT ("${_token}" STREQUAL ""))
+            set(_token --repo-token "${_token}")
         endif()
+        #
+        set(_incs)
+        foreach(inc ${_INCLUDE})
+            list(APPEND _incs --include "'${inc}'")
+        endforeach()
+        set(_excs)
+        foreach(exc ${_EXCLUDE};${_EXCLUDE_ABS})
+            list(APPEND _excs --exclude "'${exc}'")
+        endforeach()
+        set(_excs)
+        foreach(exc ${_EXCLUDE};${_EXCLUDE_ABS})
+            list(APPEND _excs --exclude "'${exc}/*'")
+        endforeach()
+        #
+        c4_log("coverage: enabling submission of results to https://coveralls.io: ${_subm}")
+        set(submit_cmd coveralls ${_token} --gcov-options '\\-lp' --build-root ${CMAKE_BINARY_DIR} --root ${CMAKE_SOURCE_DIR} ${_incs} ${_excs})
+        add_custom_target(${_subm}
+            COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
+            COMMAND ${submit_cmd}
+            DEPENDS ${_c4_lprefix}coverage
+            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
+            )
+        c4_add_umbrella_target(coverage-submit-coveralls coverage-submit)  # uses the current prefix
     endif()
 endfunction(c4_setup_coverage)
 
+# 1. try cmake or environment variables
+# 2. try local file
+function(_c4cov_get_service_token service out)
+    # try cmake var
+    string(TOUPPER ${service} uservice)
+    c4_get_from_first_of(token COVERAGE_${uservice}_TOKEN ENV)
+    if(NOT ("${token}" STREQUAL ""))
+        c4_dbg("${service}: found token from variable: ${token}")
+    else()
+        # try local file
+        set(service_token_file ${CMAKE_SOURCE_DIR}/.ci/${service}.token)
+        if(EXISTS ${service_token_file})
+            file(READ ${service_token_file} token)
+            c4_dbg("found token file for ${service} coverage report: ${service_token_file}")
+        else()
+            c4_dbg("could not find token for ${service} coverage report")
+        endif()
+    endif()
+    set(${out} ${token} PARENT_SCOPE)
+endfunction()
+
 
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-
 
 function(c4_add_umbrella_target target umbrella_target)
     _c4_handle_args(_ARGS ${ARGN}
