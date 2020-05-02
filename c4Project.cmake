@@ -1922,9 +1922,15 @@ endfunction(c4_setup_testing)
 
 
 function(c4_add_test target)
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS0  # zero-value macro arguments
+      _ARGS1  # one-value macro arguments
+      _ARGSN  # multi-value macro arguments
+        ARGS
+    )
     #
     if(NOT ${uprefix}SANITIZE_ONLY)
-        add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}>)
+        add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}> ${_ARGS})
     endif()
     #
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
@@ -1954,7 +1960,7 @@ function(c4_add_test target)
                 add_dependencies(${target}-all ${t})
                 c4_sanitize_get_target_command($<TARGET_FILE:${t}> ${s} cmd)
                 #message(STATUS "adding test: ${t}-run")
-                add_test(NAME ${t}-run COMMAND ${cmd})
+                add_test(NAME ${t}-run COMMAND ${cmd} ${_ARGS})
             endif()
         endforeach()
     endif()
@@ -2193,18 +2199,19 @@ endfunction(c4_setup_valgrind)
 
 
 function(c4_add_valgrind target_name)
+    set(exe_args ${ARGN})
     # @todo: consider doing this for valgrind:
     # http://stackoverflow.com/questions/40325957/how-do-i-add-valgrind-tests-to-my-cmake-test-target
     # for now we explicitly run it:
     if(${_c4_uprefix}VALGRIND)
         separate_arguments(_vg_opts UNIX_COMMAND "${${_c4_uprefix}VALGRIND_OPTIONS}")
-        add_test(NAME ${target_name}-valgrind COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}>)
+        add_test(NAME ${target_name}-valgrind COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}> ${exe_args})
     endif()
     if(${_c4_uprefix}VALGRIND_SGCHECK)
         # stack and global array overrun detector
         # http://valgrind.org/docs/manual/sg-manual.html
         separate_arguments(_sg_opts UNIX_COMMAND "--tool=exp-sgcheck ${${_c4_uprefix}VALGRIND_OPTIONS}")
-        add_test(NAME ${target_name}-sgcheck COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}>)
+        add_test(NAME ${target_name}-sgcheck COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}> ${exe_args})
     endif()
 endfunction(c4_add_valgrind)
 
