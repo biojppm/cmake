@@ -2241,19 +2241,29 @@ function(c4_setup_coverage)
     _c4_handle_arg(GENHTML_ARGS --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage
         --prefix "'${CMAKE_SOURCE_DIR}'"
         --prefix "'${CMAKE_BINARY_DIR}'")
-    macro(_c4cov_incexc incflag excflag)
-        set(_incs)
+    #
+    function(_c4cov_filters out incflag excflag)
+        set(f)
+        macro(_append flag item)
+            string(FIND "${item}" "*" star_pos)
+            string(FIND "${item}" " " space_pos)
+            if((star_pos EQUAL -1) AND (space_pos EQUAL -1))
+                list(APPEND f ${flag} ${item})
+            else()
+                list(APPEND f ${flag} "'${item}'")
+            endif()
+        endmacro()
         foreach(inc ${_INCLUDE})
-            list(APPEND _incs ${incflag} "'${inc}'")
+            _append(${incflag} ${inc})
         endforeach()
-        set(_excs)
         foreach(exc ${_EXCLUDE})
-            list(APPEND _excs ${excflag} "'${exc}'")
+            _append(${excflag} ${exc})
         endforeach()
         foreach(exc ${_EXCLUDE_ABS})
-            list(APPEND _excs ${excflag} "'${exc}/*'")
+            _append(${excflag} "${exc}/*")
         endforeach()
-    endmacro()
+        set(${out} ${f} PARENT_SCOPE)
+    endfunction()
     #
     if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
         if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
@@ -2290,12 +2300,12 @@ function(c4_setup_coverage)
     option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
     option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
     #
-    set(_excs)
+    set(_filters)
     foreach(exc ${_EXCLUDE})
-        list(APPEND _excs "'${CMAKE_SOURCE_DIR}/${exc}/*'")
+        list(APPEND _filters "'${CMAKE_SOURCE_DIR}/${exc}/*'")
     endforeach()
     foreach(exc ${_EXCLUDE_ABS})
-        list(APPEND _excs "'${exc}/*'")
+        list(APPEND _filters "'${exc}/*'")
     endforeach()
     #
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
@@ -2304,7 +2314,7 @@ function(c4_setup_coverage)
         COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
         COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
         COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-        COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov ${_excs}
+        COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov ${_filters}
         COMMAND ${GENHTML} final.lcov -o lcov ${_GENHTML_ARGS}
         DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
@@ -2321,16 +2331,16 @@ function(c4_setup_coverage)
         if(NOT ("${_token}" STREQUAL ""))
             set(_token -t "${_token}")
         endif()
-        set(_sil)
+        set(_silent)
         if(${_c4_uprefix}COVERAGE_CODECOV_SILENT)
-            set(_sil >${CMAKE_BINARY_DIR}/codecov.log 2>&1)
+            set(_silent >${CMAKE_BINARY_DIR}/codecov.log 2>&1)
         endif()
         #
         c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
         set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
         c4_download_file("https://codecov.io/bash" "${submitcc}")
-        _c4cov_incexc(-G -g)  # builds _incs and _excs
-        set(submit_cmd bash ${submitcc} -Z ${_token} -a '\\-lp' -X gcovout -p ${CMAKE_SOURCE_DIR} ${_incs} ${_excs} ${_sil})
+        _c4cov_filters(_filters -G -g)
+        set(submit_cmd bash ${submitcc} -Z ${_token} -a '\\-lp' -X gcovout -p ${CMAKE_SOURCE_DIR} ${_filters} ${_silent})
         add_custom_target(${_subm}
             COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
             COMMAND ${submit_cmd}
@@ -2347,14 +2357,14 @@ function(c4_setup_coverage)
         if(NOT ("${_token}" STREQUAL ""))
             set(_token --repo-token "${_token}")
         endif()
-        set(_sil)
+        set(_silent)
         if(${_c4_uprefix}COVERAGE_COVERALLS_SILENT)
-            set(_sil >${CMAKE_BINARY_DIR}/coveralls.log 2>&1)
+            set(_silent >${CMAKE_BINARY_DIR}/coveralls.log 2>&1)
         endif()
         #
         c4_log("coverage: enabling submission of results to https://coveralls.io: ${_subm}")
-        _c4cov_incexc(--include --exclude)  # builds _incs and _excs
-        set(submit_cmd coveralls ${_token} --gcov-options '\\-lp' --build-root ${CMAKE_BINARY_DIR} --root ${CMAKE_SOURCE_DIR} ${_incs} ${_excs} ${_sil})
+        _c4cov_filters(_filters --include --exclude)
+        set(submit_cmd coveralls ${_token} --gcov-options '\\-lp' --build-root ${CMAKE_BINARY_DIR} --root ${CMAKE_SOURCE_DIR} ${_filters} ${_silent})
         add_custom_target(${_subm}
             COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
             COMMAND ${submit_cmd}
