@@ -2308,7 +2308,8 @@ function(c4_setup_coverage)
         list(APPEND _filters "'${exc}/*'")
     endforeach()
     #
-    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/lcov/index.html
+    add_custom_target(${_c4_lprefix}coverage
+        BYPRODUCTS ${CMAKE_BINARY_DIR}/lcov/index.html
         COMMAND ${LCOV} -q --zerocounters --directory .
         COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
         COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
@@ -2318,11 +2319,7 @@ function(c4_setup_coverage)
         COMMAND ${GENHTML} final.lcov -o lcov ${_GENHTML_ARGS}
         DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "${_c4_lprefix} coverage: Running LCOV"
-        )
-    add_custom_target(${_c4_lprefix}coverage
-        DEPENDS ${CMAKE_BINARY_DIR}/lcov/index.html
-        COMMENT "${_c4_lcprefix} coverage: LCOV report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+        COMMENT "${_c4_lprefix} coverage: Running LCOV. Report at ${CMAKE_BINARY_DIR}/lcov/index.html"
         )
     #
     if(${_c4_uprefix}COVERAGE_CODECOV)
