@@ -2308,18 +2308,20 @@ function(c4_setup_coverage)
         list(APPEND _filters "'${exc}/*'")
     endforeach()
     #
+    set(result ${CMAKE_BINARY_DIR}/lcov/index.html)
     add_custom_target(${_c4_lprefix}coverage
-        BYPRODUCTS ${CMAKE_BINARY_DIR}/lcov/index.html
+        BYPRODUCTS ${result}
         COMMAND ${LCOV} -q --zerocounters --directory .
         COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
-        COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run
+        COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run || echo "Failed running the tests. Proceeding with coverage, but results may be affected or even empty."
         COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
         COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
         COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov ${_filters}
         COMMAND ${GENHTML} final.lcov -o lcov ${_GENHTML_ARGS}
+        COMMAND echo "Coverage report: ${result}"
         DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "${_c4_lprefix} coverage: Running LCOV. Report at ${CMAKE_BINARY_DIR}/lcov/index.html"
+        COMMENT "${_c4_prefix} coverage: Running LCOV. Report at ${result}"
         )
     #
     if(${_c4_uprefix}COVERAGE_CODECOV)
