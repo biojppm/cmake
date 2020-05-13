@@ -813,8 +813,11 @@ endfunction()
 
 function(c4_set_folder_remote_project_targets subfolder)
     foreach(target ${ARGN})
-        set_target_properties(${target} PROPERTIES
-            FOLDER ${_c4_curr_path}/${subfolder})
+        if("${_c4_curr_path}" STREQUAL "")
+            set_target_properties(${target} PROPERTIES FOLDER ${subfolder})
+        else()
+            set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${subfolder})
+        endif()
     endforeach()
 endfunction()
 
@@ -943,18 +946,24 @@ endfunction()
 function(_c4_set_target_folder target subfolder)
     string(FIND "${subfolder}" "/" pos)
     if(pos EQUAL 0)
-        set_target_properties(${target} PROPERTIES
-            FOLDER "${subfolder}")
+        if("${_c4_curr_path}" STREQUAL "")
+            string(SUBSTRING "${subfolder}" 1 -1 sf)
+            set_target_properties(${target} PROPERTIES
+                FOLDER "${sf}")
+        else()
+            set_target_properties(${target} PROPERTIES
+                FOLDER "${subfolder}")
+        endif()
     elseif("${subfolder}" STREQUAL "")
         set_target_properties(${target} PROPERTIES
             FOLDER "${_c4_curr_path}")
     else()
         if("${_c4_curr_path}" STREQUAL "")
             set_target_properties(${target} PROPERTIES
-                FOLDER ${subfolder})
+                FOLDER "${subfolder}")
         else()
             set_target_properties(${target} PROPERTIES
-                FOLDER ${_c4_curr_path}/${subfolder})
+                FOLDER "${_c4_curr_path}/${subfolder}")
         endif()
     endif()
 endfunction()
