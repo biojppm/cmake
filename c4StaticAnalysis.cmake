@@ -5,7 +5,7 @@ include(c4GetTargetPropertyRecursive)
 
 function(_c4sta_default_if_not_set var dft)
     if("${${var}}" STREQUAL "")
-        set(${var} "" ${dft} PARENT_SCOPE)
+        set(${var} "${dft}" PARENT_SCOPE)
     endif()
 endfunction()
 
@@ -27,8 +27,11 @@ function(c4_setup_static_analysis umbrella_option)
     cmake_dependent_option(${_c4_uprefix}LINT "add static analyzer targets" ${C4_LINT} ${umbrella_option} OFF)
     cmake_dependent_option(${_c4_uprefix}LINT_TESTS "add tests to run static analyzer targets" ${C4_LINT_TESTS} ${umbrella_option} OFF)
     # options for individual lints - contingent on linting on/off
-    cmake_dependent_option(${_c4_uprefix}LINT_CLANG_TIDY "use the clang-tidy static analyzer" ${C4_LINT_CLANG_TIDY} "${_c4_uprefix}LINT" OFF)
+    cmake_dependent_option(${_c4_uprefix}LINT_CLANG_TIDY "use the clang-tidy static analyzer" ${C4_LINT_CLANG_TIDY} "${_c4_uprefix}LINT" ON)
     cmake_dependent_option(${_c4_uprefix}LINT_PVS_STUDIO "use the PVS-Studio static analyzer https://www.viva64.com/en/b/0457/" ${C4_LINT_PVS_STUDIO} "${_c4_uprefix}LINT" OFF)
+    if(${_c4_uprefix}LINT_CLANG_TIDY)
+        find_program(CLANG_TIDY clang-tidy)
+    endif()
     if(${_c4_uprefix}LINT_PVS_STUDIO)
         set(${_c4_uprefix}LINT_PVS_STUDIO_FORMAT "errorfile" CACHE STRING "PVS-Studio output format. Choices: xml,csv,errorfile(like gcc/clang),tasklist(qtcreator)")
     endif()
@@ -48,12 +51,8 @@ endfunction()
 
 function(c4_static_analysis_target target_name folder generated_targets)
     set(any_linter OFF)
-    set(several_linters OFF)
     if(${_c4_uprefix}LINT_CLANG_TIDY OR ${_c4_uprefix}LINT_PVS_STUDIO)
         set(any_linter ON)
-    endif()
-    if(${_c4_uprefix}LINT_CLANG_TIDY AND ${_c4_uprefix}LINT_PVS_STUDIO)
-        set(several_linters ON)
     endif()
     if(${_c4_uprefix}LINT AND any_linter)
         # umbrella target for running all linters for this particular target
@@ -66,19 +65,19 @@ function(c4_static_analysis_target target_name folder generated_targets)
         endif()
         if(${_c4_uprefix}LINT_CLANG_TIDY)
             c4_static_analysis_clang_tidy(${target_name}
-                ${target_name}-lint-clang-tidy
-                ${_c4_lprefix}lint-all-clang-tidy
+                ${target_name}-lint-clang_tidy
+                ${_c4_lprefix}lint-all-clang_tidy
                 "${folder}")
-            list(APPEND ${generated_targets} ${_c4_lprefix}lint-clang-tidy)
-            add_dependencies(${_c4_lprefix}lint-all ${_c4_lprefix}lint-all-clang-tidy)
+            list(APPEND ${generated_targets} ${_c4_lprefix}lint-clang_tidy)
+            add_dependencies(${_c4_lprefix}lint-all ${_c4_lprefix}lint-all-clang_tidy)
         endif()
         if(${_c4_uprefix}LINT_PVS_STUDIO)
             c4_static_analysis_pvs_studio(${target_name}
-                ${target_name}-lint-pvs-studio
-                ${_c4_lprefix}lint-all-pvs-studio
+                ${target_name}-lint-pvs_studio
+                ${_c4_lprefix}lint-all-pvs_studio
                 "${folder}")
-            list(APPEND ${generated_targets} ${_c4_lprefix}lint-pvs-studio)
-            add_dependencies(${_c4_lprefix}lint-all ${_c4_lprefix}lint-all-pvs-studio)
+            list(APPEND ${generated_targets} ${_c4_lprefix}lint-pvs_studio)
+            add_dependencies(${_c4_lprefix}lint-all ${_c4_lprefix}lint-all-pvs_studio)
         endif()
     endif()
 endfunction()
@@ -86,14 +85,14 @@ endfunction()
 
 function(c4_static_analysis_add_tests target_name)
     if(${_c4_uprefix}LINT_CLANG_TIDY AND ${_c4_uprefix}LINT_TESTS)
-        add_test(NAME ${target_name}-lint-clang-tidy-run
+        add_test(NAME ${target_name}-lint-clang_tidy-run
             COMMAND
-            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-clang-tidy)
+            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-clang_tidy)
     endif()
     if(${_c4_uprefix}LINT_PVS_STUDIO AND ${_c4_uprefix}LINT_TESTS)
-        add_test(NAME ${target_name}-lint-pvs-studio-run
+        add_test(NAME ${target_name}-lint-pvs_studio-run
             COMMAND
-            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-pvs-studio)
+            ${CMAKE_COMMAND} --build ${CMAKE_CURRENT_BINARY_DIR} --target ${target_name}-lint-pvs_studio)
     endif()
 endfunction()
 
@@ -101,7 +100,9 @@ endfunction()
 #------------------------------------------------------------------------------
 function(c4_static_analysis_clang_tidy subj_target lint_target umbrella_target folder)
     c4_static_analysis_clang_tidy_get_cmd(${subj_target} ${lint_target} cmd)
+    string(REPLACE ";" " " cmd_str "${cmd}")
     add_custom_target(${lint_target}
+        COMMAND ${CMAKE_COMMAND} -E echo "cd ${CMAKE_CURRENT_SOURCE_DIR} ; ${cmd_str}"
         COMMAND ${cmd}
         VERBATIM
         COMMENT "clang-tidy: analyzing sources of ${subj_target}"
@@ -116,21 +117,9 @@ function(c4_static_analysis_clang_tidy subj_target lint_target umbrella_target f
 endfunction()
 
 function(c4_static_analysis_clang_tidy_get_cmd subj_target lint_target cmd)
-    get_target_property(_clt_srcs ${subj_target} SOURCES)
-    get_target_property(_clt_opts ${subj_target} COMPILE_OPTIONS)
-    c4_get_target_property_recursive(_clt_incs ${subj_target} INCLUDE_DIRECTORIES)
-    list(REMOVE_DUPLICATES _clt_incs)
-    c4_get_include_flags(_clt_iflags ${_clt_incs})
-    if(NOT _clt_opts)
-        set(_clt_opts) # prevent NOTFOUND et al
-    endif()
-    # NOTE: maybe these calls to separate_arguments() are the ones responsible
-    # for incompatibility with generator expression lists as a means to filter
-    # empty include directories (which result as -I inc_a -I -I inc_b).
-    # This requires careful investigation.
-    separate_arguments(_clt_iflags_args UNIX_COMMAND "${_clt_iflags}")
-    separate_arguments(_clt_opts_args   UNIX_COMMAND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE}} ${_clt_opts}")
-    set(result clang-tidy ${_clt_srcs} -- ${_clt_iflags_args} ${_clt_opts_args})
+    get_target_property(_clt_all_srcs ${subj_target} SOURCES)
+    _c4cat_filter_srcs_hdrs("${_clt_all_srcs}" _clt_srcs)
+    set(result "${CLANG_TIDY}" -p ${CMAKE_BINARY_DIR} --header-filter=.* ${_clt_srcs})
     set(${cmd} ${result} PARENT_SCOPE)
 endfunction()
 

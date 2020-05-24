@@ -1381,7 +1381,7 @@ function(c4_add_target_sources target)
         #
     elseif("${_TRANSFORM}" STREQUAL "UNITY")
         c4_dbg("target ${target}: source transform: UNITY!")
-        message(FATAL_ERROR "source transformation not implemented")
+        c4_err("source transformation not implemented")
         #
         # concatenate all compilation unit files (excluding interface)
         # into a single compilation unit
@@ -1448,7 +1448,7 @@ function(c4_add_target_sources target)
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
         c4_dbg("target ${target}: source transform: SINGLE_HDR!")
-        message(FATAL_ERROR "source transformation not implemented")
+        c4_err("source transformation not implemented")
         #
         # concatenate everything into a single header file
         #
@@ -1458,7 +1458,7 @@ function(c4_add_target_sources target)
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
         c4_dbg("target ${target}: source transform: SINGLE_UNIT!")
-        message(FATAL_ERROR "source transformation not implemented")
+        c4_err("source transformation not implemented")
         #
         # concatenate:
         #  * all compilation units into a single compilation unit
@@ -1469,7 +1469,7 @@ function(c4_add_target_sources target)
         _c4cat_filter_srcs_hdrs("${_c4al_SOURCES}" ch)
         c4_cat_sources("${ch}" "${out}" ${umbrella})
     else()
-        message(FATAL_ERROR "unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
+        c4_err("unknown transform type: ${transform_type}. Must be one of GLOBAL;NONE;UNITY;TO_HEADERS;SINGLE_HEADER")
     endif()
 endfunction()
 
@@ -2650,12 +2650,12 @@ endfunction()
 
 function(_c4cat_one_of ext candidates out)
     foreach(e ${candidates})
-        if(ext STREQUAL ${e})
-            set(${out} YES PARENT_SCOPE)
+        if("${ext}" STREQUAL "${e}")
+            set(${out} TRUE PARENT_SCOPE)
             return()
         endif()
     endforeach()
-    set(${out} NO PARENT_SCOPE)
+    set(${out} FALSE PARENT_SCOPE)
 endfunction()
 
 
