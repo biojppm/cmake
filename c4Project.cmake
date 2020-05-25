@@ -1005,12 +1005,15 @@ function(c4_add_target target)
     )
     set(opt1arg
         LIBRARY_TYPE    # override global setting for C4_LIBRARY_TYPE
+        SHARED_EXPORTS  # the name of the macro to turn on export of symbols
+                        # for compiling the library as a windows DLL.
+                        # defaults to ${_c4_uprefix}EXPORTS.
         SOURCE_ROOT     # the directory where relative source paths
                         # should be resolved. when empty,
                         # use CMAKE_CURRENT_SOURCE_DIR
         FOLDER          # IDE folder to group the target in
         SANITIZERS      # outputs the list of sanitize targets in this var
-        SOURCE_TRANSFORM
+        SOURCE_TRANSFORM  # WIP
     )
     set(optnarg
         INCORPORATE  # incorporate these libraries into this target,
@@ -1025,7 +1028,7 @@ function(c4_add_target target)
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
     #
     if(_SANITIZE)
-        message(FATAL_ERROR "SANITIZE is deprecated")
+        c4_err("SANITIZE is deprecated")
     endif()
 
     if(${_LIBRARY})
@@ -1033,9 +1036,10 @@ function(c4_add_target target)
     elseif(${_EXECUTABLE})
         set(_what EXECUTABLE)
     else()
-        message(FATAL_ERROR "must be either LIBRARY or EXECUTABLE")
+        c4_err("must be either LIBRARY or EXECUTABLE")
     endif()
 
+    _c4_handle_arg(SHARED_EXPORTS ${_c4_uprefix}EXPORTS)
     _c4_handle_arg_or_fallback(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     function(_c4_transform_to_full_path list all)
         set(l)
@@ -1074,9 +1078,11 @@ function(c4_add_target target)
             set(compiled_target ON)
         elseif(${_LIBRARY})
             c4_dbg("adding library: ${target}")
-            set(_blt ${C4_LIBRARY_TYPE})
+            set(_blt ${C4_LIBRARY_TYPE})  # build library type
             if(NOT "${_LIBRARY_TYPE}" STREQUAL "")
                 set(_blt ${_LIBRARY_TYPE})
+            endif()
+            if("${_blt}" STREQUAL "")
             endif()
             #
             if("${_blt}" STREQUAL "INTERFACE")
@@ -1086,19 +1092,34 @@ function(c4_add_target target)
                 set(tgt_type INTERFACE)
                 set(compiled_target OFF)
             else()
-                if(NOT ("${_blt}" STREQUAL ""))
-                    c4_dbg("adding library ${target} with type ${_blt}")
-                    add_library(${target} ${_blt} ${_MORE_ARGS})
-                else()
+                if("${_blt}" STREQUAL "")
                     # obey BUILD_SHARED_LIBS (ie, either static or shared library)
                     c4_dbg("adding library ${target} (defer to BUILD_SHARED_LIBS=${BUILD_SHARED_LIBS}) --- ${_MORE_ARGS}")
                     add_library(${target} ${_MORE_ARGS})
+                    if(BUILD_SHARED_LIBS)
+                        set(_blt SHARED)
+                    else()
+                        set(_blt STATIC)
+                    endif()
+                else()
+                    c4_dbg("adding library ${target} with type ${_blt}")
+                    add_library(${target} ${_blt} ${_MORE_ARGS})
                 endif()
                 # libraries
                 set(src_mode PRIVATE)
                 set(tgt_type PUBLIC)
                 set(compiled_target ON)
-            endif()
+                # exports for shared libraries
+                if(WIN32)
+                    if("${_blt}" STREQUAL SHARED)
+                        target_compile_definitions(${target} PUBLIC ${_SHARED_EXPORTS})
+                        set_target_properties(${target} PROPERTIES
+                            WINDOWS_EXPORT_ALL_SYMBOLS ON)
+                        # save the name of the macro for later use when(if) incorporating this library
+                        c4_set_target_prop(${target} SHARED_EXPORTS ${_SHARED_EXPORTS})
+                    endif()  # shared lib
+                endif() # win32
+            endif() # interface or lib
         endif(${_EXECUTABLE})
 
         if(src_mode STREQUAL "PUBLIC")
@@ -1117,7 +1138,7 @@ function(c4_add_target target)
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_SOURCES};${_HEADERS};${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
         elseif()
-            message(FATAL_ERROR "${_c4_lcprefix}: adding sources for target ${target} invalid source mode")
+            c4_err("${target}: adding sources: invalid source mode")
         endif()
         _c4_set_tgt_prop(${target} C4_SOURCE_ROOT "${_SOURCE_ROOT}")
 
@@ -1200,8 +1221,7 @@ function(c4_add_target target)
 
     # gather dlls so that they can be automatically copied to the target directory
     if(_DLLS)
-        c4_set_transitive_property(${target} _C4_DLLS "${_DLLS}")
-        get_target_property(vd ${target} _C4_DLLS)
+        c4_append_transitive_property(${target} _C4_DLLS "${_DLLS}")
     endif()
 
     if(${_EXECUTABLE})
@@ -1225,6 +1245,15 @@ endfunction() # add_target
 
 function(_c4_link_with_libs target link_type libs incorporate)
     foreach(lib ${libs})
+        # add targets that are DLLs
+        if(WIN32)
+            if(TARGET ${lib})
+                get_target_property(lib_type ${lib} TYPE)
+                if(lib_type STREQUAL SHARED_LIBRARY)
+                    c4_append_transitive_property(${target} _C4_DLLS "$<TARGET_FILE:${lib}>")
+                endif()
+            endif()
+        endif()
         _c4_lib_is_incorporated(${lib} isinc)
         if(isinc OR (incorporate AND ${_c4_uprefix}STANDALONE))
             c4_log("-----> target ${target} ${link_type} incorporating lib ${lib}")
@@ -1299,6 +1328,12 @@ function(_c4_incorporate_lib target link_type lib)
     _c4_get_tgt_prop(lib_ilib ${lib} INTERFACE_LIBRARY)
     if(lib_ilib)
         target_link_libraries(${target} INTERFACE ${lib_ilib})
+    endif()
+    #
+    #
+    c4_get_target_prop(${lib} SHARED_EXPORTS lib_exports)
+    if(lib_exports)
+        target_compile_definitions(${target} PUBLIC ${lib_exports})
     endif()
 endfunction()
 

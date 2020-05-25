@@ -63,7 +63,18 @@ endfunction()
 
 
 function(c4_set_transitive_property target prop_name prop_value)
-    set_target_properties(${target} PROPERTIES ${prop_name} ${prop_value})
+    set_target_properties(${target} PROPERTIES "${prop_name}" "${prop_value}")
+endfunction()
+
+
+function(c4_append_transitive_property target prop_name prop_value)
+    get_target_property(curr_value ${target} "${prop_name}")
+    if(curr_value)
+        list(APPEND curr_value "${prop_value}")
+    else()
+        set(curr_value "${prop_value}")
+    endif()
+    c4_set_transitive_property(${target} "${prop_name}" "${curr_value}")
 endfunction()
 
 
