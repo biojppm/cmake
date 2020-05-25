@@ -1005,6 +1005,9 @@ function(c4_add_target target)
     )
     set(opt1arg
         LIBRARY_TYPE    # override global setting for C4_LIBRARY_TYPE
+        SHARED_MACRO    # the name of the macro to turn on export/import symbols
+                        # for compiling the library as a windows DLL.
+                        # defaults to ${_c4_uprefix}SHARED.
         SHARED_EXPORTS  # the name of the macro to turn on export of symbols
                         # for compiling the library as a windows DLL.
                         # defaults to ${_c4_uprefix}EXPORTS.
@@ -1039,6 +1042,7 @@ function(c4_add_target target)
         c4_err("must be either LIBRARY or EXECUTABLE")
     endif()
 
+    _c4_handle_arg(SHARED_MACRO ${_c4_uprefix}MACRO)
     _c4_handle_arg(SHARED_EXPORTS ${_c4_uprefix}EXPORTS)
     _c4_handle_arg_or_fallback(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     function(_c4_transform_to_full_path list all)
@@ -1112,9 +1116,9 @@ function(c4_add_target target)
                 # exports for shared libraries
                 if(WIN32)
                     if("${_blt}" STREQUAL SHARED)
-                        target_compile_definitions(${target} PUBLIC ${_SHARED_EXPORTS})
-                        set_target_properties(${target} PROPERTIES
-                            WINDOWS_EXPORT_ALL_SYMBOLS ON)
+                        set_target_properties(${target} PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+                        target_compile_definitions(${target} PUBLIC ${_SHARED_MACRO})
+                        target_compile_definitions(${target} PRIVATE $<BUILD_INTERFACE:${_SHARED_EXPORTS}>)
                         # save the name of the macro for later use when(if) incorporating this library
                         c4_set_target_prop(${target} SHARED_EXPORTS ${_SHARED_EXPORTS})
                     endif()  # shared lib
@@ -1333,7 +1337,7 @@ function(_c4_incorporate_lib target link_type lib)
     #
     c4_get_target_prop(${lib} SHARED_EXPORTS lib_exports)
     if(lib_exports)
-        target_compile_definitions(${target} PUBLIC ${lib_exports})
+        target_compile_definitions(${target} PRIVATE $<BUILD_INTERFACE:${lib_exports}>)
     endif()
 endfunction()
 
