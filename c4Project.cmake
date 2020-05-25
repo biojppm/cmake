@@ -2115,10 +2115,30 @@ add_executable(${pname} ${pname}.cpp)
 # this must be the only required setup to link with ${library}
 target_link_libraries(${pname} PUBLIC ${namespace}${library})
 
-add_custom_target(${pname}-run
-    COMMAND \$<TARGET_FILE:${pname}>
-    DEPENDS ${pname}
-)
+get_target_property(lib_type ${namespace}${library} TYPE)
+if(WIN32 AND (lib_type STREQUAL SHARED_LIBRARY))
+    # add the directory containing the DLL to the path
+    get_target_property(imported_configs ${namespace}${library} IMPORTED_CONFIGURATIONS)
+    message(STATUS \"${namespace}${library}: it's a shared library. imported configs: \${imported_configs}\")
+    foreach(cfg \${imported_configs})
+        get_target_property(implib ${namespace}${library} IMPORTED_IMPLIB_\${cfg})
+        get_target_property(location ${namespace}${library} IMPORTED_LOCATION_\${cfg})
+        message(STATUS \"${namespace}${library}: implib_\${cfg}=\${implib}\")
+        message(STATUS \"${namespace}${library}: location_\${cfg}=\${location}\")
+        break()
+    endforeach()
+    get_filename_component(dlldir \"\${location}\" DIRECTORY)
+    message(STATUS \"${namespace}${library}: dlldir=\${dlldir}\")
+    add_custom_target(${pname}-run
+        COMMAND \${CMAKE_COMMAND} -E echo \"cd \${dlldir} && \$<TARGET_FILE:${pname}>\"
+        COMMAND \$<TARGET_FILE:${pname}>
+        DEPENDS ${pname}
+        WORKING_DIRECTORY \${dlldir})
+else()
+    add_custom_target(${pname}-run
+        COMMAND \$<TARGET_FILE:${pname}>
+        DEPENDS ${pname})
+endif()
 ")
     # The test consists in running the script generated below.
     # We force evaluation of the configuration generator expression
@@ -2132,7 +2152,7 @@ add_custom_target(${pname}-run
     # So here we add a check to make sure the install path has no spaces
     string(FIND "${CMAKE_INSTALL_PREFIX}" " " has_spaces)
     if(NOT (has_spaces EQUAL -1))
-        message(FATAL_ERROR "install tests will fail if the install path has spaces: '${CMAKE_INSTALL_PREFIX}' : ... ${has_spaces}")
+        c4_err("install tests will fail if the install path has spaces: '${CMAKE_INSTALL_PREFIX}' : ... ${has_spaces}")
     endif()
     # make sure the test project uses the same architecture
     # CMAKE_VS_PLATFORM_NAME is available only since cmake 3.9
@@ -2151,9 +2171,9 @@ add_custom_target(${pname}-run
             endif()
         endif()
     elseif(ANDROID OR IOS OR WINCE OR WINDOWS_PHONE)
-        message(FATAL_ERROR "not implemented")
+        c4_err("not implemented")
     elseif(IOS)
-        message(FATAL_ERROR "not implemented")
+        c4_err("not implemented")
     elseif(UNIX)
         if(CMAKE_GENERATOR_PLATFORM OR CMAKE_VS_PLATFORM_NAME)
             set(arch "-DCMAKE_GENERATOR_PLATFORM=${CMAKE_GENERATOR_PLATFORM}" "-DCMAKE_VS_PLATFORM_NAME=${CMAKE_VS_PLATFORM_NAME}")
@@ -2163,7 +2183,7 @@ add_custom_target(${pname}-run
             elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
                 set(arch "-DCMAKE_CXX_FLAGS=-m32")
             else()
-                message(FATAL_ERROR "not implemented")
+                c4_err("not implemented")
             endif()
         endif()
     endif()
