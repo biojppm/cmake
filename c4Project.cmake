@@ -333,24 +333,83 @@ function(c4_declare_project prefix)
     set(${_c4_uprefix}CXX_FLAGS "${${_c4_uprefix}CXX_FLAGS_FWD}" CACHE STRING "compilation flags for ${_c4_prefix} targets")
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_FWD)
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS)
-    # these are dev compilation flags, appended to the project's flags.
-    # they are enabled when in dev mode, but provided as an option when not in dev mode
+    # These are dev compilation flags, appended to the project's flags. They
+    # are enabled when in dev mode, but provided as a (default-disabled)
+    # option when not in dev mode
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT_FWD)
     c4_setg(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT_FWD}")
-    c4_optional_compile_flags_dev(PEDANTIC "Compile in pedantic mode"
-        "-Wall;-Wextra;-Wshadow;-pedantic;-Wfloat-equal"  # GCC
-        "/W4" # MSVC
-        )
     c4_optional_compile_flags_dev(WERROR "Compile with warnings as errors"
-        "-Werror;-pedantic-errors"  # GCC
-        "/WX" # MSVC
+        GCC_CLANG -Werror -pedantic-errors
+        MSVC /WX
         )
     c4_optional_compile_flags_dev(STRICT_ALIASING "Enable strict aliasing"
-        "-fstrict-aliasing"  # GCC
-        "" # MSVC
+        GCC_CLANG -fstrict-aliasing
+        MSVC # does it have this?
+        )
+    c4_optional_compile_flags_dev(PEDANTIC "Compile in pedantic mode"
+        GCC ${_C4_PEDANTIC_FLAGS_GCC}
+        CLANG ${_C4_PEDANTIC_FLAGS_CLANG}
+        MSVC ${_C4_PEDANTIC_FLAGS_MSVC}
         )
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT)
 endfunction(c4_declare_project)
+
+# default pedantic flags taken from:
+# https://github.com/lefticus/cpp_starter_project/blob/master/cmake/CompilerWarnings.cmake
+set(_C4_PEDANTIC_FLAGS_MSVC
+    /W4 # Baseline reasonable warnings
+    /w14242 # 'identifier': conversion from 'type1' to 'type1', possible loss of data
+    /w14254 # 'operator': conversion from 'type1:field_bits' to 'type2:field_bits', possible loss of data
+    /w14263 # 'function': member function does not override any base class virtual member function
+    /w14265 # 'classname': class has virtual functions, but destructor is not virtual instances of this class may not
+            # be destructed correctly
+    /w14287 # 'operator': unsigned/negative constant mismatch
+    /we4289 # nonstandard extension used: 'variable': loop control variable declared in the for-loop is used outside
+            # the for-loop scope
+    /w14296 # 'operator': expression is always 'boolean_value'
+    /w14311 # 'variable': pointer truncation from 'type1' to 'type2'
+    /w14545 # expression before comma evaluates to a function which is missing an argument list
+    /w14546 # function call before comma missing argument list
+    /w14547 # 'operator': operator before comma has no effect; expected operator with side-effect
+    /w14549 # 'operator': operator before comma has no effect; did you intend 'operator'?
+    /w14555 # expression has no effect; expected expression with side- effect
+    /w14619 # pragma warning: there is no warning number 'number'
+    /w14640 # Enable warning on thread un-safe static member initialization
+    /w14826 # Conversion from 'type1' to 'type_2' is sign-extended. This may cause unexpected runtime behavior.
+    /w14905 # wide string literal cast to 'LPSTR'
+    /w14906 # string literal cast to 'LPWSTR'
+    /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
+    /permissive- # standards conformance mode for MSVC compiler.
+    )
+
+set(_C4_PEDANTIC_FLAGS_CLANG
+    -Wall
+    -Wextra
+    -pedantic
+    -Wshadow # warn the user if a variable declaration shadows one from a parent context
+    -Wnon-virtual-dtor # warn the user if a class with virtual functions has a non-virtual destructor. This helps
+                       # catch hard to track down memory errors
+    #-Wold-style-cast # warn for c-style casts
+    -Wcast-align # warn for potential performance problem casts
+    -Wunused # warn on anything being unused
+    -Woverloaded-virtual # warn if you overload (not override) a virtual function
+    -Wpedantic # warn if non-standard C++ is used
+    -Wconversion # warn on type conversions that may lose data
+    -Wsign-conversion # warn on sign conversions
+    -Wnull-dereference # warn if a null dereference is detected
+    -Wdouble-promotion # warn if float is implicit promoted to double
+    -Wfloat-equal # warn if comparing floats
+    -Wformat=2 # warn on security issues around functions that format output (ie printf)
+    )
+
+set(_C4_PEDANTIC_FLAGS_GCC
+    ${_C4_PEDANTIC_FLAGS_CLANG}
+    -Wmisleading-indentation # where indentation implies blocks where blocks do not exist
+    -Wduplicated-cond # where if-else chain has duplicated conditions
+    -Wduplicated-branches # where if-else branches have duplicated code
+    -Wlogical-op # where logical operations are used where bitwise were probably wanted
+    -Wuseless-cast # where you perform a cast to the same type
+    )
 
 
 function(c4_add_dev_targets)
@@ -397,17 +456,32 @@ endfunction()
 
 
 # flags enabled only on dev mode
-macro(c4_optional_compile_flags_dev tag desc gcc msvc)
+macro(c4_optional_compile_flags_dev tag desc)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+        _ARGS1
+        _ARGSN
+            GCC_CLANG GCC CLANG MSVC
+        _DEPRECATE
+    )
     cmake_dependent_option(${_c4_uprefix}${tag} "${desc}" ON ${_c4_uprefix}DEV OFF)
-    if(${_c4_uprefix}${tag})
+    set(optname ${_c4_uprefix}${tag})
+    if(${optname})
+        c4_dbg("${optname} is enabled. Adding flags...")
         if(MSVC)
-            set(flags "${msvc}")
+            set(flags ${_MSVC})
+        elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+            set(flags ${_GCC_CLANG};${_CLANG})
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            set(flags ${_GCC_CLANG};${_GCC})
         else()
-            set(flags "${gcc}")
+            c4_err("unknown compiler")
         endif()
+    else()
+        c4_dbg("${optname} is disabled.")
     endif()
     if(flags)
-        c4_dbg("${tag} flags: ${desc}: ${flags}")
+        c4_log("${tag} flags [${desc}]: ${flags}")
         c4_setg(${_c4_uprefix}CXX_FLAGS_OPT "${${_c4_uprefix}CXX_FLAGS_OPT};${flags}")
     endif()
 endmacro()
