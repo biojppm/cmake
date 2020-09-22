@@ -2062,7 +2062,7 @@ function(c4_add_test target)
     )
     #
     if(NOT ${uprefix}SANITIZE_ONLY)
-        add_test(NAME ${target}-run COMMAND $<TARGET_FILE:${target}> ${_ARGS})
+        add_test(NAME ${target} COMMAND $<TARGET_FILE:${target}> ${_ARGS})
     endif()
     #
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
@@ -2091,8 +2091,8 @@ function(c4_add_test target)
             if(TARGET ${t})
                 add_dependencies(${target}-all ${t})
                 c4_sanitize_get_target_command($<TARGET_FILE:${t}> ${s} cmd)
-                #message(STATUS "adding test: ${t}-run")
-                add_test(NAME ${t}-run COMMAND ${cmd} ${_ARGS})
+                #c4_log("adding test: ${t}")
+                add_test(NAME ${t} COMMAND ${cmd} ${_ARGS})
             endif()
         endforeach()
     endif()
@@ -2111,7 +2111,7 @@ function(c4_add_test_fail_build name srccontent_or_srcfilename)
     set(sdir ${CMAKE_CURRENT_BINARY_DIR}/test_fail_build)
     set(src ${srccontent_or_srcfilename})
     if("${src}" STREQUAL "")
-        message(FATAL_ERROR "must be given an existing source file name or a non-empty string")
+        c4_err("must be given an existing source file name or a non-empty string")
     endif()
     #
     if(EXISTS ${src})
@@ -2139,11 +2139,20 @@ function(c4_add_test_fail_build name srccontent_or_srcfilename)
 endfunction()
 
 
+# add a test ensuring that a target linking and using code from a library
+# successfully compiles and runs against the installed library
 function(c4_add_install_link_test library namespace exe_source_code)
-    _c4_add_library_client_test(${library} "${namespace}" "${_c4_lprefix}test-${library}-install-link" "${exe_source_code}")
+    if("${library}" STREQUAL "${_c4_prefix}")
+        set(testname ${_c4_lprefix}test-install-link)
+    else()
+        set(testname ${_c4_lprefix}test-install-link-${library})
+    endif()
+    _c4_add_library_client_test(${library} "${namespace}" "${testname}" "${exe_source_code}")
 endfunction()
 
 
+# add a test ensuring that a target consuming every header in a library
+# successfully compiles and runs against the installed library
 function(c4_add_install_include_test library namespace)
     c4_get_target_installed_headers(${library} incfiles)
     set(incblock)
@@ -2158,13 +2167,18 @@ int main()
     return 0;
 }
 ")
-    _c4_add_library_client_test(${library} "${namespace}" "${_c4_lprefix}test-${library}-install-include" "${src}")
+    if("${library}" STREQUAL "${_c4_prefix}")
+        set(testname ${_c4_lprefix}test-install-include)
+    else()
+        set(testname ${_c4_lprefix}test-install-include-${library})
+    endif()
+    _c4_add_library_client_test(${library} "${namespace}" "${testname}" "${src}")
 endfunction()
 
 
 function(_c4_add_library_client_test library namespace pname source_code)
     if("${CMAKE_BUILD_TYPE}" STREQUAL Coverage)
-        add_test(NAME ${pname}-run
+        add_test(NAME ${pname}
             COMMAND ${CMAKE_COMMAND} -E echo "skipping this test in coverage builds"
             )
         return()
@@ -2227,7 +2241,7 @@ endif()
     # The test consists in running the script generated below.
     # We force evaluation of the configuration generator expression
     # by receiving its result via the command line.
-    add_test(NAME ${pname}-run
+    add_test(NAME ${pname}
         COMMAND ${CMAKE_COMMAND} -DCFG_IN=$<CONFIG> -P "${tsrc}"
         )
     # NOTE: in the cmake configure command, be sure to NOT use quotes
