@@ -2046,7 +2046,7 @@ ${ARGN}
         c4_override(gtest_build_tests OFF)
         c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
             GIT_REPOSITORY https://github.com/google/googletest.git
-            #GIT_TAG release-1.8.0
+            GIT_TAG release-1.10.0
             )
         c4_set_folder_remote_project_targets(test gtest gtest_main)
     endif()
