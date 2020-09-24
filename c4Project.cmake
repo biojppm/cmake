@@ -455,7 +455,7 @@ set(_C4_PEDANTIC_FLAGS_MSVC
     /w14905 # wide string literal cast to 'LPSTR'
     /w14906 # string literal cast to 'LPWSTR'
     /w14928 # illegal copy-initialization; more than one user-defined conversion has been implicitly applied
-    /permissive- # standards conformance mode for MSVC compiler.
+    $<$<VERSION_GREATER:${MSVC_VERSION},1900>:/permissive-> # standards conformance mode for MSVC compiler (only vs2017+)
     )
 
 set(_C4_PEDANTIC_FLAGS_CLANG
