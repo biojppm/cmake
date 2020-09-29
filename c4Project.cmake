@@ -31,7 +31,7 @@ set(C4_SRC_EXTS "c;cpp;cc;c++;cxx;cu;" CACHE STRING "list of compilation unit ex
 set(C4_ADD_EXTS "natvis" CACHE STRING "list of additional file extensions that might be added as sources to targets")
 set(C4_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
-set(C4_CXX_STANDARDS "17;14;11" CACHE STRING "list of CXX standards")
+set(C4_CXX_STANDARDS "20;17;14;11" CACHE STRING "list of CXX standards")
 
 
 #------------------------------------------------------------------------------
