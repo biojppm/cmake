@@ -111,7 +111,14 @@ macro(_c4_handle_arg argname)
      if("${_${argname}}" STREQUAL "")
          set(_${argname} "${ARGN}")
      else()
-         c4_setg(_${argname} "${_${argname}}")
+         set(_${argname} "${_${argname}}")
+     endif()
+endmacro()
+macro(_c4_handle_arg_no_pfx argname)
+     if("${${argname}}" STREQUAL "")
+         set(${argname} "${ARGN}")
+     else()
+         set(${argname} "${${argname}}")
      endif()
 endmacro()
 
@@ -196,7 +203,8 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-function(c4_declare_project prefix)
+# assumes a prior call to project()
+function(c4_project)
     _c4_handle_args(_ARGS ${ARGN}
       _ARGS0  # zero-value macro arguments
         STANDALONE # Declare that targets from this project MAY be
@@ -214,21 +222,17 @@ function(c4_declare_project prefix)
                    # is only enabled if this project's option
                    # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
       _ARGS1  # one-value macro arguments
-        DESC
-        AUTHOR
-        URL
-        MAJOR
-        MINOR
-        RELEASE
+        VERSION       # cmake does not accept semantic versioning (see https://gitlab.kitware.com/cmake/cmake/-/issues/16716)
+                      # so we provide that here
         CXX_STANDARD  # one of latest or ${C4_VALID_CXX_STANDARDS}
                       # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD,
                       # then CXX_STANDARD. if none are provided,
                       # defaults to 11
       _ARGSN  # multi-value macro arguments
-        AUTHORS
     )
-    #
+    # get the prefix from the call to project()
+    set(prefix ${PROJECT_NAME})
     string(TOUPPER "${prefix}" ucprefix) # ucprefix := upper case prefix
     string(TOLOWER "${prefix}" lcprefix) # lcprefix := lower case prefix
     if(NOT _c4_prefix)
@@ -270,23 +274,18 @@ function(c4_declare_project prefix)
             ${_c4_is_root_proj})
         c4_setg(_c4_root_proj_standalone ${_c4_uprefix}STANDALONE)
     endif()
-    #
-    _c4_handle_arg(DESC "${_c4_lcprefix}")
-    _c4_handle_arg(AUTHOR "${_c4_lcprefix} author <author@domain.net>")
-    _c4_handle_arg(AUTHORS "${_AUTHOR}")
-    _c4_handle_arg(URL "https://c4project.url")
-    _c4_handle_arg(MAJOR 0)
-    _c4_handle_arg(MINOR 0)
-    _c4_handle_arg(RELEASE 1)
-    c4_setg(${_c4_uprefix}VERSION "${_MAJOR}.${_MINOR}.${_RELEASE}")
     _c4_handle_arg_or_fallback(CXX_STANDARD 11)
+    _c4_handle_arg(VERSION 0.0.0-pre0)
+    _c4_handle_semantic_version(${_VERSION})
     #
-    c4_set_proj_prop(DESC         "${_DESC}")
-    c4_set_proj_prop(AUTHOR       "${_AUTHOR}")
-    c4_set_proj_prop(URL          "${_URL}")
-    c4_set_proj_prop(MAJOR        "${_MAJOR}")
-    c4_set_proj_prop(MINOR        "${_MINOR}")
-    c4_set_proj_prop(RELEASE      "${_RELEASE}")
+    # make sure project-wide settings are defined -- see cmake's
+    # documentation project(), which defines these and other variables
+    if("${PROJECT_DESCRIPTION}" STREQUAL "")
+        c4_setg(PROJECT_DESCRIPTION "${prefix}")
+    endif()
+    if("${PROJECT_HOMEPAGE_URL}" STREQUAL "")
+        c4_setg(PROJECT_HOMEPAGE_URL "https://${prefix}.url")
+    endif()
 
     # CXX standard
     if("${_CXX_STANDARD}" STREQUAL "latest")
@@ -299,9 +298,12 @@ function(c4_declare_project prefix)
         c4_set_cxx(${_CXX_STANDARD})
     endif()
 
+    # we are opinionated with respect to directory structure
     c4_setg(${_c4_uprefix}SRC_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
     c4_setg(${_c4_uprefix}EXT_DIR ${CMAKE_CURRENT_LIST_DIR}/ext)
     c4_setg(${_c4_uprefix}API_DIR ${CMAKE_CURRENT_LIST_DIR}/api)
+    # opionionated also for directory test
+    # opionionated also for directory bm (benchmarks)
 
     if("${C4_DEV}" STREQUAL "")
         option(C4_DEV "enable development targets for all c4 projects" OFF)
@@ -352,9 +354,49 @@ function(c4_declare_project prefix)
         MSVC ${_C4_PEDANTIC_FLAGS_MSVC}
         )
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT)
-endfunction(c4_declare_project)
+endfunction(c4_project)
 
 
+# cmake: VERSION argument in project() does not accept semantic versioning
+# see: https://gitlab.kitware.com/cmake/cmake/-/issues/16716
+macro(_c4_handle_semantic_version version)
+    # https://stackoverflow.com/questions/18658233/split-string-to-3-variables-in-cmake
+    string(REPLACE "." ";" version_list ${version})
+    list(GET version_list 0 _major)
+    list(GET version_list 1 _minor)
+    list(GET version_list 2 _patch)
+    if("${_patch}" STREQUAL "")
+        set(_patch 1)
+        set(_tweak)
+    else()
+        string(REGEX REPLACE "([0-9]+)[-_.]?(.*)" "\\2" _tweak ${_patch}) # do this first
+        string(REGEX REPLACE "([0-9]+)[-_.]?(.*)" "\\1" _patch ${_patch}) # ... because this replaces _patch
+    endif()
+    # because cmake handles only numeric tweak fields, make sure to skip our
+    # semantic tweak field if it is not numeric
+    if(${_tweak} MATCHES "^[0-9]+$")
+        set(_safe_tweak ${_tweak})
+        set(_safe_version ${_major}.${_minor}.${_patch}.${_tweak})
+    else()
+        set(_safe_tweak)
+        set(_safe_version ${_major}.${_minor}.${_patch})
+    endif()
+    c4_setg(PROJECT_VERSION ${_safe_version})
+    c4_setg(PROJECT_VERSION_MAJOR ${_major})
+    c4_setg(PROJECT_VERSION_MINOR ${_minor})
+    c4_setg(PROJECT_VERSION_PATCH ${_patch})
+    c4_setg(PROJECT_VERSION_TWEAK "${_safe_tweak}")
+    c4_setg(${prefix}_VERSION ${_safe_version})
+    c4_setg(${prefix}_VERSION_MAJOR ${_major})
+    c4_setg(${prefix}_VERSION_MINOR ${_minor})
+    c4_setg(${prefix}_VERSION_PATCH ${_patch})
+    c4_setg(${prefix}_VERSION_TWEAK "${_safe_tweak}")
+endmacro()
+
+
+# Add targets for testing (dir=./test), benchmark (dir=./bm) and API (dir=./api).
+# Call this macro towards the end of the project's main CMakeLists.txt.
+# Experimental feature: docs.
 function(c4_add_dev_targets)
     if(NOT CMAKE_CURRENT_LIST_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         c4_err("this macro needs to be called on the project's main CMakeLists.txt file")
@@ -362,16 +404,17 @@ function(c4_add_dev_targets)
     #
     if(${_c4_uprefix}BUILD_TESTS)
         if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test")
-            c4_dbg("adding tests: ${d}")
-            enable_testing() # this must be done here (and not inside the test dir)
-                             # so that the test targets are available at the top level
+            c4_dbg("adding tests: ${CMAKE_CURRENT_LIST_DIR}/test")
+            enable_testing() # this must be done here (and not inside the
+                             # test dir) so that the cmake-generated test
+                             # targets are available at the top level
             add_subdirectory(test)
         endif()
     endif()
     #
     if(${_c4_uprefix}BUILD_BENCHMARKS)
         if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/bm")
-            c4_dbg("adding benchmarks!")
+            c4_dbg("adding benchmarks: ${CMAKE_CURRENT_LIST_DIR}/bm")
             add_subdirectory(bm)
         endif()
     endif()
@@ -404,7 +447,10 @@ macro(c4_optional_compile_flags_dev tag desc)
         _ARGS0
         _ARGS1
         _ARGSN
-            GCC_CLANG GCC CLANG MSVC
+            MSVC         # flags for Visual Studio compilers
+            GCC          # flags for gcc compilers
+            CLANG        # flags for clang compilers
+            GCC_CLANG    # flags common to gcc and clang
         _DEPRECATE
     )
     cmake_dependent_option(${_c4_uprefix}${tag} "${desc}" ON ${_c4_uprefix}DEV OFF)
