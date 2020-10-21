@@ -222,6 +222,7 @@ function(c4_project)
                    # is only enabled if this project's option
                    # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
       _ARGS1  # one-value macro arguments
+        AUTHOR        # specify author(s); used in cpack
         VERSION       # cmake does not accept semantic versioning (see https://gitlab.kitware.com/cmake/cmake/-/issues/16716)
                       # so we provide that here
         CXX_STANDARD  # one of latest or ${C4_VALID_CXX_STANDARDS}
@@ -276,16 +277,22 @@ function(c4_project)
     endif()
     _c4_handle_arg_or_fallback(CXX_STANDARD 11)
     _c4_handle_arg(VERSION 0.0.0-pre0)
+    _c4_handle_arg(AUTHOR "")
     _c4_handle_semantic_version(${_VERSION})
     #
     # make sure project-wide settings are defined -- see cmake's
     # documentation project(), which defines these and other variables
     if("${PROJECT_DESCRIPTION}" STREQUAL "")
         c4_setg(PROJECT_DESCRIPTION "${prefix}")
+        c4_setg(${prefix}_DESCRIPTION "${prefix}")
     endif()
     if("${PROJECT_HOMEPAGE_URL}" STREQUAL "")
-        c4_setg(PROJECT_HOMEPAGE_URL "https://${prefix}.url")
+        c4_setg(PROJECT_HOMEPAGE_URL "")
+        c4_setg(${prefix}_HOMEPAGE_URL "")
     endif()
+    # other specific c4_project properties
+    c4_setg(PROJECT_AUTHOR "${_AUTHOR}")
+    c4_setg(${prefix}_AUTHOR "${_AUTHOR}")
 
     # CXX standard
     if("${_CXX_STANDARD}" STREQUAL "latest")
@@ -381,16 +388,20 @@ macro(_c4_handle_semantic_version version)
         set(_safe_tweak)
         set(_safe_version ${_major}.${_minor}.${_patch})
     endif()
+    c4_setg(PROJECT_VERSION_FULL ${version})
     c4_setg(PROJECT_VERSION ${_safe_version})
     c4_setg(PROJECT_VERSION_MAJOR ${_major})
     c4_setg(PROJECT_VERSION_MINOR ${_minor})
     c4_setg(PROJECT_VERSION_PATCH ${_patch})
     c4_setg(PROJECT_VERSION_TWEAK "${_safe_tweak}")
+    c4_setg(PROJECT_VERSION_TWEAK_FULL "${_tweak}")
+    c4_setg(${prefix}_VERSION_FULL ${version})
     c4_setg(${prefix}_VERSION ${_safe_version})
     c4_setg(${prefix}_VERSION_MAJOR ${_major})
     c4_setg(${prefix}_VERSION_MINOR ${_minor})
     c4_setg(${prefix}_VERSION_PATCH ${_patch})
     c4_setg(${prefix}_VERSION_TWEAK "${_safe_tweak}")
+    c4_setg(${prefix}_VERSION_TWEAK_FULL "${_tweak}")
 endmacro()
 
 
@@ -541,6 +552,95 @@ if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSIO
         -Wduplicated-branches # where if-else branches have duplicated code
         )
 endif()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+# [WIP] set convenient defaults for the properties used by CPack
+function(c4_set_default_pack_properties)
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS0  # zero-value macro arguments
+      _ARGS1  # one-value macro arguments
+        TYPE     # one of LIBRARY, EXECUTABLE
+      _ARGSN  # multi-value macro arguments
+    )
+    set(pd "${PROJECT_SOURCE_DIR}")
+    _c4_handle_arg(TYPE EXECUTABLE)  # default to EXECUTABLE
+    #
+    _c4_get_platform_tag(platform_tag)
+    if("${_TYPE}" STREQUAL "LIBRARY")
+        if(BUILD_SHARED_LIBS)
+            set(build_tag "-shared")
+        else()
+            set(build_tag "-static")
+        endif()
+        get_property(multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+        if(multi_config)
+            # doesn't work because generators are not evaluated: set(build_tag "${build_tag}-$<CONFIG>")
+            # doesn't work because generators are not evaluated: set(build_tag "${build_tag}$<$<CONFIG:Debug>:-Debug>$<$<CONFIG:MinSizeRel>:-MinSizeRel>$<$<CONFIG:Release>:-Release>$<$<CONFIG:RelWithDebInfo>:-RelWithDebInfo>")
+            # see also https://stackoverflow.com/questions/44153730/how-to-change-cpack-package-file-name-based-on-configuration
+        else()
+            set(build_tag "${build_tag}-${CMAKE_BUILD_TYPE}")
+        endif()
+    elseif("${_TYPE}" STREQUAL "EXECUTABLE")
+        set(build_tag)
+    elseif()
+        c4_err("unknown TYPE: ${_TYPE}")
+    endif()
+    #
+    c4_setg(CPACK_VERBATIM_VARIABLES true)
+    c4_setg(CPACK_PACKAGE_VENDOR "${${_c4_prefix}_HOMEPAGE_URL}")
+    c4_setg(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${${_c4_prefix}_DESCRIPTION}")
+    c4_setg(CPACK_PACKAGE_DESCRIPTION_FILE "${pd}/README.md")
+    c4_setg(CPACK_PACKAGE_DESCRIPTION_README "${pd}/README.md")
+    c4_setg(CPACK_PACKAGE_DESCRIPTION_WELCOME "${pd}/README.md")
+    c4_setg(CPACK_RESOURCE_FILE_LICENSE "${pd}/LICENSE.txt")
+    c4_setg(CPACK_PACKAGE_VERSION "${${_c4_prefix}_VERSION_FULL}")
+    c4_setg(CPACK_PACKAGE_VERSION_MAJOR "${${_c4_prefix}_VERSION_MAJOR}")
+    c4_setg(CPACK_PACKAGE_VERSION_MINOR "${${_c4_prefix}_VERSION_MINOR}")
+    c4_setg(CPACK_PACKAGE_VERSION_PATCH "${${_c4_prefix}_VERSION_PATCH}")
+    c4_setg(CPACK_PACKAGE_VERSION_TWEAK "${${_c4_prefix}_VERSION_TWEAK_FULL}")
+    c4_setg(CPACK_PACKAGE_INSTALL_DIRECTORY "ryml-${${_c4_prefix}_VERSION_FULL}")
+    c4_setg(CPACK_PACKAGE_FILE_NAME "${_c4_prefix}-${${_c4_prefix}_VERSION_FULL}-${platform_tag}${build_tag}")
+    if(WIN32 AND NOT UNIX)
+        # There is a bug in NSI that does not handle full UNIX paths properly.
+        # Make sure there is at least one set of four backlashes.
+        #c4_setg(CPACK_PACKAGE_ICON "${CMake_SOURCE_DIR}/Utilities/Release\\\\InstallIcon.bmp")
+        #c4_setg(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\MyExecutable.exe")
+        c4_setg(CPACK_NSIS_DISPLAY_NAME "ryml v${${_c4_prefix}_VERSION_FULL}")
+        c4_setg(CPACK_NSIS_HELP_LINK "${${_c4_prefix}_HOMEPAGE_URL}")
+        c4_setg(CPACK_NSIS_URL_INFO_ABOUT "${${_c4_prefix}_HOMEPAGE_URL}")
+        c4_setg(CPACK_NSIS_CONTACT "${${_c4_prefix}_AUTHOR}")
+        c4_setg(CPACK_NSIS_MODIFY_PATH ON)
+    else()
+        #c4_setg(CPACK_STRIP_FILES "bin/MyExecutable")
+        #c4_setg(CPACK_SOURCE_STRIP_FILES "")
+    endif()
+    #c4_setg(CPACK_PACKAGE_EXECUTABLES "MyExecutable" "My Executable")
+endfunction()
+
+
+function(_c4_get_platform_tag tag_)
+    if(WIN32 AND NOT UNIX)
+        set(tag win)
+    elseif(APPLE)
+        set(tag apple)
+    elseif(UNIX)
+        set(tag unix)
+    else()
+        c4_err("not implemented")
+    endif()
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)  # 64 bits
+        set(tag ${tag}64)
+    elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)  # 32 bits
+        set(tag ${tag}32)
+    else()
+        c4_err("not implemented")
+    endif()
+    set(${tag_} ${tag} PARENT_SCOPE)
+endfunction()
 
 
 #------------------------------------------------------------------------------
