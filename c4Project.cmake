@@ -83,6 +83,8 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+# handy macro for dealing with arguments in one single statement.
+# look for example usage cases below.
 macro(_c4_handle_args)
     set(opt0arg
     )
@@ -126,7 +128,7 @@ endmacro()
 # if ${_${argname}} is non empty, return it
 # otherwise, fallback to ${_c4_uprefix}${argname}
 # otherwise, fallback to C4_${argname}
-# otherwise, fallback to provided default
+# otherwise, fallback to provided default through ${ARGN}
 macro(_c4_handle_arg_or_fallback argname)
     if(NOT ("${_${argname}}" STREQUAL ""))
         c4_dbg("handle arg ${argname}: picking explicit value _${argname}=${_${argname}}")
@@ -558,6 +560,16 @@ endif()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
+function(c4_pack_project)
+    # if this is the top-level project... pack it.
+    if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+        c4_log("packing the project")
+        c4_set_default_pack_properties(${ARGN})
+        include(CPack)
+    endif()
+endfunction()
+
+
 # [WIP] set convenient defaults for the properties used by CPack
 function(c4_set_default_pack_properties)
     _c4_handle_args(_ARGS ${ARGN}
@@ -581,6 +593,9 @@ function(c4_set_default_pack_properties)
             # doesn't work because generators are not evaluated: set(build_tag "${build_tag}-$<CONFIG>")
             # doesn't work because generators are not evaluated: set(build_tag "${build_tag}$<$<CONFIG:Debug>:-Debug>$<$<CONFIG:MinSizeRel>:-MinSizeRel>$<$<CONFIG:Release>:-Release>$<$<CONFIG:RelWithDebInfo>:-RelWithDebInfo>")
             # see also https://stackoverflow.com/questions/44153730/how-to-change-cpack-package-file-name-based-on-configuration
+            if(CMAKE_BUILD_TYPE)  # in the off-chance it was explicitly set
+                set(build_tag "${build_tag}-${CMAKE_BUILD_TYPE}")
+            endif()
         else()
             set(build_tag "${build_tag}-${CMAKE_BUILD_TYPE}")
         endif()
@@ -876,12 +891,6 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
-# type can be one of:
-#  SUBDIRECTORY: the subproject is located in the given directory name and
-#               will be added via add_subdirectory()
-#  REMOTE: the subproject is located in a remote repo/url
-#          and will be added via c4_import_remote_proj()
-#
 # examples:
 #
 # # c4opt requires subproject c4core, as a subdirectory. c4core will be used
@@ -899,9 +908,20 @@ function(c4_require_subproject subproj)
             INCORPORATE
             EXCLUDE_FROM_ALL
         _ARGS1
-            SUBDIRECTORY
+            SUBDIRECTORY   # the subproject is located in the given directory name and
+                           # will be added via add_subdirectory()
         _ARGSN
-            REMOTE
+            REMOTE         # the subproject is located in a remote repo/url
+                           # and will be added via c4_import_remote_proj(),
+                           # forwarding all the arguments in here.
+            OVERRIDE       # a list of variable name+value pairs
+                           # these variables will be set with c4_override()
+                           # before calling add_subdirectory()
+            SET_FOLDER_TARGETS   # Set the folder of the given targets using
+                                 # c4_set_folder_remote_project_targets().
+                                 # The first expected argument is the folder,
+                                 # and the remaining arguments are the targets
+                                 # which we want to set the folder.
         _DEPRECATE
             INTERFACE
     )
@@ -919,10 +939,12 @@ function(c4_require_subproject subproj)
             set(_INCORPORATE OFF)
         endif()
     endif()
+    #
     _c4_get_subproject_property(${subproj} AVAILABLE _available)
     if(_available)
         c4_dbg("required subproject ${subproj} was already imported:")
         c4_dbg_subproject(${subproj})
+        # TODO check version compatibility
     else() #elseif(NOT _${subproj}_available)
         c4_dbg("required subproject ${subproj} is unknown. Importing...")
         # forward c4 compile flags
@@ -934,22 +956,36 @@ function(c4_require_subproject subproj)
         if(_REMOTE)
             c4_log("importing subproject ${subproj} (REMOTE)... ${_REMOTE}")
             _c4_mark_subproject_imported(${subproj} ${_r}/src ${_r}/build ${_INCORPORATE})
-            c4_import_remote_proj(${subproj} ${_r} ${_REMOTE})
+            c4_import_remote_proj(${subproj} ${_r} REMOTE ${_REMOTE} OVERRIDE ${_OVERRIDE})
             _c4_get_subproject_property(${subproj} SRC_DIR _srcdir)
             c4_dbg("finished importing subproject ${subproj} (REMOTE, SRC_DIR=${_srcdir}).")
         elseif(_SUBDIRECTORY)
             c4_log("importing subproject ${subproj} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             _c4_mark_subproject_imported(${subproj} ${_SUBDIRECTORY} ${_r}/build ${_INCORPORATE})
-            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build)
+            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build OVERRIDE ${_OVERRIDE})
+            set(_srcdir ${_SUBDIRECTORY})
             c4_dbg("finished importing subproject ${subproj} (SUBDIRECTORY=${_SUBDIRECTORY}).")
         else()
-            message(FATAL_ERROR "subproject type must be either REMOTE or SUBDIRECTORY")
+            c4_err("subproject type must be either REMOTE or SUBDIRECTORY")
         endif()
+    endif()
+    #
+    if(_SET_FOLDER_TARGETS)
+        c4_set_folder_remote_project_targets(${_SET_FOLDER_TARGETS})
     endif()
 endfunction(c4_require_subproject)
 
 
 function(c4_add_subproj proj dir bindir)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+        _ARGS1
+        _ARGSN
+            OVERRIDE   # a list of variable name+value pairs
+                       # these variables will be set with c4_override()
+                       # before calling add_subdirectory()
+    )
+    # push the subproj into the current path
     set(prev_subproject ${_c4_curr_subproject})
     set(prev_path ${_c4_curr_path})
     set(_c4_curr_subproject ${proj})
@@ -960,8 +996,16 @@ function(c4_add_subproj proj dir bindir)
             set(_c4_curr_path ${_c4_curr_path}/${proj})
         endif()
     endif()
+    #
+    while(_OVERRIDE)
+        list(POP_FRONT _OVERRIDE varname)
+        list(POP_FRONT _OVERRIDE varvalue)
+        c4_override(${varname} ${varvalue})
+    endwhile()
+    #
     c4_dbg("adding subproj: ${prev_subproject}->${_c4_curr_subproject}. path=${_c4_curr_path}")
     add_subdirectory(${dir} ${bindir})
+    # pop the subproj from the current path
     set(_c4_curr_subproject ${prev_subproject})
     set(_c4_curr_path ${prev_path})
 endfunction()
@@ -1026,33 +1070,43 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-# download external libs while running cmake:
-# https://crascit.com/2015/07/25/cmake-gtest/
-# (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
 #
+#
+function(c4_import_remote_proj name dir)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+        _ARGS1
+        _ARGSN
+            OVERRIDE   # a list of variable name+value pairs
+                       # these variables will be set with c4_override()
+                       # before calling add_subdirectory()
+            REMOTE     # to specify url, repo, tag, or branch,
+                       # pass the needed arguments after dir.
+                       # These arguments will be forwarded to ExternalProject_Add()
+            SET_FOLDER_TARGETS   # Set the folder of the given targets using
+                                 # c4_set_folder_remote_project_targets().
+                                 # The first expected argument is the folder,
+                                 # and the remaining arguments are the targets
+                                 # which we want to set the folder.
+    )
+    set(srcdir_in_out "${dir}")
+    c4_download_remote_proj(${name} srcdir_in_out ${_REMOTE})
+    _c4_set_subproject_property(${name} SRC_DIR "${srcdir_in_out}")
+    c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build" OVERRIDE ${_OVERRIDE})
+    #
+    if(_SET_FOLDER_TARGETS)
+        c4_set_folder_remote_project_targets(${_SET_FOLDER_TARGETS})
+    endif()
+endfunction()
+
+
+# download remote projects while running cmake
 # to specify url, repo, tag, or branch,
 # pass the needed arguments after dir.
 # These arguments will be forwarded to ExternalProject_Add()
-function(c4_import_remote_proj name dir)
-    set(srcdir_in_out "${dir}")
-    c4_download_remote_proj(${name} srcdir_in_out ${ARGN})
-    _c4_set_subproject_property(${name} SRC_DIR "${srcdir_in_out}")
-    c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build")
-endfunction()
-
-
-function(c4_set_folder_remote_project_targets subfolder)
-    foreach(target ${ARGN})
-        if("${_c4_curr_path}" STREQUAL "")
-            set_target_properties(${target} PROPERTIES FOLDER ${subfolder})
-        else()
-            set_target_properties(${target} PROPERTIES FOLDER ${_c4_curr_path}/${subfolder})
-        endif()
-    endforeach()
-endfunction()
-
-
 function(c4_download_remote_proj name candidate_dir)
+    # https://crascit.com/2015/07/25/cmake-gtest/
+    # (via https://stackoverflow.com/questions/15175318/cmake-how-to-build-external-projects-and-include-their-targets)
     set(dir ${${candidate_dir}})
     if("${dir}" STREQUAL "")
         set(dir "${CMAKE_BINARY_DIR}/extern/${name}")
@@ -2189,20 +2243,17 @@ ${ARGN}
     add_dependencies(test-build ${_c4_lprefix}test-build)
 
     if(NOT TARGET gtest)
-        #if(MSVC)
-        #    # silence MSVC pedantic error on googletest's use of tr1: https://github.com/google/googletest/issues/1111
-        #    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /D_SILENCE_TR1_NAMESPACE_DEPRECATION_WARNING")
-        #endif()
-        c4_override(BUILD_GTEST ON)
-        c4_override(BUILD_GMOCK OFF)
-        c4_override(gtest_force_shared_crt ON)
-        c4_override(gtest_build_samples OFF)
-        c4_override(gtest_build_tests OFF)
         c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
+          REMOTE
             GIT_REPOSITORY https://github.com/google/googletest.git
             GIT_TAG release-1.10.0
-            )
-        c4_set_folder_remote_project_targets(test gtest gtest_main)
+          OVERRIDE
+            BUILD_GTEST ON
+            BUILD_GMOCK OFF
+            gtest_force_shared_crt ON
+            gtest_build_samples OFF
+            gtest_build_tests OFF
+          SET_FOLDER_TARGETS ext gtest gtest_main)
     endif()
 endfunction(c4_setup_testing)
 
@@ -2801,13 +2852,14 @@ function(c4_setup_benchmarking)
     _c4_set_target_folder(bm-run "/bm")
     # download google benchmark
     if(NOT TARGET benchmark)
-        c4_override(BENCHMARK_ENABLE_TESTING OFF)
-        c4_override(BENCHMARK_ENABLE_EXCEPTIONS OFF)
-        c4_override(BENCHMARK_ENABLE_LTO OFF)
         c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/ext/googlebenchmark
+          REMOTE
             GIT_REPOSITORY https://github.com/google/benchmark.git
-            )
-        c4_set_folder_remote_project_targets(bm benchmark benchmark_main)
+          OVERRIDE
+            BENCHMARK_ENABLE_TESTING OFF
+            BENCHMARK_ENABLE_EXCEPTIONS OFF
+            BENCHMARK_ENABLE_LTO OFF
+          SET_FOLDER_TARGETS ext benchmark benchmark_main)
         #
         if(CMAKE_COMPILER_IS_GNUCC)
             target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
