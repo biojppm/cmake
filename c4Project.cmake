@@ -801,14 +801,14 @@ function(c4_proj_get_version dir)
     # Get the current working branch
     execute_process(COMMAND git rev-parse --abbrev-ref HEAD
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE ${_c4_uprefix}GIT_BRANCH
+        OUTPUT_VARIABLE branch #${_c4_uprefix}GIT_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
     # Get the latest abbreviated commit hash of the working branch
     execute_process(COMMAND git log -1 --format=%h
         WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE ${_c4_uprefix}GIT_COMMIT_HASH
+        OUTPUT_VARIABLE hash ${_c4_uprefix}GIT_COMMIT_HASH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
 
@@ -2301,6 +2301,17 @@ ${ARGN}
             gtest_build_samples OFF
             gtest_build_tests OFF
           SET_FOLDER_TARGETS ext gtest gtest_main)
+    endif()
+    if(NOT TARGET doctest)
+        c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
+          REMOTE
+            GIT_REPOSITORY https://github.com/onqtam/doctest.git
+            GIT_TAG 2.4.0
+          OVERRIDE
+            DOCTEST_WITH_TESTS OFF
+            DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
+          #SET_FOLDER_TARGETS ext doctest
+          )
     endif()
 endfunction(c4_setup_testing)
 
