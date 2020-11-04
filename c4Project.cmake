@@ -3,6 +3,14 @@ set(_c4_project_included ON)
 set(_c4_project_file ${CMAKE_CURRENT_LIST_FILE})
 set(_c4_project_dir  ${CMAKE_CURRENT_LIST_DIR})
 
+
+# "I didn't have time to write a short letter, so I wrote a long one
+# instead." --  Mark Twain
+#
+# ... Eg, hopefully this code will be cleaned up. There's a lot of
+# code here that can be streamlined into a more intuitive arrangement.
+
+
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
@@ -55,8 +63,23 @@ macro(c4_dbg)
 endmacro()
 
 
+macro(c4_log_var varname)
+    c4_log("${varname}=${${varname}} ${ARGN}")
+endmacro()
+macro(c4_log_vars)
+    set(____s____)
+    foreach(varname ${ARGN})
+        set(____s____ "${____s____}${varname}=${${varname}} ")
+    endforeach()
+    c4_log("${____s____}")
+endmacro()
 macro(c4_dbg_var varname)
     c4_dbg("${varname}=${${varname}} ${ARGN}")
+endmacro()
+macro(c4_log_var_if varname)
+    if(${varname})
+        c4_log("${varname}=${${varname}} ${ARGN}")
+    endif()
 endmacro()
 macro(c4_dbg_var_if varname)
     if(${varname})
@@ -98,8 +121,11 @@ macro(_c4_handle_args)
         _ARGS
         _DEPRECATE
     )
+    # parse the arguments to this macro to find out the required arguments
     cmake_parse_arguments("__c4ha" "${opt0arg}" "${opt1arg}" "${optNarg}" ${ARGN})
+    # now parse the required arguments
     cmake_parse_arguments("${__c4ha__PREFIX}" "${__c4ha__ARGS0}" "${__c4ha__ARGS1}" "${__c4ha__ARGSN}" ${__c4ha__ARGS})
+    # raise an error on deprecated arguments
     foreach(a ${__c4ha__DEPRECATE})
         list(FIND __c4ha__ARGS ${a} contains)
         if(NOT (${contains} EQUAL -1))
@@ -169,13 +195,13 @@ function(c4_get_from_first_of var)
             REQUIRED  # raise an error if no set variable was found
             ENV  # if none of the provided vars is given,
                  # then search next on environment variables
-                 # of the same name
+                 # of the same name, using the same sequence
         _ARGS1
             DEFAULT
         _ARGSN
             VARS
     )
-    c4_dbg("get_from_first(): ${var}: searching ${_var}=${val}")
+    c4_dbg("get_from_first_of(): searching ${var}")
     foreach(_var ${_VARS})
         set(val ${${_var}})
         c4_dbg("${var}: searching ${_var}=${val}")
@@ -189,6 +215,7 @@ function(c4_get_from_first_of var)
             set(val $ENV{${_envvar}})
             c4_dbg("${var}: searching environment variable ${_envvar}=${val}")
             if(NOT ("${val}" STREQUAL ""))
+                c4_dbg("${var}: picking ${val} from ${_envvar}")
                 set(${var} "${val}" PARENT_SCOPE)
                 return()
             endif()
@@ -227,7 +254,7 @@ function(c4_project)
         AUTHOR        # specify author(s); used in cpack
         VERSION       # cmake does not accept semantic versioning (see https://gitlab.kitware.com/cmake/cmake/-/issues/16716)
                       # so we provide that here
-        CXX_STANDARD  # one of latest or ${C4_VALID_CXX_STANDARDS}
+        CXX_STANDARD  # one of latest;${C4_VALID_CXX_STANDARDS}
                       # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD,
                       # then CXX_STANDARD. if none are provided,
@@ -283,7 +310,8 @@ function(c4_project)
     _c4_handle_semantic_version(${_VERSION})
     #
     # make sure project-wide settings are defined -- see cmake's
-    # documentation project(), which defines these and other variables
+    # documentation for project(), which defines these and other
+    # variables
     if("${PROJECT_DESCRIPTION}" STREQUAL "")
         c4_setg(PROJECT_DESCRIPTION "${prefix}")
         c4_setg(${prefix}_DESCRIPTION "${prefix}")
@@ -831,6 +859,7 @@ function(c4_target_set_cxx target standard)
 endfunction()
 
 
+# set the cxx standard for a target based on the global project settings
 function(c4_target_inherit_cxx_standard target)
     c4_dbg("inheriting C++ standard for target ${target}: ${CMAKE_CXX_STANDARD}")
     set_target_properties(${target} PROPERTIES
@@ -895,11 +924,11 @@ endfunction()
 #------------------------------------------------------------------------------
 # examples:
 #
-# # c4opt requires subproject c4core, as a subdirectory. c4core will be used
+# # require subproject c4core, as a subdirectory. c4core will be used
 # # as a separate library
 # c4_require_subproject(c4core SUBDIRECTORY ${C4OPT_EXT_DIR}/c4core)
 #
-# # c4opt requires subproject c4core, as a remote proj
+# # require subproject c4core, as a remote proj
 # c4_require_subproject(c4core REMOTE
 #     GIT_REPOSITORY https://github.com/biojppm/c4core
 #     GIT_TAG master
