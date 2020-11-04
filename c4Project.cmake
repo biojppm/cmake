@@ -40,6 +40,7 @@ set(C4_ADD_EXTS "natvis" CACHE STRING "list of additional file extensions that m
 set(C4_GEN_SRC_EXT "cpp" CACHE STRING "the extension of the output source files resulting from concatenation")
 set(C4_GEN_HDR_EXT "hpp" CACHE STRING "the extension of the output header files resulting from concatenation")
 set(C4_CXX_STANDARDS "20;17;14;11" CACHE STRING "list of CXX standards")
+set(C4_CXX_STANDARD_DEFAULT "11" CACHE STRING "the default CXX standard for projects not specifying one")
 
 
 #------------------------------------------------------------------------------
@@ -304,7 +305,7 @@ function(c4_project)
             ${_c4_is_root_proj})
         c4_setg(_c4_root_proj_standalone ${_c4_uprefix}STANDALONE)
     endif()
-    _c4_handle_arg_or_fallback(CXX_STANDARD 11)
+    _c4_handle_arg_or_fallback(CXX_STANDARD ${C4_CXX_STANDARD_DEFAULT})
     _c4_handle_arg(VERSION 0.0.0-pre0)
     _c4_handle_arg(AUTHOR "")
     _c4_handle_semantic_version(${_VERSION})
@@ -823,6 +824,32 @@ endfunction()
 #------------------------------------------------------------------------------
 
 
+macro(_c4_handle_cxx_standard_args)
+    # EXTENSIONS:
+    # enable compiler extensions eg, prefer gnu++11 to c++11
+    if(EXTENSIONS IN_LIST ARGN)
+        set(_EXTENSIONS ON)
+    else()
+        c4_get_from_first_of(_EXTENSIONS
+            ENV
+            DEFAULT OFF
+            VARS ${_c4_uprefix}CXX_EXTENSIONS C4_CXX_EXTENSIONS CMAKE_CXX_EXTENSIONS)
+    endif()
+    #
+    # OPTIONAL
+    if(OPTIONAL IN_LIST ARGN)
+        set(_REQUIRED OFF)
+    else()
+        c4_get_from_first_of(_REQUIRED
+            ENV
+            DEFAULT ON
+            VARS ${_c4_uprefix}CXX_STANDARD_REQUIRED C4_CXX_STANDARD_REQUIRED CMAKE_CXX_STANDARD_REQUIRED)
+    endif()
+endmacro()
+
+
+# set the global cxx standard for the project.
+#
 # examples:
 # c4_set_cxx(latest) # find the latest standard supported by the compiler, and use that
 # c4_set_cxx(11) # required, no extensions (eg c++11)
@@ -830,24 +857,30 @@ endfunction()
 # c4_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
 # c4_set_cxx(14 EXTENSIONS) # opt-in to extensions (eg, gnu++14)
 # c4_set_cxx(11 OPTIONAL) # not REQUIRED. no extensions
-# c4_set_cxx(11 OPTIONAL EXTENSIONS)
+# c4_set_cxx(11 OPTIONAL EXTENSIONS) # not REQUIRED. with extensions.
 macro(c4_set_cxx standard)
-    c4_log("setting global C++ standard: ${standard}")
     _c4_handle_cxx_standard_args(${ARGN})
+    if(_EXTENSIONS)
+        c4_log("setting global C++ standard: ${standard} [WITH EXTENSIONS]")
+    else()
+        c4_log("setting global C++ standard: ${standard}")
+    endif()
     c4_setg(CMAKE_CXX_STANDARD ${standard})
     c4_setg(CMAKE_CXX_STANDARD_REQUIRED ${_REQUIRED})
     c4_setg(CMAKE_CXX_EXTENSIONS ${_EXTENSIONS})
 endmacro()
 
 
+# set the cxx standard for a target.
+#
 # examples:
-# c4_target_set_cxx(latest) # find the latest standard supported by the compiler, and use that
-# c4_target_set_cxx(11) # required, no extensions (eg c++11)
-# c4_target_set_cxx(14) # required, no extensions (eg c++14)
-# c4_target_set_cxx(11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
-# c4_target_set_cxx(14 EXTENSIONS) # opt-in to extensions (eg, gnu++14)
-# c4_target_set_cxx(tgt 11 OPTIONAL) # not REQUIRED. no extensions
-# c4_target_set_cxx(tgt 11 OPTIONAL EXTENSIONS)
+# c4_target_set_cxx(target latest) # find the latest standard supported by the compiler, and use that
+# c4_target_set_cxx(target 11) # required, no extensions (eg c++11)
+# c4_target_set_cxx(target 14) # required, no extensions (eg c++14)
+# c4_target_set_cxx(target 11 EXTENSIONS) # opt-in to extensions (eg, gnu++11)
+# c4_target_set_cxx(target 14 EXTENSIONS) # opt-in to extensions (eg, gnu++14)
+# c4_target_set_cxx(target 11 OPTIONAL) # not REQUIRED. no extensions
+# c4_target_set_cxx(target 11 OPTIONAL EXTENSIONS)
 function(c4_target_set_cxx target standard)
     c4_dbg("setting C++ standard for target ${target}: ${standard}")
     _c4_handle_cxx_standard_args(${ARGN})
@@ -868,23 +901,6 @@ function(c4_target_inherit_cxx_standard target)
         CXX_EXTENSIONS "${CMAKE_CXX_EXTENSIONS}")
     target_compile_features(${target} PUBLIC cxx_std_${CMAKE_CXX_STANDARD})
 endfunction()
-
-
-macro(_c4_handle_cxx_standard_args)
-    _c4_handle_args(_ARGS ${ARGN}
-        _ARGS0
-            OPTIONAL
-            EXTENSIONS  # eg, prefer c++11 to gnu++11. defaults to OFF
-    )
-    # default values for args
-    set(_REQUIRED ON)
-    if(NOT "${_OPTIONAL}" STREQUAL "")
-        set(_REQUIRED OFF)
-    endif()
-    if("${_EXTENSIONS}" STREQUAL "")
-        set(_EXTENSIONS OFF)
-    endif()
-endmacro()
 
 
 function(_c4_find_latest_supported_cxx_standard out)
