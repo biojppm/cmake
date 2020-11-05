@@ -2305,8 +2305,8 @@ ${ARGN}
     if(NOT TARGET doctest)
         c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
           REMOTE
-            GIT_REPOSITORY https://github.com/onqtam/doctest.git
-            GIT_TAG 2.4.0
+            GIT_REPOSITORY https://github.com/biojppm/doctest.git
+            GIT_TAG MessageBuilder/add_write
           OVERRIDE
             DOCTEST_WITH_TESTS OFF
             DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
