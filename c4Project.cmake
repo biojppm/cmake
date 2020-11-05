@@ -2252,6 +2252,13 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 function(c4_setup_testing)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            GTEST    # download and import googletest
+            DOCTEST  # download and import doctest
+        _ARGS1
+        _ARGSN
+    )
     #include(GoogleTest) # this module requires at least cmake 3.9
     c4_dbg("enabling tests")
     # umbrella target for building test binaries
@@ -2288,30 +2295,37 @@ ${ARGN}
     add_dependencies(test ${_c4_lprefix}test-run)
     add_dependencies(test-verbose ${_c4_lprefix}test-run-verbose)
     add_dependencies(test-build ${_c4_lprefix}test-build)
-
-    if(NOT TARGET gtest)
-        c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
-          REMOTE
-            GIT_REPOSITORY https://github.com/google/googletest.git
-            GIT_TAG release-1.10.0
-          OVERRIDE
-            BUILD_GTEST ON
-            BUILD_GMOCK OFF
-            gtest_force_shared_crt ON
-            gtest_build_samples OFF
-            gtest_build_tests OFF
-          SET_FOLDER_TARGETS ext gtest gtest_main)
+    #
+    # import required libraries
+    if(_GTEST)
+        c4_log("testing requires googletest")
+        if(NOT TARGET gtest)
+            c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
+                REMOTE
+                  GIT_REPOSITORY https://github.com/google/googletest.git
+                  GIT_TAG release-1.10.0
+                OVERRIDE
+                  BUILD_GTEST ON
+                  BUILD_GMOCK OFF
+                  gtest_force_shared_crt ON
+                  gtest_build_samples OFF
+                  gtest_build_tests OFF
+                SET_FOLDER_TARGETS ext gtest gtest_main)
+        endif()
     endif()
-    if(NOT TARGET doctest)
-        c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
-          REMOTE
-            GIT_REPOSITORY https://github.com/biojppm/doctest.git
-            GIT_TAG MessageBuilder/add_write
-          OVERRIDE
-            DOCTEST_WITH_TESTS OFF
-            DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
-          #SET_FOLDER_TARGETS ext doctest
-          )
+    if(_DOCTEST)
+        c4_log("testing requires doctest")
+        if(NOT TARGET doctest)
+            c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
+                REMOTE
+                  GIT_REPOSITORY https://github.com/biojppm/doctest.git
+                  GIT_TAG MessageBuilder/add_write
+                OVERRIDE
+                  DOCTEST_WITH_TESTS OFF
+                  DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
+                  #SET_FOLDER_TARGETS ext doctest
+                )
+        endif()
     endif()
 endfunction(c4_setup_testing)
 
