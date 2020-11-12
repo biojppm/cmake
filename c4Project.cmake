@@ -2951,7 +2951,7 @@ function(c4_setup_benchmarking)
             BENCHMARK_ENABLE_LTO OFF
           SET_FOLDER_TARGETS ext benchmark benchmark_main)
         #
-        if(CMAKE_COMPILER_IS_GNUCC)
+        if((CMAKE_CXX_COMPILER_ID STREQUAL GNU) OR (CMAKE_COMPILER_IS_GNUCC))
             target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
         endif()
         #
