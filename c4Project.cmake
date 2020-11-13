@@ -2327,7 +2327,7 @@ ${ARGN}
                 OVERRIDE
                   DOCTEST_WITH_TESTS OFF
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
-                  #SET_FOLDER_TARGETS ext doctest
+                SET_FOLDER_TARGETS ext doctest_with_main
                 )
         endif()
     endif()
@@ -3012,7 +3012,7 @@ endfunction()
 
 function(c4_add_benchmark target casename work_dir comment)
     if(NOT TARGET ${target})
-        message(FATAL_ERROR "target ${target} does not exist...")
+        c4_err("target ${target} does not exist...")
     endif()
     if(NOT ("${work_dir}" STREQUAL ""))
         if(NOT EXISTS "${work_dir}")
@@ -3046,7 +3046,7 @@ function(c4_add_benchmark target casename work_dir comment)
         )
     add_dependencies(${_c4_lprefix}bm-build ${target})
     add_dependencies(${_c4_lprefix}bm-run ${casename})
-    _c4_set_target_folder(${casename} bm)
+    _c4_set_target_folder(${casename} bm/run)
 endfunction()
 
 
