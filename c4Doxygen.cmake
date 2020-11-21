@@ -2,6 +2,7 @@
 if(NOT _c4_doxygen_included)
 set(_c4_doxygen_included ON)
 
+
 #------------------------------------------------------------------------------
 # TODO use customizations from https://cmake.org/cmake/help/v3.9/module/FindDoxygen.html
 function(c4_setup_doxygen umbrella_option)
@@ -9,7 +10,7 @@ function(c4_setup_doxygen umbrella_option)
     if(${_c4_uprefix}BUILD_DOCS)
         find_package(Doxygen QUIET)
         if(DOXYGEN_FOUND)
-            c4_dbg("enabling documentation targets")
+            c4_log("enabling documentation targets")
         else()
             c4_dbg("doxygen not found")
         endif()
@@ -28,10 +29,6 @@ endfunction()
 #------------------------------------------------------------------------------
 function(c4_add_doxygen doc_name)
     if(NOT ${_c4_uprefix}BUILD_DOCS)
-        return()
-    endif()
-    if(NOT DOXYGEN_FOUND)
-        c4_dbg("doxygen not found, skipping generation of ${doc}")
         return()
     endif()
     #
