@@ -469,17 +469,22 @@ function(c4_add_dev_targets)
     endif()
     #
     # FIXME
-    set(docdirs ${${_c4_uprefix}SRC_DIR} ${${_c4_uprefix}EXT_DIR})
-    c4_add_doxygen(doc
+    c4_add_doxygen(doc DOXYFILE_IN ${_c4_project_dir}/Doxyfile.in
         PROJ c4core
-        DOXYFILE ${_c4_project_dir}/Doxyfile.in
-        INPUT ${docdirs}
-        STRIP_FROM_PATH ${docdirs})
-    c4_add_doxygen(doc-full
+        INPUT ${${_c4_uprefix}SRC_DIR}
+        EXCLUDE ${${_c4_uprefix}EXT_DIR} ${${_c4_uprefix}SRC_DIR}/c4/ext
+        STRIP_FROM_PATH ${${_c4_uprefix}SRC_DIR}
+        STRIP_FROM_INC_PATH ${${_c4_uprefix}SRC_DIR}
+        CLANG_DATABASE_PATH ${CMAKE_BINARY_DIR}
+        )
+    c4_add_doxygen(doc-full DOXYFILE_IN ${_c4_project_dir}/Doxyfile.full.in
         PROJ c4core
-        DOXYFILE ${_c4_project_dir}/Doxyfile.full.in
-        INPUT ${docdirs}
-        STRIP_FROM_PATH ${docdirs})
+        INPUT ${${_c4_uprefix}SRC_DIR}
+        EXCLUDE ${${_c4_uprefix}EXT_DIR} ${${_c4_uprefix}SRC_DIR}/c4/ext
+        STRIP_FROM_PATH ${${_c4_uprefix}SRC_DIR}
+        STRIP_FROM_INC_PATH ${${_c4_uprefix}SRC_DIR}
+        CLANG_DATABASE_PATH ${CMAKE_BINARY_DIR}
+        )
 endfunction()
 
 
