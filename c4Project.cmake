@@ -2702,7 +2702,7 @@ function(c4_setup_coverage)
     )
     # defaults for the macro arguments
     _c4_handle_arg(INCLUDE src)
-    _c4_handle_arg(EXCLUDE test ext extern src/c4/ext)
+    _c4_handle_arg(EXCLUDE test ext extern src/c4/ext build/ext build/extern)
     _c4_handle_arg(EXCLUDE_ABS /usr "${CMAKE_BINARY_DIR}")
     _c4_handle_arg(GENHTML_ARGS --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage
         --prefix "'${CMAKE_SOURCE_DIR}'"
