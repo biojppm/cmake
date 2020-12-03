@@ -5,11 +5,110 @@ import requests
 import flask
 import json
 import re
+import munch
+import yaml
+import shutil
+import mmh3
+
 from flask import render_template, redirect, url_for, send_from_directory
 
 
 def log(*args, **kwargs):
     print(*args, **kwargs, flush=True)
+
+
+def myhash_combine(curr, value):
+    return curr ^ (value + 0x9e3779b9 + (curr<<6) + (curr>>2));
+
+
+def myhash(*args):
+    h = 137597
+    for a in args:
+        if isinstance(a, str):
+            if a == "":
+                continue
+            b = bytes(a, "utf8")
+        else:
+            b = bytes(a)
+        hb = mmh3.hash(b, signed=False)
+        h = myhash_combine(h, hb)
+    return hex(h)[2:10]
+
+
+def copy_file_to_dir(file, dir):
+    dir = os.path.abspath(dir)
+    src = os.path.abspath(file)
+    dst = f"{dir}/{os.path.basename(src)}"
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    if os.path.exists(dst):
+        os.remove(dst)
+    log("copy:", src, "-->", dst)
+    shutil.copy(src, dst)
+
+
+def chk(f):
+    log(f"looking for file:", f)
+    assert os.path.exists(f), f
+    return f
+
+
+def load_yml_file(filename):
+    if not os.path.exists(filename):
+        raise Exception(f"not found: {filename}")
+    with open(filename) as f:
+        return load_yml(f.read())
+
+
+def dump_yml(data, filename):
+    with open(filename, "w") as f:
+        yaml.safe_dump(data, f)
+
+
+def load_yml(yml):
+    return munch.Munch(**yaml.safe_load(yml))
+
+
+def main():
+    #
+    parser = argparse.ArgumentParser(description="Browse benchmark results", prog="bm")
+    parser.add_argument("--debug", action="store_true", help="enable debug mode")
+    subparsers = parser.add_subparsers()
+    #
+    sp = subparsers.add_parser("create", help="create benchmark collection")
+    sp.set_defaults(func=BenchmarkCollection.create_new)
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    sp.add_argument("filename", type=str, help="the YAML file with the benchmark specs")
+    sp.add_argument("target", type=str, help="the directory to store the results")
+    #
+    sp = subparsers.add_parser("meta", help="get the required meta-information: cpu info, commit data")
+    sp.set_defaults(func=add_meta)
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    sp.add_argument("results", type=str, help="the directory with the results")
+    sp.add_argument("cmakecache", type=str, help="the path to the CMakeCache.txt file used to build the benchmark binaries")
+    sp.add_argument("build_type", type=str, help="the build type, eg Release Debug MinSizeRel RelWithDebInfo")
+    #
+    sp = subparsers.add_parser("add", help="add benchmark results")
+    sp.set_defaults(func=add_results)
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    sp.add_argument("results", type=str, help="the directory with the results")
+    sp.add_argument("target", type=str, help="the directory to store the results")
+    #
+    sp = subparsers.add_parser("serve", help="serve benchmark results")
+    sp.set_defaults(func=serve)
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    sp.add_argument("bmdir", type=str, nargs="*", default=[os.getcwd()], help="the directory with the results. default=.")
+    sp.add_argument("-H", "--host", type=str, default="localhost", help="host. default=%(default)s")
+    sp.add_argument("-p", "--port", type=int, default=8000, help="port. default=%(default)s")
+    #
+    sp = subparsers.add_parser("deps", help="install server dependencies")
+    sp.set_defaults(func=lambda _: download_deps())
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    #
+    args = parser.parse_args(sys.argv[1:] if len(sys.argv) > 1 else ["serve"])
+    if args.debug:
+        log(args)
+    args.func(args)
 
 
 def get_manifest(args):
@@ -169,22 +268,280 @@ def download_url(url, dst):
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
+class BenchmarkCollection:
+
+    @staticmethod
+    def create_new(args):
+        dir = args.target
+        filename = os.path.join(dir, "bm.yml")
+        manifest = os.path.join(dir, "manifest.yml")
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        shutil.copyfile(args.filename, filename)
+        dump_yml(load_yml("""{runs: {}, bm: {}}"""), manifest)
+        return __class__(dir)
+
+    def __init__(self, dir):
+        if not os.path.exists(dir):
+            raise Exception(f"not found: {dir}")
+        self.dir = os.path.abspath(dir)
+        self.store_dir = os.path.join(self.dir, "store")
+        self.manifest = os.path.join(self.dir, "manifest.yml")
+        self.filename = os.path.join(self.dir, "bm.yml")
+        self.specs = load_yml_file(self.filename)
+        self.manif = load_yml_file(self.manifest)
+
+    def add(self, results_dir):
+        results_dir = os.path.abspath(results_dir)
+        dst_dir, meta = self._add_run(results_dir)
+        for name, specs in self.specs.bm.items():
+            if specs.get('variants') is None:
+                filename = chk(f"{results_dir}/{name}.json")
+                copy_file_to_dir(filename, dst_dir)
+            else:
+                for t in specs['variants']:
+                    filename = chk(f"{results_dir}/{name}-{t}.json")
+                    copy_file_to_dir(filename, dst_dir)
+        dump_yml(self.manif, self.manifest)
+
+    def _add_run(self, results_dir):
+        log("adding run...")
+        id = f"{len(self.manif.runs.keys()):05d}"
+        log(f"adding run: id={id}")
+        meta = ResultMeta.load(results_dir)
+        dst_dir = os.path.join(self.store_dir, meta.name)
+        for filename in ("meta.yml",
+                         "CMakeCCompiler.cmake",
+                         "CMakeCXXCompiler.cmake",
+                         "CMakeSystem.cmake",
+                         "compile_commands.json"):
+            filename = os.path.join(results_dir, filename)
+            if os.path.exists(filename):
+                copy_file_to_dir(filename, dst_dir)
+            else:
+                raise Exception(f"wtf???? {dst_dir}")
+        self.manif.runs[id] = f"wtf{id}"
+        return dst_dir, meta
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+class ResultMeta(munch.Munch):
+
+    def __init__(self, results_dir, cmakecache, build_type):
+        super().__init__(self)
+        self.date = __class__.get_date()
+        self.commit = __class__.get_commit(results_dir)
+        self.cpu = __class__.get_cpu_info()
+        self.system = __class__.get_sys_info()
+        self.build = __class__.get_build_info(cmakecache, build_type)
+        self.name = self._get_name()
+
+    @staticmethod
+    def load(results_dir):
+        return load_yml_file(os.path.join(os.path.abspath(results_dir), "meta.yml"))
+
+    def save(self, results_dir):
+        out = os.path.join(results_dir, "meta.yml")
+        log("saving meta:", out)
+        dump_yml(self, out)
+        self.build.save(results_dir)
+
+    @staticmethod
+    def get_date():
+        import datetime
+        now = datetime.datetime.now()
+        return now.strftime("%Y%m%d-%H%M%S")
+
+    def _get_name(self):
+        commit = self.commit.storage_name
+        cpu = self.cpu.storage_name
+        sys = self.system.storage_name
+        build = self.build.storage_name
+        name = f"{commit}/{cpu}-{sys}-{build}"
+        return name
+
+    @staticmethod
+    def get_commit(results_dir):
+        import git
+        repo = git.Repo(results_dir, search_parent_directories=True)
+        commit = repo.head.commit
+        commit = {p: str(getattr(commit, p))
+                  for p in ('message', 'summary', 'name_rev',
+                            'author',
+                            'authored_datetime',
+                            'committer',
+                            'committed_datetime',)}
+        commit = munch.Munch(commit)
+        commit.message = commit.message.strip()
+        commit.sha1 = commit.name_rev[:7]
+        spl = commit.authored_datetime.split(" ")
+        date = re.sub(r'-', '', spl[0])
+        time = re.sub(r'(\d+):(\d+):(\d+).*', r'\1\2\3', spl[1])
+        commit.storage_id = commit.sha1
+        commit.storage_name = f"git{date}_{time}-{commit.sha1}"
+        return commit
+
+    @staticmethod
+    def get_cpu_info():
+        import cpuinfo
+        nfo = cpuinfo.get_cpu_info()
+        nfo = munch.Munch(nfo)
+        for a in ('cpu_version', 'cpu_version_string', 'python_version'):
+            if hasattr(nfo, a):
+                delattr(nfo, a)
+        for a in ('arch_string_raw', 'brand_raw', 'hardware_raw', 'vendor_id_raw'):
+            if not hasattr(nfo, a):
+                setattr(nfo, a, '')
+        nfo.storage_id = myhash(
+            nfo.arch_string_raw, nfo.brand_raw, nfo.hardware_raw, nfo.vendor_id_raw,
+            nfo.arch, nfo.bits, nfo.count, nfo.family, nfo.model, nfo.stepping,
+            ",".join(nfo.flags), nfo.hz_advertised_friendly,
+            nfo.l1_data_cache_size,
+            nfo.l1_instruction_cache_size,
+            nfo.l2_cache_associativity,
+            nfo.l2_cache_line_size,
+            nfo.l2_cache_size,
+            nfo.l3_cache_size
+        )
+        nfo.storage_name = f"{nfo.arch.lower()}_{nfo.storage_id}"
+        return nfo
+
+    @staticmethod
+    def get_sys_info():
+        import platform
+        uname = platform.uname()
+        nfo = munch.Munch(
+            sys_platform=sys.platform,
+            sys=platform.system(),
+            uname=munch.Munch(
+                machine=uname.machine,
+                node=uname.node,
+                release=uname.release,
+                system=uname.system,
+                version=uname.version,
+            )
+        )
+        nfo.storage_id = myhash(
+            nfo.sys_platform,
+            nfo.uname.machine,
+        )
+        nfo.storage_name = f"{nfo.sys_platform}_{nfo.storage_id}"
+        return nfo
+
+    @staticmethod
+    def get_build_info(cmakecache_txt, buildtype):
+        nfo = CMakeCache(cmakecache_txt)
+        def _btflags(name):
+            return (getattr(nfo, name), getattr(nfo, f"{name}_{buildtype.upper()}"))
+        nfo.storage_id = myhash(
+            buildtype,
+            nfo.CMAKE_CXX_COMPILER_ID,
+            nfo.CMAKE_CXX_COMPILER_VERSION,
+            nfo.CMAKE_CXX_COMPILER_VERSION_INTERNAL,
+            nfo.CMAKE_CXX_COMPILER_ABI,
+            nfo.CMAKE_CXX_SIZEOF_DATA_PTR,
+            nfo.CMAKE_C_COMPILER_ID,
+            nfo.CMAKE_C_COMPILER_VERSION,
+            nfo.CMAKE_C_COMPILER_VERSION_INTERNAL,
+            nfo.CMAKE_C_COMPILER_ABI,
+            nfo.CMAKE_C_SIZEOF_DATA_PTR,
+            *_btflags("CMAKE_CXX_FLAGS"),
+            *_btflags("CMAKE_C_FLAGS"),
+            *_btflags("CMAKE_STATIC_LINKER_FLAGS"),
+            *_btflags("CMAKE_SHARED_LINKER_FLAGS"),
+        )
+        #
+        ccname = nfo.CMAKE_CXX_COMPILER_ID.lower()
+        if ccname == "gnu":
+            ccname = "gcc"
+        ccname += nfo.CMAKE_CXX_COMPILER_VERSION.lower()
+        #
+        if nfo.CMAKE_C_SIZEOF_DATA_PTR == "4":
+            bits = "32bit"
+        elif nfo.CMAKE_C_SIZEOF_DATA_PTR == "8":
+            bits = "64bit"
+        else:
+            raise Exception("unknown architecture")
+        #
+        nfo.storage_name = f"{bits}_{buildtype}_{ccname}_{nfo.storage_id}"
+        return nfo
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+class CMakeCache(munch.Munch):
+
+    def __init__(self, cmakecache_txt):
+        import glob
+        for line in iter_cmake_lines(cmakecache_txt):
+            spl = line.split("=")
+            if len(spl) < 2:
+                continue
+            k, ty = spl[0].split(":")
+            v = "=".join(spl[1:]).strip()
+            setattr(self, k, v)
+        bdir = os.path.dirname(os.path.abspath(cmakecache_txt))
+        self._c_compiler_file = sorted(glob.glob(f"{bdir}/CMakeFiles/*/CMakeCCompiler.cmake"))[-1]  # get the last
+        self._cxx_compiler_file = sorted(glob.glob(f"{bdir}/CMakeFiles/*/CMakeCXXCompiler.cmake"))[-1]  # get the last
+        self._system_file = sorted(glob.glob(f"{bdir}/CMakeFiles/*/CMakeSystem.cmake"))[-1]  # get the last
+        self._load_cmake_file(self._c_compiler_file)
+        self._load_cmake_file(self._cxx_compiler_file)
+        ccomfile = f"{bdir}/compile_commands.json"
+        self._compile_commands_file = ccomfile if os.path.exists(ccomfile) else None
+
+    def _load_cmake_file(self, filename):
+        for line in iter_cmake_lines(filename):
+            if not line.startswith("set("):
+                continue
+            k = re.sub(r"set\((.*)\ +(.*)\)", r"\1", line)
+            v = re.sub(r"set\((.*)\ +(.*)\)", r"\2", line)
+            v = v.strip('"').strip("'").strip()
+            setattr(self, k, v)
+
+    def save(self, results_dir):
+        copy_file_to_dir(self._c_compiler_file, results_dir)
+        copy_file_to_dir(self._cxx_compiler_file, results_dir)
+        copy_file_to_dir(self._system_file, results_dir)
+        if self._compile_commands_file is not None:
+            copy_file_to_dir(self._compile_commands_file, results_dir)
+
+
+def iter_cmake_lines(filename):
+    with open(filename) as f:
+        for line in f.readlines():
+            line = line.strip()
+            if line.startswith("#") or line.startswith("//") or len(line) == 0:
+                continue
+            yield line
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+def add_results(args):
+    log("adding results:", args.results)
+    col = BenchmarkCollection(args.target)
+    col.add(args.results)
+
+
+def add_meta(args):
+    log("adding bm run metadata to results dir:", args.results)
+    meta = ResultMeta(results_dir=args.results,
+                      cmakecache=args.cmakecache,
+                      build_type=args.build_type)
+    meta.save(args.results)
+    log("adding bm run metadata to results dir: success!")
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 if __name__ == '__main__':
-    #
-    parser = argparse.ArgumentParser(description="Browse benchmark results", prog="bm")
-    subparsers = parser.add_subparsers()
-    #
-    sp = subparsers.add_parser("serve")
-    sp.set_defaults(func=serve)
-    sp.add_argument("bmdir", type=str, nargs="*", default=[os.getcwd()], help="the directory with the results. default=.")
-    sp.add_argument("-H", "--host", type=str, default="localhost", help="host. default=%(default)s")
-    sp.add_argument("-p", "--port", type=int, default=8000, help="port. default=%(default)s")
-    sp.add_argument("--debug", action="store_true", help="enable debug mode")
-    #
-    sp = subparsers.add_parser("deps")
-    sp.set_defaults(func=lambda _: download_deps())
-    #
-    args = parser.parse_args(sys.argv[1:] if len(sys.argv) > 1 else ["serve"])
-    if args.debug:
-        log(args)
-    args.func(args)
+    main()

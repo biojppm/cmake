@@ -1,4 +1,9 @@
+munch
+pyyaml
 py-cpuinfo
+psutil
+gitpython
 flask
 # freeze-flask
 requests
+mmh3
