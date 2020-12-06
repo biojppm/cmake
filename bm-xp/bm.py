@@ -5,11 +5,11 @@ import requests
 import flask
 import json
 import re
-import munch
 import yaml
 import shutil
 import mmh3
 
+from munch import Munch, munchify
 from flask import render_template, redirect, url_for, send_from_directory
 
 
@@ -18,7 +18,17 @@ def log(*args, **kwargs):
 
 
 def myhash_combine(curr, value):
-    return curr ^ (value + 0x9e3779b9 + (curr<<6) + (curr>>2));
+    return curr ^ (value + 0x9e3779b9 + (curr<<6) + (curr>>2))
+
+
+def optionals(obj, *attrs):
+    ret = []
+    for attr in attrs:
+        if not hasattr(obj, attr):
+            log("attr not present:", attr)
+            continue
+        ret.append(getattr(obj, attr))
+    return ret
 
 
 def myhash(*args):
@@ -32,7 +42,8 @@ def myhash(*args):
             b = bytes(a)
         hb = mmh3.hash(b, signed=False)
         h = myhash_combine(h, hb)
-    return hex(h)[2:10]
+    s = hex(h)
+    return s[2:min(10, len(s))]
 
 
 def copy_file_to_dir(file, dir):
@@ -45,6 +56,7 @@ def copy_file_to_dir(file, dir):
         os.remove(dst)
     log("copy:", src, "-->", dst)
     shutil.copy(src, dst)
+    return dst
 
 
 def chk(f):
@@ -66,7 +78,12 @@ def dump_yml(data, filename):
 
 
 def load_yml(yml):
-    return munch.Munch(**yaml.safe_load(yml))
+    return munchify(yaml.safe_load(yml))
+
+
+def dump_json(data, filename):
+    with open(filename, "w") as f:
+        f.write(json.dumps(data, indent=2, sort_keys=True))
 
 
 def main():
@@ -97,7 +114,7 @@ def main():
     sp = subparsers.add_parser("serve", help="serve benchmark results")
     sp.set_defaults(func=serve)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
-    sp.add_argument("bmdir", type=str, nargs="*", default=[os.getcwd()], help="the directory with the results. default=.")
+    sp.add_argument("bmdir", type=str, default=os.getcwd(), help="the directory with the results. default=.")
     sp.add_argument("-H", "--host", type=str, default="localhost", help="host. default=%(default)s")
     sp.add_argument("-p", "--port", type=int, default=8000, help="port. default=%(default)s")
     #
@@ -112,9 +129,13 @@ def main():
 
 
 def get_manifest(args):
-    if len(args.bmdir) > 1:
-        raise Exception("not implemented")
-    d = args.bmdir[0]
+    bmdir = os.path.abspath(args.bmdir)
+    manif_yml = os.path.join(bmdir, "manifest.yml")
+    manif_json = os.path.join(bmdir, "manifest.json")
+    manif = load_yml_file(manif_yml)
+    dump_json(manif, manif_json)
+    return manif
+    #
     title = 'foo'  # FIXME
     prefix = 'c4core-bm-'
     bms = {}
@@ -285,31 +306,28 @@ class BenchmarkCollection:
         if not os.path.exists(dir):
             raise Exception(f"not found: {dir}")
         self.dir = os.path.abspath(dir)
-        self.store_dir = os.path.join(self.dir, "store")
+        self.runs_dir = os.path.join(self.dir, "runs")
         self.manifest = os.path.join(self.dir, "manifest.yml")
         self.filename = os.path.join(self.dir, "bm.yml")
-        self.specs = load_yml_file(self.filename)
-        self.manif = load_yml_file(self.manifest)
+        self.specs = munchify(load_yml_file(self.filename))
+        self.manif = munchify(load_yml_file(self.manifest))
 
     def add(self, results_dir):
         results_dir = os.path.abspath(results_dir)
-        dst_dir, meta = self._add_run(results_dir)
-        for name, specs in self.specs.bm.items():
-            if specs.get('variants') is None:
-                filename = chk(f"{results_dir}/{name}.json")
-                copy_file_to_dir(filename, dst_dir)
-            else:
-                for t in specs['variants']:
-                    filename = chk(f"{results_dir}/{name}-{t}.json")
-                    copy_file_to_dir(filename, dst_dir)
+        dst_dir, meta = self._read_run(results_dir)
+        self._add_run(results_dir, dst_dir, meta)
         dump_yml(self.manif, self.manifest)
 
-    def _add_run(self, results_dir):
+    def _read_run(self, results_dir):
         log("adding run...")
         id = f"{len(self.manif.runs.keys()):05d}"
         log(f"adding run: id={id}")
         meta = ResultMeta.load(results_dir)
-        dst_dir = os.path.join(self.store_dir, meta.name)
+        dst_dir = os.path.join(self.runs_dir, meta.name)
+        return dst_dir, meta
+
+    def _add_run(self, results_dir, dst_dir, meta):
+        cats = self._add_meta_categories(meta)
         for filename in ("meta.yml",
                          "CMakeCCompiler.cmake",
                          "CMakeCXXCompiler.cmake",
@@ -319,16 +337,55 @@ class BenchmarkCollection:
             if os.path.exists(filename):
                 copy_file_to_dir(filename, dst_dir)
             else:
-                raise Exception(f"wtf???? {dst_dir}")
-        self.manif.runs[id] = f"wtf{id}"
-        return dst_dir, meta
+                if not filename.endswith("compile_commands.json"):
+                    raise Exception(f"wtf???? {filename}")
+        for name, specs in self.specs.bm.items():
+            if not hasattr(specs, 'variants'):
+                filename = chk(f"{results_dir}/{name}.json")
+                dst = copy_file_to_dir(filename, dst_dir)
+                self._add_bm_run(name, specs, meta)
+            else:
+                for t in specs.variants:
+                    tname = f"{name}-{t}"
+                    filename = chk(f"{results_dir}/{tname}.json")
+                    dst = copy_file_to_dir(filename, dst_dir)
+                    self._add_bm_run(tname, specs, meta)
+
+    def _add_bm_run(self, name, specs, meta):
+        if name not in self.manif.bm.keys():
+            self.manif.bm[name] = Munch(specs=specs, entries=[])
+        entry = self.manif.bm[name]
+        entry.specs = specs
+        if meta.name not in entry.entries:
+            entry.entries.append(meta.name)
+
+    def _add_meta_categories(self, meta):
+        run = Munch()
+        for catname in ('commit', 'cpu', 'system', 'build'):
+            meta_item = getattr(meta, catname)
+            self._add_item_to_category(meta.name, catname, meta_item)
+            run[catname] = meta_item.storage_id
+        # build specs are too verbose; remove them
+        self.manif.build[meta.build.storage_id].specs = Munch()
+        self.manif.runs[meta.name] = run
+
+    def _add_item_to_category(self, run, category_name, item):
+        if not hasattr(self.manif, category_name):
+            setattr(self.manif, category_name, Munch())
+        category = getattr(self.manif, category_name)
+        if item.storage_id not in category.keys():
+            category[item.storage_id] = Munch(specs=item, entries=[])
+        entry = category[item.storage_id]
+        entry.specs = item
+        if run not in entry.entries:
+            entry.entries.append(run)
 
 
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-class ResultMeta(munch.Munch):
+class ResultMeta(Munch):
 
     def __init__(self, results_dir, cmakecache, build_type):
         super().__init__(self)
@@ -341,7 +398,9 @@ class ResultMeta(munch.Munch):
 
     @staticmethod
     def load(results_dir):
-        return load_yml_file(os.path.join(os.path.abspath(results_dir), "meta.yml"))
+        results_dir = os.path.join(os.path.abspath(results_dir), "meta.yml")
+        data = load_yml_file(results_dir)
+        return munchify(data)
 
     def save(self, results_dir):
         out = os.path.join(results_dir, "meta.yml")
@@ -374,7 +433,7 @@ class ResultMeta(munch.Munch):
                             'authored_datetime',
                             'committer',
                             'committed_datetime',)}
-        commit = munch.Munch(commit)
+        commit = Munch(commit)
         commit.message = commit.message.strip()
         commit.sha1 = commit.name_rev[:7]
         spl = commit.authored_datetime.split(" ")
@@ -388,7 +447,7 @@ class ResultMeta(munch.Munch):
     def get_cpu_info():
         import cpuinfo
         nfo = cpuinfo.get_cpu_info()
-        nfo = munch.Munch(nfo)
+        nfo = Munch(nfo)
         for a in ('cpu_version', 'cpu_version_string', 'python_version'):
             if hasattr(nfo, a):
                 delattr(nfo, a)
@@ -399,12 +458,11 @@ class ResultMeta(munch.Munch):
             nfo.arch_string_raw, nfo.brand_raw, nfo.hardware_raw, nfo.vendor_id_raw,
             nfo.arch, nfo.bits, nfo.count, nfo.family, nfo.model, nfo.stepping,
             ",".join(nfo.flags), nfo.hz_advertised_friendly,
-            nfo.l1_data_cache_size,
-            nfo.l1_instruction_cache_size,
             nfo.l2_cache_associativity,
             nfo.l2_cache_line_size,
             nfo.l2_cache_size,
-            nfo.l3_cache_size
+            nfo.l3_cache_size,
+            *optionals('l1_data_cache_size', 'l1_instruction_cache_size')
         )
         nfo.storage_name = f"{nfo.arch.lower()}_{nfo.storage_id}"
         return nfo
@@ -413,10 +471,10 @@ class ResultMeta(munch.Munch):
     def get_sys_info():
         import platform
         uname = platform.uname()
-        nfo = munch.Munch(
+        nfo = Munch(
             sys_platform=sys.platform,
             sys=platform.system(),
-            uname=munch.Munch(
+            uname=Munch(
                 machine=uname.machine,
                 node=uname.node,
                 release=uname.release,
@@ -474,7 +532,7 @@ class ResultMeta(munch.Munch):
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 
-class CMakeCache(munch.Munch):
+class CMakeCache(Munch):
 
     def __init__(self, cmakecache_txt):
         import glob
