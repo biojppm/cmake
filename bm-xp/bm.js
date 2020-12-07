@@ -1,4 +1,10 @@
 
+/* https://stackoverflow.com/questions/9050345/selecting-last-element-in-javascript-array */
+function last(arr)
+{
+    return arr[arr.length - 1];
+};
+
 function dbg()
 {
   /* pass ?dbg=1 to enable debug logs */
@@ -11,6 +17,7 @@ function dbg()
     if(i > 0) s += ' ';
     s += arguments[i].toString();
   }
+  console.log(s);
   s+= "\n";
   elm.append(document.createTextNode(s));
 }
@@ -177,18 +184,19 @@ class BmResults
 var bmSpecs;
 function iterBms(fn)
 {
-  iterArr(bmSpecs.benchmarks, fn);
+  iterArr(bmSpecs.bm, fn);
 }
 
 function loadSpecs(specs)
 {
   dbg("loading specs ....");
-  $("#heading-title").html(`Benchmarks: ${specs.name}`);
+  iterArr(specs, function(k, v){dbg("k=", k, 'v=', v); });
+  $("#heading-title").html(`Benchmarks: <a href="${specs.url}">${specs.projname}</a>`);
   bmSpecs = specs;
   var toc = $("#toc");
   /*toc.append(`<li><a href="#" onclick="setParam('bm', 'all');">Load all</a></li>`);*/
   iterBms(function(key, bm) {
-    toc.append(`<li><a href="#${key}" onclick="setParam('bm', '${key}');">${key}</a>: ${bm.desc}</li>`)
+    toc.append(`<li><a href="#${key}" onclick="setParam('bm', '${key}');">${key}</a>: ${bm.specs.desc}</li>`)
     bm.name = key;
   });
   // load if required
@@ -228,14 +236,17 @@ function loadBm(key)
     loadAll();
   }*/
   $("#bm-results").empty();
-  var bm = bmSpecs.benchmarks[key];
+  var bm = bmSpecs.bm[key];
   if(bm.src != "") {
     fileContents(bm.src, function(data){
       dbg(`${key}: got src data!`)
       bm.src_data = data;
     });
   }
-  fileContents("bm/"+bm.results, function(data){
+  var latestRun = last(bm.entries);
+  var bmfile = `${latestRun}/${key}.json`;
+  dbg("bmfile=", bmfile);
+  fileContents("bm/"+bmfile, function(data){
     dbg(`${key}: got bm data!`)
     bm.results_data = new BmResults(JSON.parse(data));
     bm.results_data.benchmarks.forEach(function(item, index){
@@ -246,18 +257,20 @@ function loadBm(key)
     normalizeBy(bm.results_data, 'cpu_time', colMin);
     normalizeBy(bm.results_data, 'bytes_per_second', colMin);
     normalizeBy(bm.results_data, 'items_per_second', colMin);
-    appendBm(key, bm);
+    appendBm(latestRun, key, bm);
   });
 }
 
 
-function appendBm(id, bm)
+function appendBm(run_id, id, bm)
 {
   if($(document).find(`bm-results-${id}`).length == 0)
   {
     $("#bm-results").append(`
 <div id="bm-results-${id}">
   <h2 id="bm-title-${id}">${id}</h2>
+
+  <h3 id="heading-details-table-${id}">Run details</h3><table id="table-details-${id}" class="datatable" width="800px"></table>
 
   <h3 id="heading-table-${id}">Result tables</h3>
   <h4 id="heading-table-${id}_pretty">Results</h4><table id="table-${id}_pretty" class="datatable" width="800px"></table>
@@ -269,11 +282,11 @@ function appendBm(id, bm)
   <h3 id="heading-code-${id}">Code</h2>
   <pre><code id="code-${id}" class="lang-c++"></code></pre>
 </div>
-
 `);
   }
   var results = bm.results_data;
   var code = bm.src_data;
+  loadDetailsTable(run_id, id, bm, results);
   loadTable(id, bm, results);
   loadChart(id, bm, results);
   loadCode(id, bm, code);
@@ -289,6 +302,72 @@ function loadCode(elmId, bm, code)
   document.querySelectorAll('pre code').forEach((block) => {
     hljs.highlightBlock(block);
   });
+}
+
+function parseRunId(run_id)
+{
+  // example:
+  //        commit id          /  cpu id       -  system id   -    build id
+  // git20201204_202919-b3f7fa7/x86_64_b9db3176-linux_4e9326b4-64bit_Debug_gcc10.2.0_10c5d03c
+  // git20201203_193348-2974fb0/x86_64_16ac0500-win32_59f3579c-64bit_MinSizeRel_msvc19.28.29304.1_32f6fc66
+  // to tune the regex: https://regex101.com/r/rdkPi8/1
+  //          commit             / cpu               - system            - build
+  var rx = /^(.+?)-([0-9a-f]{7})\/(.+?)_([0-9a-f]{8})-(.+?)_([0-9a-f]{8})-(.+?)_([0-9a-f]{8})$/gim;
+  var tag = rx.exec(run_id);
+  dbg("fdx: run_id=", run_id);
+  dbg("fdx: tag=", tag);
+  dbg("fdx: len=", tag.length);
+  return {
+    commit_id: `${tag[2]}: ${tag[1]}`,
+    cpu_id: `${tag[4]}: ${tag[3]} `,
+    system_id: `${tag[6]}: ${tag[5]}`,
+    build_id: `${tag[8]}: ${tag[7]}`,
+  };
+}
+
+function getBuildId(run_id)
+{
+  return parseRunId(run_id).build_id;
+}
+
+function loadDetailsTable(run_id, id, bm, results)
+{
+  var url = bmSpecs.url;
+  var run = bmSpecs.runs[run_id];
+  var commit = bmSpecs.commit[run.commit].specs;
+  var cpu = bmSpecs.cpu[run.cpu].specs;
+  var system = bmSpecs.system[run.system].specs;
+
+  let other_commit_entries = bmSpecs.commit[run.commit].entries.filter(
+    entry_run => entry_run != run_id
+  ).map(entry_run => getBuildId(entry_run)).join('<br>');
+
+  /*  https://datatables.net/ */
+  $(`#table-details-${id}`).DataTable({
+    data: results.benchmarks,
+    info: false,
+    paging: false,
+    searching: false,
+    retrieve: false,
+    order: [],
+    columns: [
+      {title: "", data: "desc"},
+      {title: "", data: "contents"},
+    ],
+    data: [
+      {desc: "benchmark id"  , contents: id},
+      {desc: "commit"        , contents: ahref(`${url}/commit/${commit.sha1}`, commit.sha1)},
+      {desc: "commit date"   , contents: ahref(`${url}/commit/${commit.sha1}`, commit.committed_datetime)},
+      {desc: "commit summary", contents: ahref(`${url}/commit/${commit.sha1}`, commit.summary)},
+      {desc: "source tree"   , contents: ahref(`${url}/tree/${commit.sha1}`, `tree @ ${commit.sha1}`)},
+      {desc: "benchmark"     , contents: ahref(`${url}/tree/${commit.sha1}/${bm.specs.src}`, `source @ ${commit.sha1}`)},
+      {desc: "cpu used"      , contents: `${cpu.arch} ${cpu.brand_raw}`},
+      {desc: "system used"   , contents: `${system.uname.system} ${system.uname.release}`},
+      {desc: "this build"    , contents: `<pre>${getBuildId(run_id)}</pre>`},
+      {desc: "commit builds" , contents: `<pre>${other_commit_entries}</pre>`},
+    ]
+  });
+  function ahref(url, txt) { return `<a href="${url}" target="_blank">${txt}</a>`; }
 }
 
 

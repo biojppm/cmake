@@ -11,6 +11,7 @@ import mmh3
 
 from munch import Munch, munchify
 from flask import render_template, redirect, url_for, send_from_directory
+from markupsafe import escape
 
 
 def log(*args, **kwargs):
@@ -114,9 +115,14 @@ def main():
     sp = subparsers.add_parser("serve", help="serve benchmark results")
     sp.set_defaults(func=serve)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
-    sp.add_argument("bmdir", type=str, default=os.getcwd(), help="the directory with the results. default=.")
+    sp.add_argument("bmdir", type=os.path.abspath, default=os.getcwd(), help="the directory with the results. default=.")
     sp.add_argument("-H", "--host", type=str, default="localhost", help="host. default=%(default)s")
     sp.add_argument("-p", "--port", type=int, default=8000, help="port. default=%(default)s")
+    #
+    sp = subparsers.add_parser("export", help="export static html")
+    sp.set_defaults(func=freeze)
+    sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    sp.add_argument("bmdir", type=os.path.abspath, default=os.getcwd(), help="the directory with the results. default=.")
     #
     sp = subparsers.add_parser("deps", help="install server dependencies")
     sp.set_defaults(func=lambda _: download_deps())
@@ -135,104 +141,17 @@ def get_manifest(args):
     manif = load_yml_file(manif_yml)
     dump_json(manif, manif_json)
     return manif
-    #
-    title = 'foo'  # FIXME
-    prefix = 'c4core-bm-'
-    bms = {}
-    log("entering", d)
-    for filename in os.listdir(d):
-        if not filename.endswith('.json'):
-            log("ignoring", filename)
-            continue
-        log("adding", filename)
-        name = filename.replace('.json', '')
-        name = name.replace(prefix, '')
-        log(f"name={name}")
-        bm_prefix = re.sub(r"(.*?)-.*", r"\1", name)
-        bm_subprefix = re.sub(r"(.*?)-(.*?).*", r"\2", name)
-        bms[name] = {
-            'desc': name,
-            'prefix': bm_prefix,
-            'subprefix': bm_subprefix,
-            'src': '',
-            'results': filename
-        }
-        log(bms[name])
-    manifest = {
-        'name': 'foo',
-        'benchmarks': bms
-    }
-    manifest_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'manifest.json')
-    log("writing manifest", manifest_file)
-    with open(manifest_file, "w") as f:
-        f.write(json.dumps(manifest, indent=2, sort_keys=True))
-    return manifest
 
 
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
-app = flask.Flask(__name__, static_url_path='',
-                  static_folder='static',
+app = flask.Flask(__name__,
                   template_folder='template')
 
 
-@app.route("/")
-def home():
-    return render_template("index.html")
-
-
-@app.route("/<path>")
-def other(path):
-    log("requested path:", path)
-    if is_static(path):
-        log("aqui 2")
-        return send_from_directory('static', path)
-    else:
-        log("aqui 3")
-        return send_from_directory('', path)
-
-
-@app.route("/bm/<path>")
-def result(path):
-    if len(args.bmdir) > 1:
-        raise Exception("not implemented")
-    d = args.bmdir[0]
-    log("requested result:", path, "---", os.path.join(d, path))
-    return send_from_directory(d, path)
-
-
-@app.context_processor
-def override_url_for():
-    """
-    Generate a new token on every request to prevent the browser from
-    caching static files.
-    """
-    return dict(url_for=dated_url_for)
-
-
-def dated_url_for(endpoint, **values):
-    log("endpoint:", endpoint)
-    if endpoint == 'static':
-        filename = values.get('filename', None)
-        if filename:
-            file_path = os.path.join(app.root_path,
-                                     endpoint, filename)
-            values['q'] = int(os.stat(file_path).st_mtime)
-    return url_for(endpoint, **values)
-
-
-def is_static(path):
-    if path in ("bm.js", ):
-        return False
-    for static in (".js", ".css"):
-        if path.endswith(static):
-            return True
-    return False
-
-
-def serve(args):
+def _setup_app(args):
     def _s(prop, val):
         assert not hasattr(app, prop), prop
         setattr(app, prop, val)
@@ -240,7 +159,51 @@ def serve(args):
     _s('manifest', get_manifest(args))
     if args.debug:
         app.config["DEBUG"] = True
+
+
+def freeze(args):
+    "https://pythonhosted.org/Frozen-Flask/"
+    from flask_frozen import Freezer
+    _setup_app(args)
+    freezer = Freezer(app)
+    freezer.freeze(debug=args.debug)
+
+
+def serve(args):
+    _setup_app(args)
     app.run(host=args.host, port=args.port, debug=args.debug)
+
+
+@app.route("/")
+def home():
+    log("requested home")
+    return render_template("index.html")
+
+
+@app.route("/<path>")
+def other_(path):
+    path = escape(path)
+    d = app.args.bmdir
+    log("requested other path:", path, "---", os.path.join(d, path))
+    return send_from_directory(d, path)
+
+
+@app.route("/static/<path>")
+def static_(path):
+    path = escape(path)
+    d = os.path.join(app.args.bmdir, "static")
+    log("requested static path:", path, "---", os.path.join(d, path))
+    return send_from_directory(d, path, cache_timeout=1)  # timeout in seconds
+
+
+@app.route("/bm/<commit>/<run>/<resultjson>")
+def bm_(commit, run, resultjson):
+    commit = escape(commit)
+    run = escape(run)
+    resultjson = escape(resultjson)
+    d = os.path.join(app.args.bmdir, "runs", commit, run)
+    log("requested result:", os.path.join(d, resultjson))
+    return send_from_directory(d, resultjson, cache_timeout=1)  # timeout in seconds
 
 
 # ------------------------------------------------------------------------------

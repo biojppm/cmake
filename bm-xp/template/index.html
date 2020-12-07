@@ -3,9 +3,10 @@
 
   <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" type="text/css" href="/jquery-ui.min.css"/>
-    <link rel="stylesheet" type="text/css" href="/jquery.dataTables.min.css"/>
-    <link rel="stylesheet" type="text/css" href="/highlight.github.min.css"/>
+    <link rel="shortcut icon" href="#">
+    <link rel="stylesheet" type="text/css" href="/static/jquery-ui.min.css"/>
+    <link rel="stylesheet" type="text/css" href="/static/jquery.dataTables.min.css"/>
+    <link rel="stylesheet" type="text/css" href="/static/highlight.github.min.css"/>
     <style>
       body {
         font-family: "Trebuchet MS", sans-serif;
@@ -18,27 +19,21 @@
   </head>
 
   <body>
-
     <h1 id="heading-title">Title</h1>
-
     <div>
       Available benchmarks:
       <ul id="toc"></ul>
     </div>
-
     <div id="bm-results"></div>
-
     <div><pre id="dbg"></pre></div>
-
     <!-- scripts -->
-    <script type="text/javascript" src="/jquery-3.3.1.min.js"></script>
-    <script type="text/javascript" src="/jquery-ui.js"></script>
-    <script type="text/javascript" src="/jquery.canvasjs.min.js"></script>
-    <script type="text/javascript" src="/Chart.min.js"></script>
-    <script type="text/javascript" src="/jquery.dataTables.min.js"></script>
-    <script type="text/javascript" src="/highlight.min.js"></script>
+    <script type="text/javascript" src="/static/jquery-3.3.1.min.js"></script>
+    <script type="text/javascript" src="/static/jquery-ui.js"></script>
+    <script type="text/javascript" src="/static/jquery.canvasjs.min.js"></script>
+    <script type="text/javascript" src="/static/Chart.min.js"></script>
+    <script type="text/javascript" src="/static/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="/static/highlight.min.js"></script>
     <script type="text/javascript" src="/bm.js"></script>
-
     <script type="text/javascript">
       $(document).ready(function() {
         $.getJSON('/manifest.json', function(specs){

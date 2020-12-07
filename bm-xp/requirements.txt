@@ -4,6 +4,7 @@ py-cpuinfo
 psutil
 gitpython
 flask
-# freeze-flask
+markupsafe
+Frozen-Flask
 requests
 mmh3
