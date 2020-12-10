@@ -103,6 +103,22 @@ macro(_c4_show_pfx_vars)
 endmacro()
 
 
+function(c4_zero_pad padded size str)
+    string(LENGTH "${str}" len)
+    math(EXPR numchars "${size} - ${len}")
+    if(numchars EQUAL 0)
+        set(${padded} "${str}" PARENT_SCOPE)
+    else()
+        set(out "${str}")
+        math(EXPR ncm1 "${numchars} - 1")
+        foreach(z RANGE ${ncm1})
+            set(out "0${out}")
+        endforeach()
+        set(${padded} "${out}" PARENT_SCOPE)
+    endif()
+endfunction()
+
+
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
