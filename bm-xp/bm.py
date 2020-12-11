@@ -87,6 +87,11 @@ def dump_json(data, filename):
         f.write(json.dumps(data, indent=2, sort_keys=True))
 
 
+def load_json(filename):
+    with open(filename, "r") as f:
+        return munchify(json.load(f))
+
+
 def main():
     #
     parser = argparse.ArgumentParser(description="Browse benchmark results", prog="bm")
@@ -545,6 +550,168 @@ def iter_cmake_lines(filename):
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
+class BenchmarkRun(Munch):
+    "results of an individual run"
+
+    def __init__(self, json_file, meaning_class):
+        props = load_json(json_file)
+        assert hasattr(props, "context")
+        assert hasattr(props, "benchmarks")
+        super().__init__(**props)
+        for e in self.benchmarks:
+            setattr(e, 'meta', meaning_class(e.name))
+
+    @property
+    def first(self):
+        return self.benchmarks[0]
+
+    @property
+    def entries(self):
+        for entry in self.benchmarks:
+            yield entry
+
+    @property
+    def meta(self):
+        for entry in self.benchmarks:
+            yield entry.meta
+
+    @property
+    def names(self):
+        for entry in self.benchmarks:
+            yield entry.name
+
+    @property
+    def run_names(self):
+        for entry in self.benchmarks:
+            yield entry.run_name
+
+    @property
+    def run_types(self):
+        for entry in self.benchmarks:
+            yield entry.run_type
+
+    @property
+    def repetitions(self):
+        for entry in self.benchmarks:
+            yield entry.repetitions
+
+    @property
+    def repetition_indices(self):
+        for entry in self.benchmarks:
+            yield entry.repetition_index
+
+    @property
+    def threads(self):
+        for entry in self.benchmarks:
+            yield entry.threads
+
+    @property
+    def iterations(self):
+        for entry in self.benchmarks:
+            yield entry.iterations
+
+    @property
+    def real_time(self):
+        for entry in self.benchmarks:
+            yield entry.real_time
+
+    @property
+    def cpu_time(self):
+        for entry in self.benchmarks:
+            yield entry.cpu_time
+
+    @property
+    def time_unit(self):
+        for entry in self.benchmarks:
+            yield entry.time_unit
+
+    @property
+    def bytes_per_second(self):
+        for entry in self.benchmarks:
+            yield entry.bytes_per_second
+
+    @property
+    def items_per_second(self):
+        for entry in self.benchmarks:
+            yield entry.items_per_second
+
+
+def plot_bm(title, *bm, transform=None,
+            line_title_transform=None,
+            logx=True, logy=True):
+    import bokeh
+    from bokeh.plotting import figure, output_file, show
+    from bokeh.palettes import Dark2_5 as palette
+    from bokeh.models import Legend, LegendItem
+    from bokeh.models.markers import marker_types
+    import itertools
+    #
+    ids = entry_ids(*bm, transform=transform)
+    colors = itertools.cycle(palette)
+    markers = itertools.cycle(marker_types)
+    p = figure(title=title,
+               x_axis_type="log" if logx else "linear",
+               y_axis_type="log" if logy else "linear",
+               #background_fill_color="#fafafa",
+               plot_width=1000,
+               x_axis_label="Number of pixels",
+               y_axis_label="Throughput (MB/s)",
+               )
+    p.toolbar.autohide = True
+    #p.toolbar.active_inspect = [hover_tool, crosshair_tool]
+    p.toolbar.active_drag = "auto"
+    p.toolbar.active_scroll = "auto"
+    legends = []
+    #
+    def dft(v): return v if v else (lambda n: n)
+    tr = dft(transform)
+    lttr = dft(line_title_transform)
+    #
+    for results in bm:
+        x = [ids[name] for name in results.names]
+        y = [bps/1e6 for bps in results.bytes_per_second]
+        c = next(colors)
+        marker = next(markers)
+        next(markers)  # advance two
+        line_name = lttr(results.first)
+        #legends.append(LegendItem(name=c, label=line_name))
+        p.scatter(x, y, marker=marker, size=8, color=c, legend_label=line_name)
+        p.line(x, y,
+               color=c, alpha=0.9,
+               #muted_color=c, muted_alpha=0.05,
+               legend_label=line_name)
+    log(legends)
+    #legend = Legend(items=legends)
+    #legend.click_policy = "mute"
+    #p.add_layout(legend, "right")
+    show(p)
+
+
+def chain(*iterables):
+    for it in iterables:
+        for elm in it:
+            yield elm
+
+
+def entry_ids(*bm, transform=None):
+    ids = {}
+    curr = 0
+    for results in bm:
+        for entry in results.entries:
+            log(entry.name)
+            if transform is not None:
+                ids[entry.name] = transform(entry)
+            else:
+                if ids.get(entry.name) is None:
+                    ids[entry.name] = curr
+                    curr += 1
+    return ids
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
 def add_results(args):
     log("adding results:", args.results)
     col = BenchmarkCollection(args.target)
@@ -564,5 +731,130 @@ def add_meta(args):
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
 
+import typing
+import enum
+
+
+class _enum(enum.Enum):
+    def __str__(self):
+        return str(self.name)
+
+
+class MatrixOrder(_enum):
+    row_major = "row_major"
+    col_major = "col_major"
+    @property
+    def short(self):
+        return "rm" if self is MatrixOrder.row_major else "cm"
+
+
+class MatrixLayout(_enum):
+    compact = "compact"
+    strided = "strided"
+
+
+class DimensionBinding(_enum):
+    compile_time = "compile_time"
+    run_time = "run_time"
+    @property
+    def short(self):
+        return "ct" if self is DimensionBinding.compile_time else "rt"
+
+
+def matrix_order(s):
+    return (MatrixOrder.row_major if s == "rm" else MatrixOrder.col_major)
+
+
+def matrix_layout(s):
+    return (MatrixLayout.compact if s == "compact" else MatrixLayout.strided)
+
+
+def dimension_binding(s):
+    return (DimensionBinding.compile_time if s == "ct" else DimensionBinding.run_time)
+
+
+class MultNaive(typing.NamedTuple):
+    title: str
+    num_pixels: int
+    num_channels: int
+    num_features: int
+    layout: MatrixLayout
+    dim_binding: DimensionBinding
+    ret_order: MatrixOrder
+    lhs_order: MatrixOrder
+    rhs_order: MatrixOrder
+
+
+def extract_case(bm_title):
+    # eg:
+    # mult_naive_strided_ct_rm_cmcm<250, 8, 16>
+    # mult_naive_compact_rt_rm_rmrm/4000/8/16
+    rxline = r'mult_naive_([a-zA-Z_-]+?)[</](\d+)(?:/|, )(\d+)(?:/|, )(\d+).*'
+    num_pixels = int(re.sub(rxline, r'\2', bm_title))
+    num_channels = int(re.sub(rxline, r'\3', bm_title))
+    num_features = int(re.sub(rxline, r'\4', bm_title))
+    case = re.sub(rxline, r'\1', bm_title)
+    rxcase = r"(compact|strided)_(ct|rt)_(rm|cm)_(rm|cm)(rm|cm)"
+    layout = matrix_layout(re.sub(rxcase, r'\1', case))
+    dim_binding = dimension_binding(re.sub(rxcase, r'\2', case))
+    ret_order = matrix_order(re.sub(rxcase, r'\3', case))
+    lhs_order = matrix_order(re.sub(rxcase, r'\4', case))
+    rhs_order = matrix_order(re.sub(rxcase, r'\5', case))
+    return MultNaive(
+        title=case,
+        num_pixels=num_pixels,
+        num_channels=num_channels,
+        num_features=num_features,
+        layout=layout,
+        dim_binding=dim_binding,
+        ret_order=ret_order,
+        lhs_order=lhs_order,
+        rhs_order=rhs_order)
+
+
+def _test():
+    def expect(v_, attr, val):
+        var = getattr(v_, attr)
+        if var != val:
+            raise Exception(f"{attr}:  expected={val}   actual={var}")
+    #
+    v = extract_case("mult_naive_strided_ct_rm_cmcm<250, 8, 16>")
+    expect(v, 'title', 'strided_ct_rm_cmcm')
+    expect(v, 'num_pixels', 250)
+    expect(v, 'num_channels', 8)
+    expect(v, 'num_features', 16)
+    expect(v, 'layout', MatrixLayout.strided)
+    expect(v, 'dim_binding', DimensionBinding.compile_time)
+    expect(v, 'ret_order', MatrixOrder.row_major)
+    expect(v, 'lhs_order', MatrixOrder.col_major)
+    expect(v, 'rhs_order', MatrixOrder.col_major)
+    v = extract_case("mult_naive_compact_rt_cm_rmcm/4000/16/8")
+    expect(v, 'title', 'compact_rt_cm_rmcm')
+    expect(v, 'num_pixels', 4000)
+    expect(v, 'num_channels', 16)
+    expect(v, 'num_features', 8)
+    expect(v, 'layout', MatrixLayout.compact)
+    expect(v, 'dim_binding', DimensionBinding.run_time)
+    expect(v, 'ret_order', MatrixOrder.col_major)
+    expect(v, 'lhs_order', MatrixOrder.row_major)
+    expect(v, 'rhs_order', MatrixOrder.col_major)
+
+_test()
+
+
+
+def formatMBps(value):
+    return value / 1e6
+
+
+
 if __name__ == '__main__':
+    bms = [BenchmarkRun(a, extract_case) for a in sys.argv[2:]]
+    fm = bms[0].first.meta
+    title = f"Naive classifier multiplication, {fm.num_channels} channels, {fm.num_features} features: throughput (MB/s)"
+    shortname = lambda m: f"{m.layout}_{m.dim_binding.short}_{m.ret_order.short}_{m.lhs_order.short}{m.rhs_order.short}"
+    plot_bm(title, *bms,
+            transform=lambda r: r.meta.num_pixels,
+            line_title_transform=lambda r: shortname(r.meta))
+    exit()
     main()
