@@ -3006,6 +3006,7 @@ function(c4_add_target_benchmark target casename)
     set(opt1arg
         WORKDIR # working directory
         FILTER  # benchmark patterns to filter
+        UMBRELLA_TARGET
     )
     set(optnarg
         ARGS
@@ -3028,6 +3029,9 @@ function(c4_add_target_benchmark target casename)
         "${_WORKDIR}"
         "saving results in ${rfile}"
         ${args_fwd})
+    if(_UMBRELLA_TARGET)
+        add_dependencies(${_UMBRELLA_TARGET} "${name}")
+    endif()
 endfunction()
 
 
