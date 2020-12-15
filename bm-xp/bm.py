@@ -1,6 +1,7 @@
 import os
 import sys
 import argparse
+import copy
 import requests
 import flask
 import json
@@ -8,6 +9,7 @@ import re
 import yaml
 import shutil
 import mmh3
+from itertools import islice
 
 from munch import Munch, munchify
 from flask import render_template, redirect, url_for, send_from_directory
@@ -20,6 +22,11 @@ def log(*args, **kwargs):
 
 def myhash_combine(curr, value):
     return curr ^ (value + 0x9e3779b9 + (curr<<6) + (curr>>2))
+
+
+def nth(iterable, n, default=None):
+    "Returns the nth item or a default value"
+    return next(islice(iterable, n, None), default)
 
 
 def optionals(obj, *attrs):
@@ -89,7 +96,10 @@ def dump_json(data, filename):
 
 def load_json(filename):
     with open(filename, "r") as f:
-        return munchify(json.load(f))
+        try:
+            return munchify(json.load(f))
+        except Exception as exc:
+            raise Exception(f"could not load file: {filename}: {exc}")
 
 
 def main():
@@ -553,13 +563,32 @@ def iter_cmake_lines(filename):
 class BenchmarkRun(Munch):
     "results of an individual run"
 
-    def __init__(self, json_file, meaning_class):
+    def __init__(self, json_file, meta_class):
         props = load_json(json_file)
+        setattr(self, "filename", json_file)
         assert hasattr(props, "context")
         assert hasattr(props, "benchmarks")
         super().__init__(**props)
         for e in self.benchmarks:
-            setattr(e, 'meta', meaning_class(e.name))
+            setattr(e, 'meta', meta_class(e.name))
+        setattr(self, 'property_names', (
+            'meta',
+            'shorttitle',
+            'name',
+            'run_name',
+            'run_type',
+            'repetitions',
+            'repetition_index',
+            'repetition_index',
+            'threads',
+            'iterations',
+            'real_time',
+            'cpu_time',
+            'time_unit',
+            'bytes_per_second',
+            'items_per_second',
+            'counters',
+        ))
 
     @property
     def first(self):
@@ -574,6 +603,11 @@ class BenchmarkRun(Munch):
     def meta(self):
         for entry in self.benchmarks:
             yield entry.meta
+
+    @property
+    def filtered_names(self):
+        for entry in self.benchmarks:
+            yield entry.meta.shorttitle
 
     @property
     def names(self):
@@ -636,13 +670,36 @@ class BenchmarkRun(Munch):
             yield entry.items_per_second
 
 
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+class BenchmarkPanel:
+
+    def __init__(self, runs, bm_meta_cls=None):
+        self.runs = [BenchmarkRun(a, bm_meta_cls) for a in runs]
+
+    def plot_all_lines(self, title):
+        plot_bm(title, *self.runs,
+            transform=lambda r: r.meta.num_pixels,
+            line_title_transform=lambda r: r.meta.shortname)
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+
 def plot_bm(title, *bm, transform=None,
             line_title_transform=None,
             logx=True, logy=True):
     import bokeh
     from bokeh.plotting import figure, output_file, show
     from bokeh.palettes import Dark2_5 as palette
-    from bokeh.models import Legend, LegendItem
+    from bokeh.layouts import row, column
+    from bokeh.models import (Legend, LegendItem, CheckboxGroup, CustomJS, Div,
+                              RadioGroup, Toggle,
+                              ColumnDataSource, DataTable, TableColumn)
     from bokeh.models.markers import marker_types
     import itertools
     #
@@ -661,7 +718,6 @@ def plot_bm(title, *bm, transform=None,
     #p.toolbar.active_inspect = [hover_tool, crosshair_tool]
     p.toolbar.active_drag = "auto"
     p.toolbar.active_scroll = "auto"
-    legends = []
     #
     def dft(v): return v if v else (lambda n: n)
     tr = dft(transform)
@@ -680,11 +736,79 @@ def plot_bm(title, *bm, transform=None,
                color=c, alpha=0.9,
                #muted_color=c, muted_alpha=0.05,
                legend_label=line_name)
-    log(legends)
-    #legend = Legend(items=legends)
-    #legend.click_policy = "mute"
-    #p.add_layout(legend, "right")
-    show(p)
+    p.legend.click_policy = "hide"
+    p.legend.label_text_font_size = "10px"
+    #
+    def input_title(title):
+        return Div(text=f"<h3>{title}</h3>")
+    inputs = []
+    first = bm[0].first.meta
+    for k, g in first.checkbox_groups().items():
+        cb = CheckboxGroup(labels=[str(v) for v in g],
+                           active=[i for i in range(len(g))],
+                           inline=True)
+        inputs.append(input_title(k))
+        inputs.append(cb)
+    #
+    # https://github.com/bokeh/bokeh/blob/branch-2.3/examples/app/export_csv/main.py
+    x_axis_values = [f"{m.num_pixels}px" for m in bm[0].meta]
+    table_sources = []
+    for i, px in enumerate(x_axis_values):
+        c = ColumnDataSource(data={
+            'name': [nth(results.filtered_names, i) for results in bm],
+            'bytes_per_second': [nth(results.bytes_per_second, i) for results in bm],
+            'items_per_second': [nth(results.items_per_second, i) for results in bm],
+            'cpu_time': [nth(results.real_time, i) for results in bm],
+            'real_time': [nth(results.real_time, i) for results in bm],
+            'iterations': [nth(results.iterations, i) for results in bm],
+            'threads': [nth(results.threads, i) for results in bm],
+        })
+        table_sources.append(c)
+    selected_x_index = 8  # FIXME (currently 2000 pixels)
+    table_source = copy.deepcopy(table_sources[selected_x_index])
+    relvalues = Toggle(label="Table: Relative values")
+    px_title = input_title("Table: number of pixels")
+    px_radiogroup = RadioGroup(labels=x_axis_values, active=selected_x_index)
+    table_inputs = [relvalues, px_title, px_radiogroup]
+    #
+    table_cols = [
+        TableColumn(field='name', title='Name'),
+        TableColumn(field='bytes_per_second', title='Bytes/second'),
+        TableColumn(field='items_per_second', title='Items/second'),
+        TableColumn(field='cpu_time', title='CPU time'),
+        TableColumn(field='real_time', title='Real time'),
+        TableColumn(field='iterations', title='Iterations'),
+        TableColumn(field='threads', title='Threads'),
+    ]
+    data_table = DataTable(source=table_source, columns=table_cols, width=1200)
+    callback = CustomJS(args=dict(
+        radiogroup=px_radiogroup,
+        source=table_source,
+        table=table_sources
+    ), code="""
+    console.log(`active=${radiogroup.active}`);
+    /*source.data=table[radiogroup.active];*/
+    var nrows = source.data['name'].length;
+    var ts = table[radiogroup.active].data;
+    var names = ["name", "bytes_per_second", "items_per_second", "cpu_time", "real_time", "iterations", "threads"];
+    var ncols = names.length;
+    console.log(`names=${names} nrows=${nrows} ncols=${ncols}`);
+    for(var i = 0; i < nrows; i++) {
+        for(var j = 0; j < ncols; ++j) {
+           var name = names[j];
+           /*console.log(`i=${i} j=${j} name=${name}`);*/
+           source.data[name][i] = ts[name][i];
+        }
+    }
+    source.change.emit();
+    """)
+    px_radiogroup.js_on_change('active', callback)
+    #                        lambda attr, old, new: log(f"attr={attr} old={old} new={new} active={px_radiogroup.active}"))
+    #
+    layout = column(
+        row(column(*inputs), p),
+        row(column(*table_inputs), data_table))
+    show(layout)
 
 
 def chain(*iterables):
@@ -697,6 +821,7 @@ def entry_ids(*bm, transform=None):
     ids = {}
     curr = 0
     for results in bm:
+        log(os.path.basename(results.filename), "------------------------------")
         for entry in results.entries:
             log(entry.name)
             if transform is not None:
@@ -738,6 +863,9 @@ import enum
 class _enum(enum.Enum):
     def __str__(self):
         return str(self.name)
+    @classmethod
+    def err_unknown(cls, s):
+        raise Exception(f"unknown {__class__.__name__}: {s}")
 
 
 class MatrixOrder(_enum):
@@ -746,11 +874,23 @@ class MatrixOrder(_enum):
     @property
     def short(self):
         return "rm" if self is MatrixOrder.row_major else "cm"
+    @classmethod
+    def make(cls, s):
+        try:
+            return {"rm": cls.row_major, "cm": cls.col_major}[s]
+        except:
+            cls.err_unknown(s)
 
 
 class MatrixLayout(_enum):
     compact = "compact"
     strided = "strided"
+    @classmethod
+    def make(cls, s):
+        try:
+            return cls[s]
+        except:
+            cls.err_unknown(s)
 
 
 class DimensionBinding(_enum):
@@ -759,57 +899,96 @@ class DimensionBinding(_enum):
     @property
     def short(self):
         return "ct" if self is DimensionBinding.compile_time else "rt"
+    @classmethod
+    def make(cls, s):
+        try:
+            return {"ct": cls.compile_time, "rt": cls.run_time}[s]
+        except:
+            cls.err_unknown(s)
 
 
-def matrix_order(s):
-    return (MatrixOrder.row_major if s == "rm" else MatrixOrder.col_major)
+class MultType(_enum):
+    naive = "naive"
+    avx2 = "avx2"
+    avx2_unroll2 = "avx2_unroll2"
+    avx2_unroll4 = "avx2_unroll4"
+    avx2_unroll8 = "avx2_unroll8"
+    @classmethod
+    def make(cls, s):
+        try:
+            s = s.replace("dotprod_", "").replace("_naive", "")
+            return cls[s]
+        except:
+            cls.err_unknown(s)
 
 
-def matrix_layout(s):
-    return (MatrixLayout.compact if s == "compact" else MatrixLayout.strided)
-
-
-def dimension_binding(s):
-    return (DimensionBinding.compile_time if s == "ct" else DimensionBinding.run_time)
-
-
-class MultNaive(typing.NamedTuple):
+class MatrixMult(typing.NamedTuple):
     title: str
     num_pixels: int
     num_channels: int
     num_features: int
+    mult_type: MultType
     layout: MatrixLayout
     dim_binding: DimensionBinding
     ret_order: MatrixOrder
     lhs_order: MatrixOrder
     rhs_order: MatrixOrder
 
+    @classmethod
+    def make(cls, bm_title: str):
+        # eg:
+        # mult_naive_strided_ct_rm_cmcm<250, 8, 16>
+        # mult_naive_compact_rt_rm_rmrm/4000/8/16
+        rxline = r'mult_(.*)[</](\d+)(?:/|, )(\d+)(?:/|, )(\d+).*'
+        rxcase = r"(.*)_(compact|strided)_(ct|rt)_(rm|cm)_(rm|cm)(rm|cm)"
+        case = re.sub(rxline, r'\1', bm_title)
+        return cls(
+            title=case,
+            num_pixels=int(re.sub(rxline, r'\2', bm_title)),
+            num_channels=int(re.sub(rxline, r'\3', bm_title)),
+            num_features=int(re.sub(rxline, r'\4', bm_title)),
+            mult_type=MultType.make(re.sub(rxcase, r'\1', case)),
+            layout=MatrixLayout.make(re.sub(rxcase, r'\2', case)),
+            dim_binding=DimensionBinding.make(re.sub(rxcase, r'\3', case)),
+            ret_order=MatrixOrder.make(re.sub(rxcase, r'\4', case)),
+            lhs_order=MatrixOrder.make(re.sub(rxcase, r'\5', case)),
+            rhs_order=MatrixOrder.make(re.sub(rxcase, r'\6', case))
+        )
 
-def extract_case(bm_title):
-    # eg:
-    # mult_naive_strided_ct_rm_cmcm<250, 8, 16>
-    # mult_naive_compact_rt_rm_rmrm/4000/8/16
-    rxline = r'mult_naive_([a-zA-Z_-]+?)[</](\d+)(?:/|, )(\d+)(?:/|, )(\d+).*'
-    num_pixels = int(re.sub(rxline, r'\2', bm_title))
-    num_channels = int(re.sub(rxline, r'\3', bm_title))
-    num_features = int(re.sub(rxline, r'\4', bm_title))
-    case = re.sub(rxline, r'\1', bm_title)
-    rxcase = r"(compact|strided)_(ct|rt)_(rm|cm)_(rm|cm)(rm|cm)"
-    layout = matrix_layout(re.sub(rxcase, r'\1', case))
-    dim_binding = dimension_binding(re.sub(rxcase, r'\2', case))
-    ret_order = matrix_order(re.sub(rxcase, r'\3', case))
-    lhs_order = matrix_order(re.sub(rxcase, r'\4', case))
-    rhs_order = matrix_order(re.sub(rxcase, r'\5', case))
-    return MultNaive(
-        title=case,
-        num_pixels=num_pixels,
-        num_channels=num_channels,
-        num_features=num_features,
-        layout=layout,
-        dim_binding=dim_binding,
-        ret_order=ret_order,
-        lhs_order=lhs_order,
-        rhs_order=rhs_order)
+    def comparison_axes(self):
+        return ('num_pixels', 'num_channels', 'num_features')
+
+    def checkbox_groups(self):
+        return {
+            'multiplication method': [t for t in MultType],
+            'layout': [t for t in MatrixLayout],
+            'dimension': [d for d in DimensionBinding],
+            'return matrix ordering': [o for o in MatrixOrder],
+            'lhs matrix ordering': [o for o in MatrixOrder],
+            'rhs matrix ordering': [o for o in MatrixOrder],
+        }
+
+    @property
+    def matrix_size(self):
+        return self.num_pixels * self.num_channels
+
+    @property
+    def classifier_size(self):
+        return self.num_channels * self.num_features
+
+    @property
+    def shortname(self):
+        m = self
+        return f"{m.mult_type}/{m.layout}/{m.dim_binding.short}_{m.ret_order.short}_{m.lhs_order.short}{m.rhs_order.short}"
+
+    @property
+    def shortparams(self):
+        m = self
+        return f"{m.num_pixels:04d}px{m.num_channels:02d}ch{m.num_features:02d}ft"
+
+    @property
+    def shorttitle(self):
+        return f"{self.shortname}/{self.shortparams}"
 
 
 def _test():
@@ -818,21 +997,23 @@ def _test():
         if var != val:
             raise Exception(f"{attr}:  expected={val}   actual={var}")
     #
-    v = extract_case("mult_naive_strided_ct_rm_cmcm<250, 8, 16>")
-    expect(v, 'title', 'strided_ct_rm_cmcm')
+    v = MatrixMult.make("mult_naive_strided_ct_rm_cmcm<250, 8, 16>")
+    expect(v, 'title', 'naive_strided_ct_rm_cmcm')
     expect(v, 'num_pixels', 250)
     expect(v, 'num_channels', 8)
     expect(v, 'num_features', 16)
+    expect(v, 'mult_type', MultType.naive)
     expect(v, 'layout', MatrixLayout.strided)
     expect(v, 'dim_binding', DimensionBinding.compile_time)
     expect(v, 'ret_order', MatrixOrder.row_major)
     expect(v, 'lhs_order', MatrixOrder.col_major)
     expect(v, 'rhs_order', MatrixOrder.col_major)
-    v = extract_case("mult_naive_compact_rt_cm_rmcm/4000/16/8")
-    expect(v, 'title', 'compact_rt_cm_rmcm')
+    v = MatrixMult.make("mult_dotprod_avx2_compact_rt_cm_rmcm/4000/16/8")
+    expect(v, 'title', 'dotprod_avx2_compact_rt_cm_rmcm')
     expect(v, 'num_pixels', 4000)
     expect(v, 'num_channels', 16)
     expect(v, 'num_features', 8)
+    expect(v, 'mult_type', MultType.avx2)
     expect(v, 'layout', MatrixLayout.compact)
     expect(v, 'dim_binding', DimensionBinding.run_time)
     expect(v, 'ret_order', MatrixOrder.col_major)
@@ -849,12 +1030,11 @@ def formatMBps(value):
 
 
 if __name__ == '__main__':
-    bms = [BenchmarkRun(a, extract_case) for a in sys.argv[2:]]
-    fm = bms[0].first.meta
-    title = f"Naive classifier multiplication, {fm.num_channels} channels, {fm.num_features} features: throughput (MB/s)"
-    shortname = lambda m: f"{m.layout}_{m.dim_binding.short}_{m.ret_order.short}_{m.lhs_order.short}{m.rhs_order.short}"
-    plot_bm(title, *bms,
-            transform=lambda r: r.meta.num_pixels,
-            line_title_transform=lambda r: shortname(r.meta))
+    bms = sorted(sys.argv[2:])
+    log(bms)
+    bms = BenchmarkPanel(bms, bm_meta_cls=MatrixMult.make)
+    fm = bms.runs[0].first.meta
+    title = f"Classifier multiplication, {fm.num_channels} channels, {fm.num_features} features: throughput (MB/s)"
+    bms.plot_all_lines(title)
     exit()
     main()
