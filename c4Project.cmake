@@ -538,6 +538,53 @@ macro(c4_optional_compile_flags_dev tag desc)
     endif()
 endmacro()
 
+
+function(c4_target_compile_flags target)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            PUBLIC
+            PRIVATE
+            INTERFACE
+            AFTER
+            BEFORE
+        _ARGS1
+        _ARGSN
+            MSVC         # flags for Visual Studio compilers
+            GCC          # flags for gcc compilers
+            CLANG        # flags for clang compilers
+            GCC_CLANG    # flags common to gcc and clang
+        _DEPRECATE
+    )
+    if(MSVC)
+        set(flags ${_MSVC})
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+        set(flags ${_GCC_CLANG};${_CLANG})
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(flags ${_GCC_CLANG};${_GCC})
+    else()
+        c4_err("unknown compiler")
+    endif()
+    if(flags)
+        if(_AFTER)
+            set(mode)
+            c4_dbg("${target}: adding compile flags: ${flags}")
+        elseif(_BEFORE)
+            set(mode BEFORE)
+            c4_dbg("${target}: adding compile flags BEFORE: ${flags}")
+        endif()
+        if(_PUBLIC)
+            target_compile_options(${target} ${mode} PUBLIC ${flags})
+        elseif(_PRIVATE)
+            target_compile_options(${target} ${mode} PRIVATE ${flags})
+        elseif(_INTERFACE)
+            target_compile_options(${target} ${mode} INTERFACE ${flags})
+        else()
+            c4_err("${target}: must have one of PUBLIC, PRIVATE or INTERFACE")
+        endif()
+    endif()
+endfunction()
+
+
 # pedantic flags...
 # default pedantic flags taken from:
 # https://github.com/lefticus/cpp_starter_project/blob/master/cmake/CompilerWarnings.cmake
