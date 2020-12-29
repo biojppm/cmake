@@ -565,12 +565,12 @@ function(c4_target_compile_flags target)
         c4_err("unknown compiler")
     endif()
     if(flags)
-        if(_AFTER)
+        if(_AFTER OR (NOT _BEFORE))
             set(mode)
-            c4_dbg("${target}: adding compile flags: ${flags}")
+            c4_log("${target}: adding compile flags AFTER: ${flags}")
         elseif(_BEFORE)
             set(mode BEFORE)
-            c4_dbg("${target}: adding compile flags BEFORE: ${flags}")
+            c4_log("${target}: adding compile flags BEFORE: ${flags}")
         endif()
         if(_PUBLIC)
             target_compile_options(${target} ${mode} PUBLIC ${flags})
@@ -583,6 +583,60 @@ function(c4_target_compile_flags target)
         endif()
     endif()
 endfunction()
+
+
+function(c4_target_remove_compile_flags target)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            PUBLIC       # remove only from public compile options
+            INTERFACE    # remove only from interface compile options
+        _ARGS1
+        _ARGSN
+            MSVC         # flags for Visual Studio compilers
+            GCC          # flags for gcc compilers
+            CLANG        # flags for clang compilers
+            GCC_CLANG    # flags common to gcc and clang
+        _DEPRECATE
+    )
+    if(MSVC)
+        set(flags ${_MSVC})
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+        set(flags ${_GCC_CLANG};${_CLANG})
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(flags ${_GCC_CLANG};${_GCC})
+    else()
+        c4_err("unknown compiler")
+    endif()
+    if(flags)
+        if(_PUBLIC OR (NOT _INTERFACE))
+            get_target_property(co ${target} COMPILE_OPTIONS)
+            if(co)
+                _c4_remove_entries_from_list("${flags}" co)
+                set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${co}")
+            endif()
+        endif()
+        if(_INTERFACE OR (NOT _PUBLIC))
+            get_target_property(ico ${target} INTERFACE_COMPILE_OPTIONS)
+            if(ico)
+                _c4_remove_entries_from_list("${flags}" ico)
+                set_target_properties(${target} PROPERTIES INTERFACE_COMPILE_OPTIONS "${ico}")
+            endif()
+        endif()
+    endif()
+endfunction()
+
+
+function(_c4_remove_entries_from_list entries_to_remove list)
+    set(str ${${list}})
+    string(REPLACE ";" "==?==" str "${str}")
+    foreach(entry ${entries_to_remove})
+        string(REPLACE "${entry}" "" str "${str}")
+    endforeach()
+    string(REPLACE "==?==" ";" str "${str}")
+    string(REPLACE ";;" ";" str "${str}")
+    set(${list} "${str}" PARENT_SCOPE)
+endfunction()
+
 
 
 # pedantic flags...
@@ -1603,8 +1657,7 @@ function(c4_add_target target)
                     set(_more_flags ${_flags};${_more_flags})
                 endif()
                 c4_dbg("${target}: COMPILE_FLAGS=${_more_flags}")
-                set_target_properties(${target} PROPERTIES
-                    COMPILE_OPTIONS "${_more_flags}")
+                target_compile_options(${target} PRIVATE "${_more_flags}")
             endif()
             if(${_c4_uprefix}LINT)
                 c4_static_analysis_target(${target} "${_FOLDER}" lint_targets)
