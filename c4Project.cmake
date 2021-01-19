@@ -545,7 +545,7 @@ function(c4_target_compile_flags target)
             PUBLIC
             PRIVATE
             INTERFACE
-            AFTER
+            AFTER        # this is the default
             BEFORE
         _ARGS1
         _ARGSN
