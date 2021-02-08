@@ -2459,16 +2459,23 @@ function(c4_add_test target)
     _c4_handle_args(_ARGS ${ARGN}
       _ARGS0  # zero-value macro arguments
       _ARGS1  # one-value macro arguments
+        WORKING_DIRECTORY
       _ARGSN  # multi-value macro arguments
         ARGS
     )
     #
+    if(_WORKING_DIRECTORY)
+        set(_WORKING_DIRECTORY WORKING_DIRECTORY ${_WORKING_DIRECTORY})
+    endif()
     set(cmd_pfx)
     if(CMAKE_CROSSCOMPILING)
         set(cmd_pfx ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
     if(NOT ${uprefix}SANITIZE_ONLY)
-        add_test(NAME ${target} COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS})
+        add_test(NAME ${target}
+            COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
+            ${_WORKING_DIRECTORY}
+            COMMAND_EXPAND_LISTS)
     endif()
     #
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
@@ -2498,17 +2505,20 @@ function(c4_add_test target)
                 add_dependencies(${target}-all ${t})
                 c4_sanitize_get_target_command("${cmd_pfx};$<TARGET_FILE:${t}>" ${s} cmd)
                 #c4_log("adding test: ${t}")
-                add_test(NAME ${t} COMMAND ${cmd} ${_ARGS})
+                add_test(NAME ${t}
+                    COMMAND ${cmd} ${_ARGS}
+                    ${_WORKING_DIRECTORY}
+                    COMMAND_EXPAND_LISTS)
             endif()
         endforeach()
     endif()
     if(NOT CMAKE_CROSSCOMPILING)
         if(NOT ${_c4_uprefix}SANITIZE_ONLY)
-            c4_add_valgrind(${target})
+            c4_add_valgrind(${target} ${ARGN})
         endif()
     endif()
     if(${_c4_uprefix}LINT)
-        c4_static_analysis_add_tests(${target})
+        c4_static_analysis_add_tests(${target})  # this will not actually run the executable
     endif()
 endfunction(c4_add_test)
 
@@ -2781,19 +2791,35 @@ endfunction(c4_setup_valgrind)
 
 
 function(c4_add_valgrind target_name)
-    set(exe_args ${ARGN})
+    _c4_handle_args(_ARGS ${ARGN}
+      _ARGS0  # zero-value macro arguments
+      _ARGS1  # one-value macro arguments
+        WORKING_DIRECTORY
+      _ARGSN  # multi-value macro arguments
+        ARGS
+    )
+    #
+    if(_WORKING_DIRECTORY)
+        set(_WORKING_DIRECTORY WORKING_DIRECTORY ${_WORKING_DIRECTORY})
+    endif()
     # @todo: consider doing this for valgrind:
     # http://stackoverflow.com/questions/40325957/how-do-i-add-valgrind-tests-to-my-cmake-test-target
     # for now we explicitly run it:
     if(${_c4_uprefix}VALGRIND)
         separate_arguments(_vg_opts UNIX_COMMAND "${${_c4_uprefix}VALGRIND_OPTIONS}")
-        add_test(NAME ${target_name}-valgrind COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}> ${exe_args})
+        add_test(NAME ${target_name}-valgrind
+            COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}> ${_ARGS}
+            ${_WORKING_DIRECTORY}
+            COMMAND_EXPAND_LISTS)
     endif()
     if(${_c4_uprefix}VALGRIND_SGCHECK)
         # stack and global array overrun detector
         # http://valgrind.org/docs/manual/sg-manual.html
         separate_arguments(_sg_opts UNIX_COMMAND "--tool=exp-sgcheck ${${_c4_uprefix}VALGRIND_OPTIONS}")
-        add_test(NAME ${target_name}-sgcheck COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}> ${exe_args})
+        add_test(NAME ${target_name}-sgcheck
+            COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}> ${_ARGS}
+            ${_WORKING_DIRECTORY}
+            COMMAND_EXPAND_LISTS)
     endif()
 endfunction(c4_add_valgrind)
 
