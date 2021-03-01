@@ -11,12 +11,13 @@ function(_c4_default_if_not_set var dft)
     endif()
 endfunction()
 
+
 #------------------------------------------------------------------------------
 function(c4_setup_sanitize umbrella_option)
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
         return()
     endif()
-    if(NOT ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
+    if(NOT ((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang") OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")))
         return()
     endif()
 
@@ -96,6 +97,7 @@ function(c4_setup_sanitize umbrella_option)
 
 endfunction()
 
+
 #------------------------------------------------------------------------------
 function(c4_sanitize_get_target_command name which_sanitizer_ output)
     string(TOUPPER ${which_sanitizer_} which_sanitizer)
@@ -116,6 +118,7 @@ function(_sanitize_set_target_folder tgt folder)
     endif()
 endfunction()
 
+
 #------------------------------------------------------------------------------
 function(c4_sanitize_target name)
     set(opt0arg
@@ -128,14 +131,16 @@ function(c4_sanitize_target name)
     )
     set(optnarg
         SOURCES
-        INC_DIRS
-        LIBS
-        LIB_DIRS
+        INC_DIRS # TODO public, interface, private
+        LIBS     # TODO public, interface, private
+        LIB_DIRS # TODO public, interface, private
+        DEFS     # TODO public, interface, private
+        CFLAGS   # TODO public, interface, private
     )
     cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
 
     if((NOT _LIBRARY) AND (NOT _EXECUTABLE))
-        message(FATAL_ERROR "either LIBRARY or EXECUTABLE must be specified")
+        c4_err("either LIBRARY or EXECUTABLE must be specified")
     endif()
 
     if(${_c4_uprefix}SANITIZE AND NOT TARGET ${_c4_lprefix}sanitize)
@@ -189,7 +194,8 @@ function(c4_sanitize_target name)
             endif()
         endforeach()
         target_link_libraries(${name}-asan PUBLIC ${_real_libs})
-        target_compile_options(${name}-asan PUBLIC ${${_c4_uprefix}ASAN_CFLAGS_SEP})
+        target_compile_definitions(${name}-asan PUBLIC ${_DEFS})
+        target_compile_options(${name}-asan PUBLIC ${_CFLAGS} ${${_c4_uprefix}ASAN_CFLAGS_SEP})
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-asan PUBLIC ${${_c4_uprefix}ASAN_LFLAGS_SEP})
         add_dependencies(${_c4_lprefix}asan-all ${name}-asan)
@@ -215,7 +221,8 @@ function(c4_sanitize_target name)
             endif()
         endforeach()
         target_link_libraries(${name}-tsan PUBLIC ${_real_libs})
-        target_compile_options(${name}-tsan PUBLIC ${${_c4_uprefix}TSAN_CFLAGS_SEP})
+        target_compile_definitions(${name}-tsan PUBLIC ${_DEFS})
+        target_compile_options(${name}-tsan PUBLIC ${_CFLAGS} ${${_c4_uprefix}TSAN_CFLAGS_SEP})
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-tsan PUBLIC ${${_c4_uprefix}TSAN_LFLAGS_SEP})
         add_dependencies(${_c4_lprefix}tsan-all ${name}-tsan)
@@ -241,7 +248,8 @@ function(c4_sanitize_target name)
             endif()
         endforeach()
         target_link_libraries(${name}-msan PUBLIC ${_real_libs})
-        target_compile_options(${name}-msan PUBLIC ${${_c4_uprefix}MSAN_CFLAGS_SEP})
+        target_compile_definitions(${name}-msan PUBLIC ${_DEFS})
+        target_compile_options(${name}-msan PUBLIC ${_CFLAGS} ${${_c4_uprefix}MSAN_CFLAGS_SEP})
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-msan PUBLIC ${${_c4_uprefix}MSAN_LFLAGS_SEP})
         add_dependencies(${_c4_lprefix}msan-all ${name}-msan)
@@ -267,7 +275,8 @@ function(c4_sanitize_target name)
             endif()
         endforeach()
         target_link_libraries(${name}-ubsan PUBLIC ${_real_libs})
-        target_compile_options(${name}-ubsan PUBLIC ${${_c4_uprefix}UBSAN_CFLAGS_SEP})
+        target_compile_definitions(${name}-ubsan PUBLIC ${_DEFS})
+        target_compile_options(${name}-ubsan PUBLIC ${_CFLAGS} ${${_c4_uprefix}UBSAN_CFLAGS_SEP})
         # http://stackoverflow.com/questions/25043458/does-cmake-have-something-like-target-link-options
         target_link_libraries(${name}-ubsan PUBLIC ${${_c4_uprefix}UBSAN_LFLAGS_SEP})
         add_dependencies(${_c4_lprefix}ubsan-all ${name}-ubsan)
@@ -278,5 +287,6 @@ function(c4_sanitize_target name)
         set(${_OUTPUT_TARGET_NAMES} ${targets} PARENT_SCOPE)
     endif()
 endfunction()
+
 
 endif(NOT _c4_sanitize_target_included)

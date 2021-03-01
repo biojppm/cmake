@@ -504,6 +504,21 @@ function(c4_add_dev_targets)
 endfunction()
 
 
+function(_c4_get_san_targets target result)
+    _c4_get_tgt_prop(san_targets ${target} C4_SAN_TARGETS)
+    if(NOT san_targets)
+        c4_error("${target} must have at least itself in its sanitized target list")
+    endif()
+    set(${result} ${san_targets} PARENT_SCOPE)
+endfunction()
+
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+# utilities for compilation flags and defines
+
 # flags enabled only on dev mode
 macro(c4_optional_compile_flags_dev tag desc)
     _c4_handle_args(_ARGS ${ARGN}
@@ -564,24 +579,79 @@ function(c4_target_compile_flags target)
     else()
         c4_err("unknown compiler")
     endif()
-    if(flags)
-        if(_AFTER OR (NOT _BEFORE))
-            set(mode)
-            c4_log("${target}: adding compile flags AFTER: ${flags}")
-        elseif(_BEFORE)
-            set(mode BEFORE)
-            c4_log("${target}: adding compile flags BEFORE: ${flags}")
-        endif()
+    if(NOT flags)
+        c4_dbg("no compile flags to be set")
+        return()
+    endif()
+    if(_AFTER OR (NOT _BEFORE))
+        set(mode)
+        c4_log("${target}: adding compile flags AFTER: ${flags}")
+    elseif(_BEFORE)
+        set(mode BEFORE)
+        c4_log("${target}: adding compile flags BEFORE: ${flags}")
+    endif()
+    _c4_get_san_targets(${target} san_targets)
+    foreach(st ${san_targets})
         if(_PUBLIC)
-            target_compile_options(${target} ${mode} PUBLIC ${flags})
+            target_compile_options(${st} ${mode} PUBLIC ${flags})
         elseif(_PRIVATE)
-            target_compile_options(${target} ${mode} PRIVATE ${flags})
+            target_compile_options(${st} ${mode} PRIVATE ${flags})
         elseif(_INTERFACE)
-            target_compile_options(${target} ${mode} INTERFACE ${flags})
+            target_compile_options(${st} ${mode} INTERFACE ${flags})
         else()
             c4_err("${target}: must have one of PUBLIC, PRIVATE or INTERFACE")
         endif()
+    endforeach()
+endfunction()
+
+
+function(c4_target_definitions target)
+    _c4_handle_args(_ARGS ${ARGN}
+        _ARGS0
+            PUBLIC
+            PRIVATE
+            INTERFACE
+        _ARGS1
+        _ARGSN
+            ALL          # defines for all compilers
+            MSVC         # defines for Visual Studio compilers
+            GCC          # defines for gcc compilers
+            CLANG        # defines for clang compilers
+            GCC_CLANG    # defines common to gcc and clang
+        _DEPRECATE
+    )
+    if(MSVC)
+        set(flags ${_ALL};${_MSVC})
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+        set(flags ${_ALL};${_GCC_CLANG};${_CLANG})
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        set(flags ${_ALL};${_GCC_CLANG};${_GCC})
+    else()
+        c4_err("unknown compiler")
     endif()
+    if(NOT flags)
+        c4_dbg("no compile flags to be set")
+        return()
+    endif()
+    if(_AFTER OR (NOT _BEFORE))
+        set(mode)
+        c4_log("${target}: adding definitions AFTER: ${flags}")
+    elseif(_BEFORE)
+        set(mode BEFORE)
+        c4_log("${target}: adding definitions BEFORE: ${flags}")
+    endif()
+    _c4_get_san_targets(${target} san_targets)
+    foreach(st ${san_targets})
+        if(_PUBLIC)
+            target_compile_definitions(${st} ${mode} PUBLIC ${flags})
+        elseif(_PRIVATE)
+            target_compile_definitions(${st} ${mode} PRIVATE ${flags})
+        elseif(_INTERFACE)
+            target_compile_definitions(${st} ${mode} INTERFACE ${flags})
+        else()
+            c4_err("${target}: must have one of PUBLIC, PRIVATE or INTERFACE")
+        endif()
+    endforeach()
 endfunction()
 
 
@@ -607,22 +677,26 @@ function(c4_target_remove_compile_flags target)
     else()
         c4_err("unknown compiler")
     endif()
-    if(flags)
+    if(NOT flags)
+        return()
+    endif()
+    _c4_get_san_targets(${target} san_targets)
+    foreach(st ${san_targets})
         if(_PUBLIC OR (NOT _INTERFACE))
-            get_target_property(co ${target} COMPILE_OPTIONS)
+            get_target_property(co ${st} COMPILE_OPTIONS)
             if(co)
                 _c4_remove_entries_from_list("${flags}" co)
-                set_target_properties(${target} PROPERTIES COMPILE_OPTIONS "${co}")
+                set_target_properties(${st} PROPERTIES COMPILE_OPTIONS "${co}")
             endif()
         endif()
         if(_INTERFACE OR (NOT _PUBLIC))
-            get_target_property(ico ${target} INTERFACE_COMPILE_OPTIONS)
+            get_target_property(ico ${st} INTERFACE_COMPILE_OPTIONS)
             if(ico)
                 _c4_remove_entries_from_list("${flags}" ico)
-                set_target_properties(${target} PROPERTIES INTERFACE_COMPILE_OPTIONS "${ico}")
+                set_target_properties(${st} PROPERTIES INTERFACE_COMPILE_OPTIONS "${ico}")
             endif()
         endif()
-    endif()
+    endforeach()
 endfunction()
 
 
@@ -1489,6 +1563,8 @@ function(c4_add_target target)
         HEADERS  PUBLIC_HEADERS  INTERFACE_HEADERS  PRIVATE_HEADERS
         INC_DIRS PUBLIC_INC_DIRS INTERFACE_INC_DIRS PRIVATE_INC_DIRS
         LIBS     PUBLIC_LIBS     INTERFACE_LIBS     PRIVATE_LIBS
+        DEFS     PUBLIC_DEFS     INTERFACE_DEFS     PRIVATE_DEFS    # defines
+        CFLAGS   PUBLIC_CFLAGS   INTERFACE_CFLAGS   PRIVATE_CFLAGS  # compiler flags. TODO: linker flags
         DLLS           # DLLs required by this target
         MORE_ARGS
     )
@@ -1663,6 +1739,33 @@ function(c4_add_target target)
                 c4_static_analysis_target(${target} "${_FOLDER}" lint_targets)
             endif()
         endif(compiled_target)
+
+        if(_DEFS)
+            target_compile_definitions(${target} "${tgt_type}" ${_DEFS})
+        endif()
+        if(_PUBLIC_DEFS)
+            target_compile_definitions(${target} PUBLIC ${_PUBLIC_DEFS})
+        endif()
+        if(_INTERFACE_DEFS)
+            target_compile_definitions(${target} INTERFACE ${_INTERFACE_DEFS})
+        endif()
+        if(_PRIVATE_DEFS)
+            target_compile_definitions(${target} PRIVATE ${_PRIVATE_DEFS})
+        endif()
+
+        if(_CFLAGS)
+            target_compile_options(${target} "${tgt_type}" ${_CFLAGS})
+        endif()
+        if(_PUBLIC_CFLAGS)
+            target_compile_options(${target} PUBLIC ${_PUBLIC_CFLAGS})
+        endif()
+        if(_INTERFACE_CFLAGS)
+            target_compile_options(${target} INTERFACE ${_INTERFACE_CFLAGS})
+        endif()
+        if(_PRIVATE_CFLAGS)
+            target_compile_options(${target} PRIVATE ${_PRIVATE_CFLAGS})
+        endif()
+
     endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
@@ -1672,6 +1775,8 @@ function(c4_add_target target)
                 SOURCES ${allsrc}
                 INC_DIRS ${_INC_DIRS} ${_PUBLIC_INC_DIRS} ${_INTERFACE_INC_DIRS} ${_PRIVATE_INC_DIRS}
                 LIBS ${_LIBS} ${_PUBLIC_LIBS} ${_INTERFACE_LIBS} ${_PRIVATE_LIBS}
+                DEFS ${_DEFS} ${_PUBLIC_DEFS} ${_INTERFACE_DEFS} ${_PRIVATE_DEFS}
+                CFLAGS ${_CFLAGS} ${_PUBLIC_CFLAGS} ${_INTERFACE_CFLAGS} ${_PRIVATE_CFLAGS}
                 OUTPUT_TARGET_NAMES san_targets
                 FOLDER "${_FOLDER}"
                 )
@@ -1684,6 +1789,10 @@ function(c4_add_target target)
         if(_SANITIZERS)
             set(${_SANITIZERS} ${san_targets} PARENT_SCOPE)
         endif()
+
+        _c4_set_tgt_prop(${target} C4_SAN_TARGETS "${san_targets}")
+    else()
+        _c4_set_tgt_prop(${target} C4_SAN_TARGETS "${target}")
     endif()
 
     # gather dlls so that they can be automatically copied to the target directory
