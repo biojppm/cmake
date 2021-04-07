@@ -564,6 +564,7 @@ function(c4_target_compile_flags target)
             BEFORE
         _ARGS1
         _ARGSN
+            ALL          # flags for all compilers
             MSVC         # flags for Visual Studio compilers
             GCC          # flags for gcc compilers
             CLANG        # flags for clang compilers
@@ -571,11 +572,11 @@ function(c4_target_compile_flags target)
         _DEPRECATE
     )
     if(MSVC)
-        set(flags ${_MSVC})
+        set(flags ${_ALL};${_MSVC})
     elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-        set(flags ${_GCC_CLANG};${_CLANG})
+        set(flags ${_ALL};${_GCC_CLANG};${_CLANG})
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        set(flags ${_GCC_CLANG};${_GCC})
+        set(flags ${_ALL};${_GCC_CLANG};${_GCC})
     else()
         c4_err("unknown compiler")
     endif()
