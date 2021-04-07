@@ -834,10 +834,20 @@ function(c4_set_default_pack_properties)
     c4_setg(CPACK_PACKAGE_VENDOR "${${_c4_prefix}_HOMEPAGE_URL}")
     c4_setg(CPACK_PACKAGE_CONTACT "${${_c4_prefix}_AUTHOR}")
     c4_setg(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${${_c4_prefix}_DESCRIPTION}")
-    c4_setg(CPACK_PACKAGE_DESCRIPTION_FILE "${pd}/README.md")
-    c4_setg(CPACK_PACKAGE_DESCRIPTION_README "${pd}/README.md")
-    c4_setg(CPACK_PACKAGE_DESCRIPTION_WELCOME "${pd}/README.md")
-    c4_setg(CPACK_RESOURCE_FILE_LICENSE "${pd}/LICENSE.txt")
+    if(EXISTS "${pd}/README.md")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_FILE "${pd}/README.md")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_README "${pd}/README.md")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_WELCOME "${pd}/README.md")
+    elseif(EXISTS "${pd}/README.txt")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_FILE "${pd}/README.txt")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_README "${pd}/README.txt")
+        c4_setg(CPACK_PACKAGE_DESCRIPTION_WELCOME "${pd}/README.txt")
+    endif()
+    if(EXISTS "${pd}/LICENSE.md")
+        c4_setg(CPACK_RESOURCE_FILE_LICENSE "${pd}/LICENSE.md")
+    elseif(EXISTS "${pd}/LICENSE.txt")
+        c4_setg(CPACK_RESOURCE_FILE_LICENSE "${pd}/LICENSE.txt")
+    endif()
     c4_setg(CPACK_PACKAGE_VERSION "${${_c4_prefix}_VERSION_FULL}")
     c4_setg(CPACK_PACKAGE_VERSION_MAJOR "${${_c4_prefix}_VERSION_MAJOR}")
     c4_setg(CPACK_PACKAGE_VERSION_MINOR "${${_c4_prefix}_VERSION_MINOR}")
@@ -2035,7 +2045,7 @@ function(c4_add_target_sources target)
         endif()
     elseif("${_TRANSFORM}" STREQUAL "UNITY_HDR")
         c4_dbg("target ${target}: source transform: UNITY_HDR!")
-        message(FATAL_ERROR "source transformation not implemented")
+        c4_err("target ${target}: source transformation not implemented")
         #
         # like unity, but concatenate compilation units into
         # a header file, leaving other header files untouched
@@ -2059,7 +2069,7 @@ function(c4_add_target_sources target)
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_HDR")
         c4_dbg("target ${target}: source transform: SINGLE_HDR!")
-        c4_err("source transformation not implemented")
+        c4_err("target ${target}: source transformation not implemented")
         #
         # concatenate everything into a single header file
         #
@@ -2069,7 +2079,7 @@ function(c4_add_target_sources target)
         #
     elseif("${_TRANSFORM}" STREQUAL "SINGLE_UNIT")
         c4_dbg("target ${target}: source transform: SINGLE_UNIT!")
-        c4_err("source transformation not implemented")
+        c4_err("target ${target}: source transformation not implemented")
         #
         # concatenate:
         #  * all compilation units into a single compilation unit
@@ -2092,6 +2102,7 @@ endfunction()
 # see: https://github.com/pr0g/cmake-examples
 # see: https://cliutils.gitlab.io/modern-cmake/
 
+
 function(c4_install_target target)
     _c4_handle_args(_ARGS ${ARGN}
       _ARGS1  # one-value macro arguments
@@ -2107,31 +2118,30 @@ function(c4_install_target target)
     #endif()
     #
     _c4_setup_install_vars()
-    get_target_property(target_type ${target} TYPE)
-    if(target_type STREQUAL "INTERFACE_LIBRARY")
-        c4_dbg("target ${target} is an interface library; can't be installed by cmake ")
-    else()
-        # TODO: don't forget to install DLLs: _${_c4_uprefix}_${target}_DLLS
-        install(TARGETS ${target}
-            EXPORT ${_EXPORT}
-            RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}
-            ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}
-            LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}
-            OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}
-            INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR}
-            )
-    endif()
-    #
+    install(TARGETS ${target}
+        EXPORT ${_EXPORT}
+        RUNTIME DESTINATION ${_RUNTIME_INSTALL_DIR}  #COMPONENT runtime
+        BUNDLE  DESTINATION ${_RUNTIME_INSTALL_DIR}  #COMPONENT runtime
+        LIBRARY DESTINATION ${_LIBRARY_INSTALL_DIR}  #COMPONENT runtime
+        ARCHIVE DESTINATION ${_ARCHIVE_INSTALL_DIR}  #COMPONENT development
+        OBJECTS DESTINATION ${_OBJECTS_INSTALL_DIR}  #COMPONENT development
+        INCLUDES DESTINATION ${_INCLUDE_INSTALL_DIR} #COMPONENT development
+        PUBLIC_HEADER DESTINATION ${_INCLUDE_INSTALL_DIR} #COMPONENT development
+        )
     c4_install_sources(${target} include)
     #
-    # on windows, install required DLLs side-by-side with executables
+    # on windows, install also required DLLs
     if(WIN32)
+        get_target_property(target_type ${target} TYPE)
         if("${target_type}" STREQUAL "EXECUTABLE")
             c4_get_transitive_property(${target} _C4_DLLS transitive_dlls)
             if(transitive_dlls)
                 c4_dbg("${target}: installing dlls: ${transitive_dlls} to ${_RUNTIME_INSTALL_DIR}")
                 list(REMOVE_DUPLICATES transitive_dlls)
-                install(FILES ${transitive_dlls} DESTINATION ${_RUNTIME_INSTALL_DIR})
+                install(FILES ${transitive_dlls}
+                    DESTINATION ${_RUNTIME_INSTALL_DIR}  # shouldn't it be _LIBRARY_INSTALL_DIR?
+                    #COMPONENT runtime
+                    )
             endif()
         endif()
     endif()
