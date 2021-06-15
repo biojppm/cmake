@@ -507,9 +507,11 @@ endfunction()
 function(_c4_get_san_targets target result)
     _c4_get_tgt_prop(san_targets ${target} C4_SAN_TARGETS)
     if(NOT san_targets)
-        c4_error("${target} must have at least itself in its sanitized target list")
+        #c4_err("${target} must have at least itself in its sanitized target list")
+        set(${result} ${target} PARENT_SCOPE)
+    else()
+        set(${result} ${san_targets} PARENT_SCOPE)
     endif()
-    set(${result} ${san_targets} PARENT_SCOPE)
 endfunction()
 
 
