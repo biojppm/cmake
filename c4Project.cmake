@@ -2594,10 +2594,16 @@ function(c4_add_test target)
         set(cmd_pfx ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
     if(NOT ${uprefix}SANITIZE_ONLY)
-        add_test(NAME ${target}
-            COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
-            ${_WORKING_DIRECTORY}
-            COMMAND_EXPAND_LISTS)
+        if(${CMAKE_VERSION} VERSION_LESS "3.16.0")
+            add_test(NAME ${target}
+                COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
+                ${_WORKING_DIRECTORY})
+        else()
+            add_test(NAME ${target}
+                COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
+                ${_WORKING_DIRECTORY}
+                COMMAND_EXPAND_LISTS)
+        endif()
     endif()
     #
     if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
