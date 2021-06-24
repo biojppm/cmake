@@ -2550,7 +2550,7 @@ ${ARGN}
             c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
                 REMOTE
                   GIT_REPOSITORY https://github.com/google/googletest.git
-                  GIT_TAG release-1.10.0
+                  GIT_TAG release-1.11.0
                 OVERRIDE
                   BUILD_GTEST ON
                   BUILD_GMOCK OFF
