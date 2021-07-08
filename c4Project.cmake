@@ -269,8 +269,8 @@ function(c4_project)
                    # ${prefix}_STANDALONE or C4_STANDALONE is set to ON.
       _ARGS1  # one-value macro arguments
         AUTHOR        # specify author(s); used in cpack
-        VERSION       # cmake does not accept semantic versioning (see https://gitlab.kitware.com/cmake/cmake/-/issues/16716)
-                      # so we provide that here
+        VERSION       # cmake does not accept semantic versioning so we provide
+                      # that here (see https://gitlab.kitware.com/cmake/cmake/-/issues/16716)
         CXX_STANDARD  # one of latest;${C4_VALID_CXX_STANDARDS}
                       # if this is not provided, falls back on
                       # ${uprefix}CXX_STANDARD, then C4_CXX_STANDARD,
@@ -1677,7 +1677,9 @@ function(c4_add_target target)
                     endif()  # shared lib
                 endif() # win32
             endif() # interface or lib
+            set_target_properties(${target} PROPERTIES SO_VERSION ${${_c4_prefix}_VERSION})
         endif(${_EXECUTABLE})
+        set_target_properties(${target} PROPERTIES VERSION ${${_c4_prefix}_VERSION})
 
         if(src_mode STREQUAL "PUBLIC")
             c4_add_target_sources(${target}
