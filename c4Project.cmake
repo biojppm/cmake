@@ -543,6 +543,10 @@ macro(c4_optional_compile_flags_dev tag desc)
             set(flags ${_GCC_CLANG};${_CLANG})
         elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             set(flags ${_GCC_CLANG};${_GCC})
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+            set(flags ${_ALL};${_GCC_CLANG};${_GCC})  # FIXME
+        elseif(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+            set(flags ${_ALL};${_GCC_CLANG};${_CLANG})  # FIXME
         else()
             c4_err("unknown compiler")
         endif()
@@ -579,6 +583,10 @@ function(c4_target_compile_flags target)
         set(flags ${_ALL};${_GCC_CLANG};${_CLANG})
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         set(flags ${_ALL};${_GCC_CLANG};${_GCC})
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
+        set(flags ${_ALL};${_GCC_CLANG};${_GCC})  # FIXME
+    elseif(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+        set(flags ${_ALL};${_GCC_CLANG};${_CLANG})  # FIXME
     else()
         c4_err("unknown compiler")
     endif()
