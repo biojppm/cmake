@@ -2529,8 +2529,17 @@ function(c4_setup_testing)
         _c4_set_target_folder(test-verbose "/test")
     endif()
     if(NOT TARGET test)
+        # add a test target. To prevent a warning, we need to set up a policy,
+        # and also suppress the resulting warning from suppressing the warning.
+        set(_depr_old_val ${CMAKE_WARN_DEPRECATED})
+        set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)  # https://stackoverflow.com/questions/67432538/cannot-set-cmake-warn-deprecated-inside-the-cmakelists-txt
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0037 OLD)  # target name "test" is reserved for CTesting
         add_custom_target(test)
         _c4_set_target_folder(test "/test")
+        cmake_policy(POP)
+        set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "${_depr_old_val}" FORCE)
+        unset(_depr_old_val)
     endif()
     function(_def_runner runner)
         set(echo "
