@@ -1215,6 +1215,9 @@ function(c4_require_subproject subproj)
         # TODO check version compatibility
     else() #elseif(NOT _${subproj}_available)
         c4_dbg("required subproject ${subproj} is unknown. Importing...")
+        if(_EXCLUDE_FROM_ALL)
+            set(excl EXCLUDE_FROM_ALL)
+        endif()
         # forward c4 compile flags
         string(TOUPPER ${subproj} usubproj)
         c4_setg(${usubproj}_CXX_FLAGS_FWD "${${_c4_uprefix}CXX_FLAGS}")
@@ -1224,13 +1227,13 @@ function(c4_require_subproject subproj)
         if(_REMOTE)
             c4_log("importing subproject ${subproj} (REMOTE)... ${_REMOTE}")
             _c4_mark_subproject_imported(${subproj} ${_r}/src ${_r}/build ${_INCORPORATE})
-            c4_import_remote_proj(${subproj} ${_r} REMOTE ${_REMOTE} OVERRIDE ${_OVERRIDE})
+            c4_import_remote_proj(${subproj} ${_r} REMOTE ${_REMOTE} OVERRIDE ${_OVERRIDE} ${excl})
             _c4_get_subproject_property(${subproj} SRC_DIR _srcdir)
             c4_dbg("finished importing subproject ${subproj} (REMOTE, SRC_DIR=${_srcdir}).")
         elseif(_SUBDIRECTORY)
             c4_log("importing subproject ${subproj} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             _c4_mark_subproject_imported(${subproj} ${_SUBDIRECTORY} ${_r}/build ${_INCORPORATE})
-            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build OVERRIDE ${_OVERRIDE})
+            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build OVERRIDE ${_OVERRIDE} ${excl})
             set(_srcdir ${_SUBDIRECTORY})
             c4_dbg("finished importing subproject ${subproj} (SUBDIRECTORY=${_SUBDIRECTORY}).")
         else()
@@ -1247,6 +1250,7 @@ endfunction(c4_require_subproject)
 function(c4_add_subproj proj dir bindir)
     _c4_handle_args(_ARGS ${ARGN}
         _ARGS0
+            EXCLUDE_FROM_ALL # forward to add_subdirectory()
         _ARGS1
         _ARGSN
             OVERRIDE   # a list of variable name+value pairs
@@ -1271,8 +1275,12 @@ function(c4_add_subproj proj dir bindir)
         c4_override(${varname} ${varvalue})
     endwhile()
     #
+    if(_EXCLUDE_FROM_ALL)
+        set(excl EXCLUDE_FROM_ALL)
+    endif()
+    #
     c4_dbg("adding subproj: ${prev_subproject}->${_c4_curr_subproject}. path=${_c4_curr_path}")
-    add_subdirectory(${dir} ${bindir})
+    add_subdirectory(${dir} ${bindir} ${excl})
     # pop the subproj from the current path
     set(_c4_curr_subproject ${prev_subproject})
     set(_c4_curr_path ${prev_path})
@@ -1343,6 +1351,7 @@ endfunction()
 function(c4_import_remote_proj name dir)
     _c4_handle_args(_ARGS ${ARGN}
         _ARGS0
+            EXCLUDE_FROM_ALL
         _ARGS1
         _ARGSN
             OVERRIDE   # a list of variable name+value pairs
@@ -1360,7 +1369,10 @@ function(c4_import_remote_proj name dir)
     set(srcdir_in_out "${dir}")
     c4_download_remote_proj(${name} srcdir_in_out ${_REMOTE})
     _c4_set_subproject_property(${name} SRC_DIR "${srcdir_in_out}")
-    c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build" OVERRIDE ${_OVERRIDE})
+    if(_EXCLUDE_FROM_ALL)
+        set(excl EXCLUDE_FROM_ALL)
+    endif()
+    c4_add_subproj(${name} "${srcdir_in_out}" "${dir}/build" OVERRIDE ${_OVERRIDE} ${excl})
     #
     if(_SET_FOLDER_TARGETS)
         c4_set_folder_remote_project_targets(${_SET_FOLDER_TARGETS})
@@ -2576,7 +2588,9 @@ ${ARGN}
                   gtest_force_shared_crt ON
                   gtest_build_samples OFF
                   gtest_build_tests OFF
-                SET_FOLDER_TARGETS ext gtest gtest_main)
+                SET_FOLDER_TARGETS ext gtest gtest_main
+                EXCLUDE_FROM_ALL
+                )
         endif()
     endif()
     if(_DOCTEST)
@@ -2590,6 +2604,7 @@ ${ARGN}
                   DOCTEST_WITH_TESTS OFF
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
                 SET_FOLDER_TARGETS ext doctest_with_main
+                EXCLUDE_FROM_ALL
                 )
         endif()
     endif()
@@ -3246,7 +3261,9 @@ function(c4_setup_benchmarking)
             BENCHMARK_ENABLE_TESTING OFF
             BENCHMARK_ENABLE_EXCEPTIONS OFF
             BENCHMARK_ENABLE_LTO OFF
-          SET_FOLDER_TARGETS ext benchmark benchmark_main)
+          SET_FOLDER_TARGETS ext benchmark benchmark_main
+          EXCLUDE_FROM_ALL
+          )
         #
         if((CMAKE_CXX_COMPILER_ID STREQUAL GNU) OR (CMAKE_COMPILER_IS_GNUCC))
             target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
