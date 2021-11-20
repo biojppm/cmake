@@ -44,6 +44,14 @@ class injfile:
         return self.filename
 
 
+class injcode:
+    """direct code to inject"""
+    def __init__(self, code):
+        self.code = code
+    def __str__(self):
+        return self.code
+
+
 def catfiles(filenames, rootdir,
              include_regexes,
              definition_macro,
@@ -107,6 +115,8 @@ def catfiles(filenames, rootdir,
             with open(filename) as file:
                 for line in file.readlines():
                     out += f"// {line}"
+        elif isinstance(entry, injcode):
+            out += f"\n{entry.code}\n"
         elif isinstance(entry, injfile):
             entry.filename = f"{rootdir}/{entry.filename}"
             to_inject[entry.incpattern] = entry
