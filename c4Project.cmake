@@ -385,11 +385,22 @@ function(c4_project)
     c4_setup_static_analysis(${_c4_uprefix}DEV)
     c4_setup_doxygen(${_c4_uprefix}DEV)
 
-    # these are default compilation flags
+    # option to use libc++
+    option(${_c4_uprefix}USE_LIBCXX "use libc++ instead of the default standard library" OFF)
+    if(${_c4_uprefix}USE_LIBCXX)
+        list(APPEND ${_c4_uprefix}CXX_FLAGS_FWD -stdlib=libc++)
+        list(APPEND ${_c4_uprefix}CXX_LINKER_FLAGS_FWD -lc++)
+    endif()
+
+    # default compilation flags
     set(${_c4_uprefix}CXX_FLAGS "${${_c4_uprefix}CXX_FLAGS_FWD}" CACHE STRING "compilation flags for ${_c4_prefix} targets")
+    set(${_c4_uprefix}CXX_LINKER_FLAGS "${${_c4_uprefix}CXX_LINKER_FLAGS_FWD}" CACHE STRING "linker flags for ${_c4_prefix} targets")
+    c4_dbg_var_if(${_c4_uprefix}CXX_LINKER_FLAGS_FWD)
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_FWD)
+    c4_dbg_var_if(${_c4_uprefix}CXX_LINKER_FLAGS)
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS)
-    # These are dev compilation flags, appended to the project's flags. They
+
+    # Dev compilation flags, appended to the project's flags. They
     # are enabled when in dev mode, but provided as a (default-disabled)
     # option when not in dev mode
     c4_dbg_var_if(${_c4_uprefix}CXX_FLAGS_OPT_FWD)
@@ -1222,6 +1233,7 @@ function(c4_require_subproject subproj)
         string(TOUPPER ${subproj} usubproj)
         c4_setg(${usubproj}_CXX_FLAGS_FWD "${${_c4_uprefix}CXX_FLAGS}")
         c4_setg(${usubproj}_CXX_FLAGS_OPT_FWD "${${_c4_uprefix}CXX_FLAGS_OPT}")
+        c4_setg(${usubproj}_CXX_LINKER_FLAGS_FWD "${${_c4_uprefix}CXX_LINKER_FLAGS}")
         # root dir
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproj})
         if(_REMOTE)
@@ -1757,7 +1769,9 @@ function(c4_add_target target)
             else()
                 _c4_set_target_folder(${target} "")
             endif()
+            # cxx standard
             c4_target_inherit_cxx_standard(${target})
+            # compile flags
             set(_more_flags
                 ${${_c4_uprefix}CXX_FLAGS}
                 ${${_c4_uprefix}C_FLAGS}
@@ -1770,6 +1784,17 @@ function(c4_add_target target)
                 c4_dbg("${target}: COMPILE_FLAGS=${_more_flags}")
                 target_compile_options(${target} PRIVATE "${_more_flags}")
             endif()
+            # linker flags
+            set(_link_flags ${${_c4_uprefix}CXX_LINKER_FLAGS})
+            if(_link_flags)
+                get_target_property(_flags ${target} LINK_OPTIONS)
+                if(_flags)
+                    set(_link_flags ${_flags};${_more_flags})
+                endif()
+                c4_dbg("${target}: LINKER_FLAGS=${_link_flags}")
+                target_link_options(${target} PUBLIC "${_link_flags}")
+            endif()
+            # static analysis
             if(${_c4_uprefix}LINT)
                 c4_static_analysis_target(${target} "${_FOLDER}" lint_targets)
             endif()
