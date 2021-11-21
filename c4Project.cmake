@@ -388,8 +388,11 @@ function(c4_project)
     # option to use libc++
     option(${_c4_uprefix}USE_LIBCXX "use libc++ instead of the default standard library" OFF)
     if(${_c4_uprefix}USE_LIBCXX)
-        list(APPEND ${_c4_uprefix}CXX_FLAGS_FWD -stdlib=libc++)
-        list(APPEND ${_c4_uprefix}CXX_LINKER_FLAGS_FWD -lc++)
+        if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
+            c4_log("using libc++")
+        else()
+            c4_err("libc++ can only be used with clang")
+        endif()
     endif()
 
     # default compilation flags
@@ -1793,6 +1796,12 @@ function(c4_add_target target)
                 endif()
                 c4_dbg("${target}: LINKER_FLAGS=${_link_flags}")
                 target_link_options(${target} PUBLIC "${_link_flags}")
+            endif()
+            # libc++
+            if(${_c4_uprefix}USE_LIBCXX)
+                c4_dbg("${target}: use libc++: cxxflags+=-stdlib=libc++ linkflags+=-lc++")
+                target_compile_options(${target} PUBLIC -stdlib=libc++)
+                target_link_options(${target} PUBLIC -lc++)
             endif()
             # static analysis
             if(${_c4_uprefix}LINT)
