@@ -813,7 +813,7 @@ endif()
 function(c4_pack_project)
     # if this is the top-level project... pack it.
     if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-        c4_log("packing the project")
+        c4_log("packing the project: ${ARGN}")
         c4_set_default_pack_properties(${ARGN})
         include(CPack)
     endif()
@@ -873,19 +873,20 @@ function(c4_set_default_pack_properties)
     elseif(EXISTS "${pd}/LICENSE.txt")
         c4_setg(CPACK_RESOURCE_FILE_LICENSE "${pd}/LICENSE.txt")
     endif()
-    c4_setg(CPACK_PACKAGE_VERSION "${${_c4_prefix}_VERSION_FULL}")
-    c4_setg(CPACK_PACKAGE_VERSION_MAJOR "${${_c4_prefix}_VERSION_MAJOR}")
-    c4_setg(CPACK_PACKAGE_VERSION_MINOR "${${_c4_prefix}_VERSION_MINOR}")
-    c4_setg(CPACK_PACKAGE_VERSION_PATCH "${${_c4_prefix}_VERSION_PATCH}")
-    c4_setg(CPACK_PACKAGE_VERSION_TWEAK "${${_c4_prefix}_VERSION_TWEAK_FULL}")
-    c4_setg(CPACK_PACKAGE_INSTALL_DIRECTORY "ryml-${${_c4_prefix}_VERSION_FULL}")
-    c4_setg(CPACK_PACKAGE_FILE_NAME "${_c4_prefix}-${${_c4_prefix}_VERSION_FULL}-${platform_tag}${build_tag}")
+    c4_proj_get_version("${pd}" version_tag full major minor patch tweak)
+    c4_setg(CPACK_PACKAGE_VERSION "${full}")
+    c4_setg(CPACK_PACKAGE_VERSION_MAJOR "${major}")
+    c4_setg(CPACK_PACKAGE_VERSION_MINOR "${minor}")
+    c4_setg(CPACK_PACKAGE_VERSION_PATCH "${patch}")
+    c4_setg(CPACK_PACKAGE_VERSION_TWEAK "${tweak}")
+    c4_setg(CPACK_PACKAGE_INSTALL_DIRECTORY "${_c4_prefix}-${version_tag}")
+    c4_setg(CPACK_PACKAGE_FILE_NAME "${_c4_prefix}-${version_tag}-${platform_tag}${build_tag}")
     if(WIN32 AND NOT UNIX)
         # There is a bug in NSI that does not handle full UNIX paths properly.
         # Make sure there is at least one set of four backlashes.
         #c4_setg(CPACK_PACKAGE_ICON "${CMake_SOURCE_DIR}/Utilities/Release\\\\InstallIcon.bmp")
         #c4_setg(CPACK_NSIS_INSTALLED_ICON_NAME "bin\\\\MyExecutable.exe")
-        c4_setg(CPACK_NSIS_DISPLAY_NAME "ryml v${${_c4_prefix}_VERSION_FULL}")
+        c4_setg(CPACK_NSIS_DISPLAY_NAME "${_c4_prefix} ${version_tag}")
         c4_setg(CPACK_NSIS_HELP_LINK "${${_c4_prefix}_HOMEPAGE_URL}")
         c4_setg(CPACK_NSIS_URL_INFO_ABOUT "${${_c4_prefix}_HOMEPAGE_URL}")
         c4_setg(CPACK_NSIS_CONTACT "${${_c4_prefix}_AUTHOR}")
@@ -917,6 +918,12 @@ function(_c4_get_platform_tag tag_)
         c4_err("not implemented")
     endif()
     set(${tag_} ${tag} PARENT_SCOPE)
+endfunction()
+
+
+function(_c4_extract_version_tag tag_)
+    # git describe --tags  <commit-id> for unannotated tags
+    # git describe --contains <commit>
 endfunction()
 
 
@@ -1020,34 +1027,166 @@ endmacro()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-# WIP, under construction
-function(c4_proj_get_version dir)
-
+function(c4_proj_get_version dir tag_o full_o major_o minor_o patch_o tweak_o)
     if("${dir}" STREQUAL "")
         set(dir ${CMAKE_CURRENT_LIST_DIR})
     endif()
-
-    # http://xit0.org/2013/04/cmake-use-git-branch-and-commit-details-in-project/
-
-    # Get the current working branch
-    execute_process(COMMAND git rev-parse --abbrev-ref HEAD
-        WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE branch #${_c4_uprefix}GIT_BRANCH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    # Get the latest abbreviated commit hash of the working branch
-    execute_process(COMMAND git log -1 --format=%h
-        WORKING_DIRECTORY ${dir}
-        OUTPUT_VARIABLE hash ${_c4_uprefix}GIT_COMMIT_HASH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    # also: git diff --stat
-    # also: git diff
-    # also: git status --ignored
-
+    find_program(GIT git REQUIRED)
+    function(_c4pgv_get_cmd outputvar)
+        execute_process(COMMAND ${ARGN}
+            WORKING_DIRECTORY ${dir}
+            ERROR_VARIABLE error
+            ERROR_STRIP_TRAILING_WHITESPACE
+            OUTPUT_VARIABLE output
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        c4_dbg("output of ${ARGN}: ${outputvar}=${output} [@${dir}]")
+        set(${outputvar} ${output} PARENT_SCOPE)
+    endfunction()
+    # do we have any tags yet?
+    _c4pgv_get_cmd(head_desc ${GIT} describe HEAD)
+    _c4pgv_get_cmd(branch ${GIT} rev-parse --abbrev-ref HEAD)
+    if(NOT head_desc)
+        c4_dbg("the repo does not have any tags yet")
+        _c4pgv_get_cmd(commit_hash ${GIT} rev-parse --short HEAD)
+        set(otag "${commit_hash}-${branch}")
+    else()
+        c4_dbg("there are tags!")
+        # is the current commit tagged?
+        _c4pgv_get_cmd(commit_hash_full ${GIT} rev-parse HEAD)
+        _c4pgv_get_cmd(commit_desc ${GIT} describe --exact-match ${commit_hash_full})
+        if(commit_desc)
+            c4_dbg("current commit is tagged")
+            # is the tag a version tag?
+            _c4_parse_version_tag(${commit_desc} is_version major minor patch tweak more)
+            if(is_version)
+                c4_dbg("current commit's tag is a version tag")
+                # is the tag the current version tag?
+                if("${is_version}" VERSION_EQUAL "${${_c4_prefix}_VERSION_FULL}")
+                    c4_dbg("this is the official version commit")
+                else()
+                    c4_dbg("this is a different version")
+                endif()
+                set(otag "${commit_desc}")
+            else()
+                c4_dbg("this is a non-version tag")
+                set(otag "${commit_desc}-${branch}")
+            endif()
+        else(commit_desc)
+            # is the latest tag in the head_desc a version tag?
+            string(REGEX REPLACE "(.*)-[0-9]+-[0-9a-f]+" "\\1" latest_tag "${head_desc}")
+            c4_dbg("current commit is NOT tagged. latest tag=${latest_tag}")
+            _c4_parse_version_tag(${latest_tag} latest_tag_is_a_version major minor patch tweak more)
+            if(latest_tag_is_a_version)
+                c4_dbg("latest tag is a version. stick to the head description")
+                set(otag "${head_desc}-${branch}")
+                set(full "${latest_tag_is_a_version}")
+            else()
+                c4_dbg("latest tag is NOT a version. Use the current project version from cmake + the output of git describe")
+                set(otag "v${full}-${head_desc}-${branch}")
+                set(full "${${_c4_prefix}_VERSION_FULL}")
+                set(major "${${_c4_prefix}_VERSION_MAJOR}")
+                set(minor "${${_c4_prefix}_VERSION_MINOR}")
+                set(patch "${${_c4_prefix}_VERSION_PATCH}")
+                set(tweak "${${_c4_prefix}_VERSION_TWEAK}")
+            endif()
+        endif(commit_desc)
+    endif(NOT head_desc)
+    c4_log("cpack tag: ${otag}")
+    set(${tag_o}   "${otag}"  PARENT_SCOPE)
+    set(${full_o}  "${full}"  PARENT_SCOPE)
+    set(${major_o} "${major}" PARENT_SCOPE)
+    set(${minor_o} "${minor}" PARENT_SCOPE)
+    set(${patch_o} "${patch}" PARENT_SCOPE)
+    set(${tweak_o} "${tweak}" PARENT_SCOPE)
+    # also: dirty index?
+    #   https://stackoverflow.com/questions/2657935/checking-for-a-dirty-index-or-untracked-files-with-git
 endfunction()
+
+
+function(_c4_parse_version_tag tag is_version major minor patch tweak more)
+    # does the tag match a four-part version?
+    string(REGEX MATCH "v?([0-9]+)([\._][0-9]+)([\._][0-9]+)([\._][0-9]+)(.*)" match "${tag}")
+    function(_triml arg out) # trim the leading [\._] from the left
+        if("${arg}" STREQUAL "")
+            set(${out} "" PARENT_SCOPE)
+        else()
+            string(REGEX REPLACE "[\._](.*)" "\\1" ret "${arg}")
+            set("${out}" "${ret}" PARENT_SCOPE)
+        endif()
+    endfunction()
+    if(match)
+        set(${is_version} ${tag} PARENT_SCOPE)
+        _triml("${CMAKE_MATCH_1}" major_v)
+        _triml("${CMAKE_MATCH_2}" minor_v)
+        _triml("${CMAKE_MATCH_3}" patch_v)
+        _triml("${CMAKE_MATCH_4}" tweak_v)
+        _triml("${CMAKE_MATCH_5}" more_v)
+    else()
+        # does the tag match a three-part version?
+        string(REGEX MATCH "v?([0-9]+)([\._][0-9]+)([\._][0-9]+)(.*)" match "${tag}")
+        if(match)
+            set(${is_version} ${tag} PARENT_SCOPE)
+            _triml("${CMAKE_MATCH_1}" major_v)
+            _triml("${CMAKE_MATCH_2}" minor_v)
+            _triml("${CMAKE_MATCH_3}" patch_v)
+            _triml("${CMAKE_MATCH_4}" more_v)
+        else()
+            # does the tag match a two-part version?
+            string(REGEX MATCH "v?([0-9]+)([\._][0-9]+)(.*)" match "${tag}")
+            if(match)
+                set(${is_version} ${tag} PARENT_SCOPE)
+                _triml("${CMAKE_MATCH_1}" major_v)
+                _triml("${CMAKE_MATCH_2}" minor_v)
+                _triml("${CMAKE_MATCH_3}" more_v)
+            else()
+                # not a version!
+                set(${is_version} FALSE PARENT_SCOPE)
+            endif()
+        endif()
+    endif()
+    set(${major} "${major_v}" PARENT_SCOPE)
+    set(${minor} "${minor_v}" PARENT_SCOPE)
+    set(${patch} "${patch_v}" PARENT_SCOPE)
+    set(${tweak} "${tweak_v}" PARENT_SCOPE)
+    set(${more} "${more_v}" PARENT_SCOPE)
+endfunction()
+
+
+#function(testvtag)
+#    set(err FALSE)
+#    function(cmp value expected)
+#        if(NOT ("${${value}}" STREQUAL "${expected}"))
+#            c4_log("${tag}: error: expected ${value}=='${expected}': '${${value}}'=='${expected}'")
+#            set(err TRUE PARENT_SCOPE)
+#        else()
+#            c4_log("${tag}: ok: expected ${value}=='${expected}': '${${value}}'=='${expected}'")
+#        endif()
+#    endfunction()
+#    function(verify tag is_version_e major_e minor_e patch_e tweak_e more_e)
+#        _c4_parse_version_tag(${tag} is_version major minor patch tweak more)
+#        cmp(is_version ${is_version_e})
+#        cmp(major "${major_e}")
+#        cmp(minor "${minor_e}")
+#        cmp(patch "${patch_e}")
+#        cmp(tweak "${tweak_e}")
+#        cmp(more "${more_e}")
+#        set(err ${err} PARENT_SCOPE)
+#    endfunction()
+#    verify(v12.34.567.89-rcfoo TRUE 12 34 567 89 -rcfoo)
+#    verify(v12_34_567_89-rcfoo TRUE 12 34 567 89 -rcfoo)
+#    verify(v12.34.567.89       TRUE 12 34 567 89 "")
+#    verify(v12_34_567_89       TRUE 12 34 567 89 "")
+#    verify(v12.34.567-rcfoo    TRUE 12 34 567 "" -rcfoo)
+#    verify(v12_34_567-rcfoo    TRUE 12 34 567 "" -rcfoo)
+#    verify(v12.34.567          TRUE 12 34 567 "" "")
+#    verify(v12_34_567          TRUE 12 34 567 "" "")
+#    verify(v12_34              TRUE 12 34 ""  "" "")
+#    verify(v12.34              TRUE 12 34 ""  "" "")
+#    if(err)
+#        c4_err("test failed")
+#    endif()
+#endfunction()
+#testvtag()
 
 
 #------------------------------------------------------------------------------
