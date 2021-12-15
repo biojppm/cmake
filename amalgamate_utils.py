@@ -1,4 +1,5 @@
 import re
+import os
 
 
 class cmtfile:
@@ -50,6 +51,12 @@ class injcode:
         self.code = code
     def __str__(self):
         return self.code
+
+
+class onlyif:
+    def __init__(self, condition, obj):
+        self.condition = condition
+        self.obj = obj
 
 
 def catfiles(filenames, rootdir,
@@ -104,6 +111,11 @@ def catfiles(filenames, rootdir,
         return filename.endswith(".cpp") or filename.endswith(".c")
     out = ""
     for entry in filenames:
+        if isinstance(entry, onlyif):
+            if entry.condition:
+                entry = entry.obj
+            else:
+                continue
         if isinstance(entry, ignfile):
             pass
         elif isinstance(entry, cmttext):
@@ -165,3 +177,35 @@ def include_only_first(file_contents: str):
         out += line
         out += "\n"
     return out
+
+
+def mkparser(**bool_args):
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("output", default=None, nargs='?', help="output file. defaults to stdout")
+    for k, (default, help) in bool_args.items():
+        # https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+        feature = parser.add_mutually_exclusive_group(required=False)
+        yes = '--' + k
+        no = '--no-' + k
+        if default:
+            yes_default = "this is the default"
+            no_default = f"the default is {yes}"
+        else:
+            yes_default = f"the default is {no}"
+            no_default = "this is the default"
+        feature.add_argument(yes, dest=k, action='store_true', help=f"{help}. {yes_default}.")
+        feature.add_argument(no, dest=k, action='store_false', help=f"{help}. {no_default}.")
+        parser.set_defaults(**{k: default})
+    return parser
+
+
+def file_put_contents(filename: str, contents: str):
+    if filename is None:
+        print(contents)
+    else:
+        dirname = os.path.dirname(filename)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
+        with open(filename, "w") as output:
+            output.write(contents)
