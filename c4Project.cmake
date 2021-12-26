@@ -2554,6 +2554,9 @@ include(CMakeFindDependencyMacro)
             FILE "${targets_file}"
             NAMESPACE "${_NAMESPACE}"
             DESTINATION "${cfg_dst}")
+        export(EXPORT ${_TARGET}
+            FILE "${targets_file}"
+            NAMESPACE "${_NAMESPACE}")
         #
         # Config files
         # the module below has nice docs in it; do read them
