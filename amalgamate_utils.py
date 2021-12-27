@@ -109,6 +109,11 @@ def catfiles(filenames, rootdir,
 """
     def is_src(filename):
         return filename.endswith(".cpp") or filename.endswith(".c")
+    def cmtline(line, more=""):
+        if len(line.strip()) > 0:
+            return f"// {line}{more}"
+        else:
+            return "//\n"
     out = ""
     for entry in filenames:
         if isinstance(entry, onlyif):
@@ -120,13 +125,13 @@ def catfiles(filenames, rootdir,
             pass
         elif isinstance(entry, cmttext):
             for line in entry.text.split("\n"):
-                out += f"// {line}\n"
+                out += cmtline(line, "\n")
         elif isinstance(entry, cmtfile):
             filename = f"{rootdir}/{entry.filename}"
             out += banner(entry.filename)
             with open(filename) as file:
                 for line in file.readlines():
-                    out += f"// {line}"
+                    out += cmtline(line)
         elif isinstance(entry, injcode):
             out += f"\n{entry.code}\n"
         elif isinstance(entry, injfile):
