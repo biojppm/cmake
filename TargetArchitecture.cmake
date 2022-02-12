@@ -24,6 +24,10 @@ function(c4_get_architecture_defines output_var)
         set(defines __ppc64__)
     elseif("${arch}" STREQUAL "ia64")
         set(defines __ia64__)
+    elseif("${arch}" STREQUAL "riscv64")
+        set(defines __riscv64__)
+    elseif("${arch}" STREQUAL "riscv32")
+        set(defines __riscv32__)
     else()
         message(FATAL_ERROR "unknown target architecture: ${arch}")
     endif()
@@ -79,6 +83,12 @@ function(c4_get_target_cpu_architecture output_var)
        #error cmake_ARCH ppc64
    #else
        #error cmake_ARCH ppc32
+   #endif
+#elif defined(__riscv)
+   #if __riscv_xlen == 64
+       #error cmake_ARCH riscv64
+   #else
+       #error cmake_ARCH riscv32
    #endif
 #endif
 #error cmake_ARCH unknown
