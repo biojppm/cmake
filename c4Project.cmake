@@ -3191,7 +3191,7 @@ function(c4_setup_coverage)
     )
     # defaults for the macro arguments
     _c4_handle_arg(INCLUDE src)
-    _c4_handle_arg(EXCLUDE test ext extern src/c4/ext build/ext build/extern)
+    _c4_handle_arg(EXCLUDE bm test ext extern src/c4/ext build/ext build/extern)
     _c4_handle_arg(EXCLUDE_ABS /usr "${CMAKE_BINARY_DIR}")
     _c4_handle_arg(GENHTML_ARGS --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage
         --prefix "'${CMAKE_SOURCE_DIR}'"
@@ -3262,6 +3262,7 @@ function(c4_setup_coverage)
     foreach(exc ${_EXCLUDE_ABS})
         list(APPEND _filters "'${exc}/*'")
     endforeach()
+c4_log("_fikters1=${_filters}")
     #
     set(result ${CMAKE_BINARY_DIR}/lcov/index.html)
     add_custom_target(${_c4_lprefix}coverage
@@ -3293,8 +3294,11 @@ function(c4_setup_coverage)
         c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
         set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
         c4_download_file("https://codecov.io/bash" "${submitcc}")
+c4_log("_fikters2=${_filters}")
         _c4cov_filters(_filters -G -g)
+c4_log("_fikters3=${_filters}")
         set(submit_cmd bash ${submitcc} -Z ${_token} -a '\\-lp' -X gcovout -p ${CMAKE_SOURCE_DIR} ${_filters} ${_silent})
+c4_err("_fikters4=${_filters}")
         add_custom_target(${_subm}
             COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
             COMMAND ${submit_cmd}
