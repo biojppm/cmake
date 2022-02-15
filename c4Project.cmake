@@ -1981,6 +1981,13 @@ function(c4_add_target target)
             target_compile_options(${target} PRIVATE ${_PRIVATE_CFLAGS})
         endif()
 
+        if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
+          (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
+          (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+            c4_dbg("${target}: adding compat include path")
+            target_include_directories(${target} PUBLIC $<BUILD_INTERFACE:${_c4_project_dir}/compat>)
+        endif()
+
     endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
 
     if(compiled_target)
@@ -2779,10 +2786,11 @@ ${ARGN}
               (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
               (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
                 _c4_get_subproject_property(gtest SRC_DIR _gtest_patch_src_dir)
-                apply_patch("${_c4_project_dir}/patchs/gtest_gcc-4.8.patch"
+                apply_patch("${_c4_project_dir}/compat/gtest_gcc-4.8.patch"
                   "${_gtest_patch_src_dir}"
                   "${_gtest_patch_src_dir}/.gtest_gcc-4.8.patch")
                 unset(_gtest_patch_src_dir)
+                target_compile_options(gtest PUBLIC -include ${_c4_project_dir}/compat/c4/gcc-4.8.hpp)
             endif()
         endif()
     endif()
