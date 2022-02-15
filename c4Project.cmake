@@ -23,6 +23,7 @@ include(c4StaticAnalysis)
 include(PrintVar)
 include(c4CatSources)
 include(c4Doxygen)
+include(PatchUtils)
 
 
 #------------------------------------------------------------------------------
@@ -2773,6 +2774,16 @@ ${ARGN}
                 SET_FOLDER_TARGETS ext gtest gtest_main
                 EXCLUDE_FROM_ALL
                 )
+            # old gcc-4.8 support
+            if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
+              (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
+              (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+                _c4_get_subproject_property(gtest SRC_DIR _gtest_patch_src_dir)
+                apply_patch("${_c4_project_dir}/patchs/gtest_gcc-4.8.patch"
+                  "${_gtest_patch_src_dir}"
+                  "${_gtest_patch_src_dir}/.gtest_gcc-4.8.patch")
+                unset(_gtest_patch_src_dir)
+            endif()
         endif()
     endif()
     if(_DOCTEST)
