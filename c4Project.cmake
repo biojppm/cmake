@@ -5,7 +5,7 @@ set(_c4_project_dir  ${CMAKE_CURRENT_LIST_DIR})
 
 
 # "I didn't have time to write a short letter, so I wrote a long one
-# instead." --  Mark Twain
+# instead." -- Mark Twain
 #
 # ... Eg, hopefully this code will be cleaned up. There's a lot of
 # code here that can be streamlined into a more intuitive arrangement.
@@ -380,7 +380,9 @@ function(c4_project)
     else()
         c4_dbg("no API generation: directory does not exist: ${CMAKE_CURRENT_LIST_DIR}/api")
     endif()
-    c4_setup_coverage()
+    if(_c4_is_root_proj)
+        c4_setup_coverage()
+    endif()
     c4_setup_valgrind(${_c4_uprefix}DEV)
     c4_setup_sanitize(${_c4_uprefix}DEV)
     c4_setup_static_analysis(${_c4_uprefix}DEV)
@@ -3203,18 +3205,39 @@ function(c4_setup_coverage)
       _ARGS0  # zero-value macro arguments
       _ARGS1  # one-value macro arguments
       _ARGSN  # multi-value macro arguments
+        COVFLAGS      # coverage compilation flags
         INCLUDE       # patterns to include in the coverage, relative to CMAKE_SOURCE_DIR
         EXCLUDE       # patterns to exclude in the coverage, relative to CMAKE_SOURCE_DIR
         EXCLUDE_ABS   # absolute paths to exclude in the coverage
         GENHTML_ARGS  # options to pass to genhtml
     )
     # defaults for the macro arguments
-    _c4_handle_arg(INCLUDE src)
-    _c4_handle_arg(EXCLUDE test ext extern src/c4/ext build/ext build/extern)
-    _c4_handle_arg(EXCLUDE_ABS /usr "${CMAKE_BINARY_DIR}")
-    _c4_handle_arg(GENHTML_ARGS --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage
-        --prefix "'${CMAKE_SOURCE_DIR}'"
-        --prefix "'${CMAKE_BINARY_DIR}'")
+    set(_genhtml_args "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
+    set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
+    endif()
+    set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
+    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml")
+    set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
+    set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build/ext;build/extern;ext;extern;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
+    set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
+    _c4_handle_arg(COVFLAGS ${${_c4_uprefix}COVERAGE_FLAGS})
+    _c4_handle_arg(INCLUDE ${${_c4_uprefix}COVERAGE_INCLUDE})
+    _c4_handle_arg(EXCLUDE ${${_c4_uprefix}COVERAGE_EXCLUDE})
+    _c4_handle_arg(EXCLUDE_ABS ${${_c4_uprefix}COVERAGE_EXCLUDE_ABS} "${CMAKE_BINARY_DIR}")
+    _c4_handle_arg(GENHTML_ARGS ${${_c4_uprefix}COVERAGE_GENHTML_ARGS})
+    #
+    function(_c4cov_transform_filters var reldir)
+        set(_filters)
+        foreach(pat ${${var}})
+            list(APPEND _filters "'${reldir}${pat}/*'")
+        endforeach()
+        set(${var} ${_filters} PARENT_SCOPE)
+    endfunction()
+    _c4cov_transform_filters(_INCLUDE "${CMAKE_SOURCE_DIR}/")
+    _c4cov_transform_filters(_EXCLUDE "${CMAKE_SOURCE_DIR}/")
+    _c4cov_transform_filters(_EXCLUDE_ABS "")
     #
     function(_c4cov_filters out incflag excflag)
         set(f)
@@ -3234,7 +3257,7 @@ function(c4_setup_coverage)
             _append(${excflag} ${exc})
         endforeach()
         foreach(exc ${_EXCLUDE_ABS})
-            _append(${excflag} "${exc}/*")
+            _append(${excflag} ${exc})
         endforeach()
         set(${out} ${f} PARENT_SCOPE)
     endfunction()
@@ -3251,36 +3274,24 @@ function(c4_setup_coverage)
     find_program(LCOV lcov)
     find_program(GENHTML genhtml)
     find_program(CTEST ctest)
-    set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-        set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
-    endif()
     if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
         c4_err("Coverage tools not available:
     gcov: ${GCOV}
     lcov: ${LCOV}
     genhtml: ${GENHTML}
     ctest: ${CTEST}
-    --coverage flag: ${covflags}")
+    --coverage flags: ${_COVFLAGS}")
     endif()
     #
     add_configuration_type(Coverage
         DEFAULT_FROM DEBUG
-        C_FLAGS ${covflags}
-        CXX_FLAGS ${covflags}
+        C_FLAGS ${_COVFLAGS}
+        CXX_FLAGS ${_COVFLAGS}
         )
     #
     c4_dbg("adding coverage targets")
     option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
     option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
-    #
-    set(_filters)
-    foreach(exc ${_EXCLUDE})
-        list(APPEND _filters "'${CMAKE_SOURCE_DIR}/${exc}/*'")
-    endforeach()
-    foreach(exc ${_EXCLUDE_ABS})
-        list(APPEND _filters "'${exc}/*'")
-    endforeach()
     #
     set(result ${CMAKE_BINARY_DIR}/lcov/index.html)
     add_custom_target(${_c4_lprefix}coverage
