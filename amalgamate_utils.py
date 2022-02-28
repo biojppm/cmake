@@ -95,7 +95,7 @@ def catfiles(filenames, rootdir,
             return append_file(entry.filename)
     def append_file(filename, guard=None):
         s = ""
-        with open(filename) as f:
+        with open(filename, encoding="utf8") as f:
             for line in f.readlines():
                 for rx in include_regexes:
                     match = rx.match(line)
@@ -130,7 +130,7 @@ def catfiles(filenames, rootdir,
         elif isinstance(entry, cmtfile):
             filename = f"{rootdir}/{entry.filename}"
             out += banner(entry.filename)
-            with open(filename) as file:
+            with open(filename, encoding="utf8") as file:
                 for line in file.readlines():
                     out += cmtline(line)
         elif isinstance(entry, injcode):
@@ -213,5 +213,5 @@ def file_put_contents(filename: str, contents: str):
         dirname = os.path.dirname(filename)
         if dirname:
             os.makedirs(dirname, exist_ok=True)
-        with open(filename, "w") as output:
+        with open(filename, "w", encoding="utf8") as output:
             output.write(contents)
