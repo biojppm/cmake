@@ -64,6 +64,7 @@ def catfiles(filenames, rootdir,
              definition_macro,
              repo,
              result_incguard):
+    file_re = re.compile('[-./]')
     sepb = "//" + ("**" * 40)
     sepf = "//" + ("--" * 40)
     to_inject = {}
@@ -74,7 +75,7 @@ def catfiles(filenames, rootdir,
         return f"\n\n// (end {repo}/{s})\n"
     def incguard(filename):
         return custom_include_guards.get(filename,
-                                         f"{filename.replace('.','_').replace('/','_').upper()}_")
+                                         f"{file_re.sub('_', filename).upper()}_")
     def replace_include(rx, match, line, guard):
         line = line.rstrip()
         incl = match.group(1)
