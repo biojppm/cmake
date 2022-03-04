@@ -1819,6 +1819,7 @@ function(c4_add_target target)
 	    set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
+            set_target_properties(${target} PROPERTIES VERSION ${${_c4_prefix}_VERSION})
         elseif(${_LIBRARY})
             c4_dbg("adding library: ${target}")
             set(_blt ${C4_LIBRARY_TYPE})  # build library type
@@ -1862,13 +1863,12 @@ function(c4_add_target target)
                         c4_set_target_prop(${target} SHARED_EXPORTS ${_SHARED_EXPORTS})
                     endif()  # shared lib
                 endif() # win32
+                set_target_properties(${target} PROPERTIES SO_VERSION ${${_c4_prefix}_VERSION})
             endif() # interface or lib
             if(NOT target_is_prefixed)
                 add_library(${_c4_prefix}::${target} ALIAS ${target})
             endif()
-            set_target_properties(${target} PROPERTIES SO_VERSION ${${_c4_prefix}_VERSION})
         endif(${_EXECUTABLE})
-        set_target_properties(${target} PROPERTIES VERSION ${${_c4_prefix}_VERSION})
 
         if(src_mode STREQUAL "PUBLIC")
             c4_add_target_sources(${target}
