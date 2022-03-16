@@ -3220,7 +3220,7 @@ function(c4_setup_coverage)
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
     set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml")
     set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
-    set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build/ext;build/extern;ext;extern;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
+    set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
     _c4_handle_arg(COVFLAGS ${${_c4_uprefix}COVERAGE_FLAGS})
     _c4_handle_arg(INCLUDE ${${_c4_uprefix}COVERAGE_INCLUDE})
@@ -3293,6 +3293,7 @@ function(c4_setup_coverage)
     option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
     option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
     #
+    separate_arguments(_GENHTML_ARGS NATIVE_COMMAND "${_GENHTML_ARGS}")
     set(result ${CMAKE_BINARY_DIR}/lcov/index.html)
     add_custom_target(${_c4_lprefix}coverage
         BYPRODUCTS ${result}
@@ -3301,12 +3302,13 @@ function(c4_setup_coverage)
         COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run || echo "Failed running the tests. Proceeding with coverage, but results may be affected or even empty."
         COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
         COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-        COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov ${_filters}
+        COMMAND ${LCOV} -q --remove final.lcov --output-file final.lcov
         COMMAND ${GENHTML} final.lcov -o lcov ${_GENHTML_ARGS}
         COMMAND echo "Coverage report: ${result}"
         DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "${_c4_prefix} coverage: Running LCOV. Report at ${result}"
+        VERBATIM
         )
     #
     if(${_c4_uprefix}COVERAGE_CODECOV)
