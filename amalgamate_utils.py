@@ -153,6 +153,8 @@ def catfiles(filenames, rootdir,
                     out += append_file(filename)
             out += footer(entry)
     return f"""#ifndef {result_incguard}
+#define {result_incguard}
+
 {out}
 #endif /* {result_incguard} */
 """
