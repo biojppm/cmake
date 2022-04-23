@@ -3515,6 +3515,7 @@ function(c4_add_target_benchmark target casename)
         WORKDIR # working directory
         FILTER  # benchmark patterns to filter
         UMBRELLA_TARGET
+        RESULTS_FILE
     )
     set(optnarg
         ARGS
@@ -3524,6 +3525,9 @@ function(c4_add_target_benchmark target casename)
     set(name "${target}-${casename}")
     set(rdir "${CMAKE_CURRENT_BINARY_DIR}/bm-results")
     set(rfile "${rdir}/${name}.json")
+    if(_RESULTS_FILE)
+        set(${_RESULTS_FILE} "${rfile}" PARENT_SCOPE)
+    endif()
     if(NOT EXISTS "${rdir}")
         file(MAKE_DIRECTORY "${rdir}")
     endif()
@@ -3536,7 +3540,8 @@ function(c4_add_target_benchmark target casename)
         "${name}"
         "${_WORKDIR}"
         "saving results in ${rfile}"
-        ${args_fwd})
+        ${args_fwd}
+        OUTPUT_FILE ${rfile})
     if(_UMBRELLA_TARGET)
         add_dependencies(${_UMBRELLA_TARGET} "${name}")
     endif()
@@ -3544,6 +3549,14 @@ endfunction()
 
 
 function(c4_add_benchmark target casename work_dir comment)
+    set(opt0arg
+    )
+    set(opt1arg
+        OUTPUT_FILE
+    )
+    set(optnarg
+    )
+    cmake_parse_arguments("" "${opt0arg}" "${opt1arg}" "${optnarg}" ${ARGN})
     if(NOT TARGET ${target})
         c4_err("target ${target} does not exist...")
     endif()
@@ -3565,6 +3578,10 @@ function(c4_add_benchmark target casename work_dir comment)
                 COMMAND ${c})
         endif()
     endif()
+    if(_OUTPUT_FILE)
+        set(_OUTPUT_FILE BYPRODUCTS ${_OUTPUT_FILE})
+        set(_OUTPUT_FILE) # otherwise the benchmarks run everytime when building depending targets
+    endif()
     add_custom_target(${casename}
         ${cpupow_before}
         # this is useful to show the target file (you cannot echo generator variables)
@@ -3573,6 +3590,7 @@ function(c4_add_benchmark target casename work_dir comment)
         COMMAND "${exe}" ${ARGN}
         ${cpupow_after}
         VERBATIM
+        ${_OUTPUT_FILE}
         WORKING_DIRECTORY "${work_dir}"
         DEPENDS ${target}
         COMMENT "${_c4_lcprefix}: running benchmark ${target}, case ${casename}: ${comment}"

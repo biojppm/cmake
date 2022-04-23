@@ -103,32 +103,35 @@ def load_json(filename):
 
 
 def main():
+    def _common_args(parser):
+        parser.add_argument("-m", "--manifest", type=str, default="", help="enable debug mode")
+        parser.add_argument("--debug", action="store_true", help="enable debug mode")
     #
     parser = argparse.ArgumentParser(description="Browse benchmark results", prog="bm")
-    parser.add_argument("--debug", action="store_true", help="enable debug mode")
+    _common_args(parser)
     subparsers = parser.add_subparsers()
     #
     sp = subparsers.add_parser("create", help="create benchmark collection")
-    sp.set_defaults(func=BenchmarkCollection.create_new)
+    _common_args(sp)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
     sp.add_argument("filename", type=str, help="the YAML file with the benchmark specs")
     sp.add_argument("target", type=str, help="the directory to store the results")
     #
     sp = subparsers.add_parser("meta", help="get the required meta-information: cpu info, commit data")
-    sp.set_defaults(func=add_meta)
+    _common_args(sp)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
     sp.add_argument("results", type=str, help="the directory with the results")
     sp.add_argument("cmakecache", type=str, help="the path to the CMakeCache.txt file used to build the benchmark binaries")
     sp.add_argument("build_type", type=str, help="the build type, eg Release Debug MinSizeRel RelWithDebInfo")
     #
     sp = subparsers.add_parser("add", help="add benchmark results")
-    sp.set_defaults(func=add_results)
+    _common_args(sp)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
     sp.add_argument("results", type=str, help="the directory with the results")
     sp.add_argument("target", type=str, help="the directory to store the results")
     #
     sp = subparsers.add_parser("serve", help="serve benchmark results")
-    sp.set_defaults(func=serve)
+    _common_args(sp)
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
     sp.add_argument("bmdir", type=os.path.abspath, default=os.getcwd(), help="the directory with the results. default=.")
     sp.add_argument("-H", "--host", type=str, default="localhost", help="host. default=%(default)s")
@@ -136,12 +139,13 @@ def main():
     #
     sp = subparsers.add_parser("export", help="export static html")
     sp.set_defaults(func=freeze)
-    sp.add_argument("--debug", action="store_true", help="enable debug mode")
     sp.add_argument("bmdir", type=os.path.abspath, default=os.getcwd(), help="the directory with the results. default=.")
+    _common_args(sp)
     #
     sp = subparsers.add_parser("deps", help="install server dependencies")
     sp.set_defaults(func=lambda _: download_deps())
     sp.add_argument("--debug", action="store_true", help="enable debug mode")
+    _common_args(sp)
     #
     args = parser.parse_args(sys.argv[1:] if len(sys.argv) > 1 else ["serve"])
     if args.debug:
@@ -151,11 +155,15 @@ def main():
 
 def get_manifest(args):
     bmdir = os.path.abspath(args.bmdir)
-    manif_yml = os.path.join(bmdir, "manifest.yml")
-    manif_json = os.path.join(bmdir, "manifest.json")
-    manif = load_yml_file(manif_yml)
-    dump_json(manif, manif_json)
-    return manif
+    if not args.manifest:
+        manifest_yml = os.path.join(bmdir, "manifest.yml")
+    else:
+        if not os.path.isabs(args.manifest):
+            manifest_yml = os.path.join(os.getcwd(), args.manifest)
+    manifest_json = os.path.join(os.path.dirname(manifest.yml), "manifest.json")
+    manifest = load_yml_file(manifest_yml)
+    dump_json(manifest, manifest_json)
+    return manifest
 
 
 # ------------------------------------------------------------------------------
@@ -679,10 +687,14 @@ class BenchmarkPanel:
     def __init__(self, runs, bm_meta_cls=None):
         self.runs = [BenchmarkRun(a, bm_meta_cls) for a in runs]
 
+    def plot_bars(self, title):
+        plot_benchmarks_as_lines(title, *self.runs)
+
+
     def plot_all_lines(self, title):
-        plot_bm(title, *self.runs,
-            transform=lambda r: r.meta.num_pixels,
-            line_title_transform=lambda r: r.meta.shortname)
+        plot_benchmarks_as_lines(title, *self.runs,
+                                 transform=lambda r: r.meta.num_pixels,
+                                 line_title_transform=lambda r: r.meta.shortname)
 
 
 # ------------------------------------------------------------------------------
@@ -690,7 +702,16 @@ class BenchmarkPanel:
 # ------------------------------------------------------------------------------
 
 
-def plot_bm(title, *bm, transform=None,
+def plot_benchmarks_as_bars(title, *bm, transform=None):
+    from bokeh.models import ColumnDataSource, FactorRange
+    from bokeh.plotting import figure, show
+    from bokeh.transform import factor_cmap
+    pass
+
+
+
+
+def plot_benchmarks_as_lines(title, *bm, transform=None,
             line_title_transform=None,
             logx=True, logy=True):
     import bokeh
