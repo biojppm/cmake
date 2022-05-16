@@ -2651,8 +2651,14 @@ endfunction()
 
 macro(_c4_setup_install_vars)
     set(_RUNTIME_INSTALL_DIR   bin/)
-    set(_ARCHIVE_INSTALL_DIR   lib/)
-    set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
+    # for Linux packaging, using lib64/ or lib/ depends on architecture
+    if (CMAKE_INSTALL_LIBDIR)
+        set(_ARCHIVE_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/")
+        set(_LIBRARY_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/")
+    else()
+        set(_ARCHIVE_INSTALL_DIR lib/)
+        set(_LIBRARY_INSTALL_DIR lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
+    endif()
     set(_INCLUDE_INSTALL_DIR   include/)
     set(_OBJECTS_INSTALL_DIR   obj/)
     set(_SYSCONFIG_INSTALL_DIR etc/${_c4_lcprefix}/)
