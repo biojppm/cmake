@@ -1853,6 +1853,10 @@ function(c4_add_target target)
                 set(src_mode PRIVATE)
                 set(tgt_type PUBLIC)
                 set(compiled_target ON)
+                set_target_properties(${target} PROPERTIES VERSION ${${_c4_prefix}_VERSION})
+                if("${_blt}" STREQUAL SHARED)
+                    set_target_properties(${target} PROPERTIES SOVERSION ${${_c4_prefix}_VERSION})
+                endif()
                 # exports for shared libraries
                 if(WIN32)
                     if("${_blt}" STREQUAL SHARED)
@@ -1863,7 +1867,6 @@ function(c4_add_target target)
                         c4_set_target_prop(${target} SHARED_EXPORTS ${_SHARED_EXPORTS})
                     endif()  # shared lib
                 endif() # win32
-                set_target_properties(${target} PROPERTIES SO_VERSION ${${_c4_prefix}_VERSION})
             endif() # interface or lib
             if(NOT target_is_prefixed)
                 add_library(${_c4_prefix}::${target} ALIAS ${target})
