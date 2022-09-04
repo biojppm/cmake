@@ -3475,6 +3475,7 @@ function(c4_setup_benchmarking)
         c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/ext/googlebenchmark
           REMOTE
             GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG main
           OVERRIDE
             BENCHMARK_ENABLE_TESTING OFF
             BENCHMARK_ENABLE_EXCEPTIONS OFF
