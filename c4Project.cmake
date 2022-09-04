@@ -2776,7 +2776,7 @@ ${ARGN}
             c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
                 REMOTE
                   GIT_REPOSITORY https://github.com/google/googletest.git
-                  GIT_TAG release-1.11.0
+                  GIT_TAG release-1.11.0 #GIT_SHALLOW ON
                 OVERRIDE
                   BUILD_GTEST ON
                   BUILD_GMOCK OFF
@@ -2805,7 +2805,7 @@ ${ARGN}
             c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
                 REMOTE
                   GIT_REPOSITORY https://github.com/onqtam/doctest.git
-                  GIT_TAG 2.4.6
+                  GIT_TAG 2.4.6 #GIT_SHALLOW ON
                 OVERRIDE
                   DOCTEST_WITH_TESTS OFF
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
@@ -3475,7 +3475,7 @@ function(c4_setup_benchmarking)
         c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/ext/googlebenchmark
           REMOTE
             GIT_REPOSITORY https://github.com/google/benchmark.git
-            GIT_TAG main
+            GIT_TAG main GIT_SHALLOW ON
           OVERRIDE
             BENCHMARK_ENABLE_TESTING OFF
             BENCHMARK_ENABLE_EXCEPTIONS OFF
