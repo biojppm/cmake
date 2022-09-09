@@ -3223,7 +3223,7 @@ function(c4_setup_coverage)
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
     set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml")
     set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
-    set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
+    set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;ext;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
     _c4_handle_arg(COVFLAGS ${${_c4_uprefix}COVERAGE_FLAGS})
     _c4_handle_arg(INCLUDE ${${_c4_uprefix}COVERAGE_INCLUDE})
@@ -3241,29 +3241,6 @@ function(c4_setup_coverage)
     _c4cov_transform_filters(_INCLUDE "${CMAKE_SOURCE_DIR}/")
     _c4cov_transform_filters(_EXCLUDE "${CMAKE_SOURCE_DIR}/")
     _c4cov_transform_filters(_EXCLUDE_ABS "")
-    #
-    function(_c4cov_filters out incflag excflag)
-        set(f)
-        macro(_append flag item)
-            string(FIND "${item}" "*" star_pos)
-            string(FIND "${item}" " " space_pos)
-            if((star_pos EQUAL -1) AND (space_pos EQUAL -1))
-                list(APPEND f ${flag} ${item})
-            else()
-                list(APPEND f ${flag} "'${item}'")
-            endif()
-        endmacro()
-        foreach(inc ${_INCLUDE})
-            _append(${incflag} ${inc})
-        endforeach()
-        foreach(exc ${_EXCLUDE})
-            _append(${excflag} ${exc})
-        endforeach()
-        foreach(exc ${_EXCLUDE_ABS})
-            _append(${excflag} ${exc})
-        endforeach()
-        set(${out} ${f} PARENT_SCOPE)
-    endfunction()
     #
     if("${CMAKE_CXX_COMPILER_ID}" MATCHES "(Apple)?[Cc]lang")
         if("${CMAKE_CXX_COMPILER_VERSION}" VERSION_LESS 3)
@@ -3292,28 +3269,32 @@ function(c4_setup_coverage)
         CXX_FLAGS ${_COVFLAGS}
         )
     #
-    c4_dbg("adding coverage targets")
     option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
     option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
     #
+    c4_dbg("adding coverage targets")
+    #
+    set(sd "${CMAKE_SOURCE_DIR}")
+    set(bd "${CMAKE_BINARY_DIR}")
+    set(coverage_result ${bd}/lcov/index.html)
+    set(lcov_result ${bd}/coverage3-final_filtered.lcov)
     separate_arguments(_GENHTML_ARGS NATIVE_COMMAND ${_GENHTML_ARGS})
-    set(result ${CMAKE_BINARY_DIR}/lcov/index.html)
-    add_custom_target(${_c4_lprefix}coverage
-        BYPRODUCTS ${result}
+    add_custom_command(OUTPUT ${coverage_result} ${lcov_result}
         COMMAND echo "cd ${CMAKE_BINARY_DIR}"
         COMMAND ${LCOV} -q --zerocounters --directory .
-        COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file before.lcov --initial
+        COMMAND ${LCOV} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage0-before.lcov --initial
         COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run || echo "Failed running the tests. Proceeding with coverage, but results may be affected or even empty."
-        COMMAND ${LCOV} -q --no-external --capture --base-directory "${CMAKE_SOURCE_DIR}" --directory . --output-file after.lcov
-        COMMAND ${LCOV} -q --add-tracefile before.lcov --add-tracefile after.lcov --output-file final.lcov
-        COMMAND ${LCOV} -q --remove final.lcov ${_EXCLUDE} ${EXCLUDE_ABS} --output-file final_filtered.lcov
-        COMMAND ${GENHTML} final_filtered.lcov -o lcov ${_GENHTML_ARGS}
-        COMMAND echo "Coverage report: ${result}"
+        COMMAND ${LCOV} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage1-after.lcov
+        COMMAND ${LCOV} -q --add-tracefile ${bd}/coverage0-before.lcov --add-tracefile ${bd}/coverage1-after.lcov --output-file ${bd}/coverage2-final.lcov
+        COMMAND ${LCOV} -q --remove ${bd}/coverage2-final.lcov ${_EXCLUDE} ${EXCLUDE_ABS} --output-file ${bd}/coverage3-final_filtered.lcov
+        COMMAND ${GENHTML} ${bd}/coverage3-final_filtered.lcov -o ${bd}/lcov ${_GENHTML_ARGS}
+        COMMAND echo "Coverage report: ${coverage_result}"
         DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMENT "${_c4_prefix} coverage: Running LCOV. Report at ${result}"
+        COMMENT "${_c4_prefix} coverage: LCOV report at ${coverage_result}"
         #VERBATIM
         )
+    add_custom_target(${_c4_lprefix}coverage SOURCES ${coverage_result} ${lcov_result})
     #
     if(${_c4_uprefix}COVERAGE_CODECOV)
         set(_subm ${_c4_lprefix}coverage-submit-codecov)
@@ -3321,21 +3302,22 @@ function(c4_setup_coverage)
         if(NOT ("${_token}" STREQUAL ""))
             set(_token -t "${_token}")
         endif()
-        set(_silent)
+        set(_silent_codecov)
         if(${_c4_uprefix}COVERAGE_CODECOV_SILENT)
-            set(_silent >${CMAKE_BINARY_DIR}/codecov.log 2>&1)
+            set(_silent_codecov >${CMAKE_BINARY_DIR}/codecov.log 2>&1)
         endif()
         #
         c4_log("coverage: enabling submission of results to https://codecov.io: ${_subm}")
         set(submitcc "${CMAKE_BINARY_DIR}/submit_codecov.sh")
         c4_download_file("https://codecov.io/bash" "${submitcc}")
-        _c4cov_filters(_filters -G -g)
-        set(submit_cmd bash ${submitcc} -Z ${_token} -a '\\-lp' -X gcovout -p ${CMAKE_SOURCE_DIR} ${_filters} ${_silent})
+        set(submit_cmd bash ${submitcc} -Z ${_token} -X gcov -X gcovout -p ${CMAKE_SOURCE_DIR} -f ${lcov_result} ${_silent_codecov})
+        string(REPLACE ";" " " submit_cmd_str "${submit_cmd}")
         add_custom_target(${_subm}
-            COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
-            COMMAND ${submit_cmd}
-            DEPENDS ${_c4_lprefix}coverage
+            SOURCES ${lcov_result}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMAND echo "cd ${CMAKE_BINARY_DIR} && ${submit_cmd_str}"
+            COMMAND ${submit_cmd}
+            VERBATIM
             COMMENT "${_c4_lcprefix} coverage: submit to codecov"
             )
         c4_add_umbrella_target(coverage-submit-codecov coverage-submit)  # uses the current prefix
@@ -3347,24 +3329,26 @@ function(c4_setup_coverage)
         if(NOT ("${_token}" STREQUAL ""))
             set(_token --repo-token "${_token}")
         endif()
-        set(_silent)
+        set(_silent_coveralls)
         if(${_c4_uprefix}COVERAGE_COVERALLS_SILENT)
-            set(_silent >${CMAKE_BINARY_DIR}/coveralls.log 2>&1)
+            set(_silent_coveralls >${CMAKE_BINARY_DIR}/coveralls.log 2>&1)
         endif()
         #
         c4_log("coverage: enabling submission of results to https://coveralls.io: ${_subm}")
-        _c4cov_filters(_filters --include --exclude)
-        set(submit_cmd coveralls ${_token} --gcov-options '\\-lp' --build-root ${CMAKE_BINARY_DIR} --root ${CMAKE_SOURCE_DIR} ${_filters} ${_silent})
+        set(submit_cmd coveralls ${_token} --build-root ${CMAKE_BINARY_DIR} --root ${CMAKE_SOURCE_DIR} --no-gcov --lcov-file ${lcov_result} ${_silent_coveralls})
+        string(REPLACE ";" " " submit_cmd_str "${submit_cmd}")
         add_custom_target(${_subm}
-            COMMAND echo "\"cd ${CMAKE_BINARY_DIR} && ${submit_cmd}\""
-            COMMAND ${submit_cmd}
-            DEPENDS ${_c4_lprefix}coverage
+            SOURCES ${lcov_result}
             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+            COMMAND echo "cd ${CMAKE_BINARY_DIR} && ${submit_cmd_str}"
+            COMMAND ${submit_cmd}
+            VERBATIM
             COMMENT "${_c4_lcprefix} coverage: submit to coveralls"
             )
         c4_add_umbrella_target(coverage-submit-coveralls coverage-submit)  # uses the current prefix
     endif()
 endfunction(c4_setup_coverage)
+
 
 # 1. try cmake or environment variables
 # 2. try local file
