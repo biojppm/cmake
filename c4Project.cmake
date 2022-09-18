@@ -1515,6 +1515,7 @@ function(c4_import_remote_proj name dir)
         _ARGS0
             EXCLUDE_FROM_ALL
         _ARGS1
+            SUBDIR     # path to the subdirectory where the CMakeLists file is to be found.
         _ARGSN
             OVERRIDE   # a list of variable name+value pairs
                        # these variables will be set with c4_override()
@@ -1530,6 +1531,9 @@ function(c4_import_remote_proj name dir)
     )
     set(srcdir_in_out "${dir}")
     c4_download_remote_proj(${name} srcdir_in_out ${_REMOTE})
+    if(_SUBDIR)
+        set(srcdir_in_out "${srcdir_in_out}/${_SUBDIR}")
+    endif()
     _c4_set_subproject_property(${name} SRC_DIR "${srcdir_in_out}")
     if(_EXCLUDE_FROM_ALL)
         set(excl EXCLUDE_FROM_ALL)
