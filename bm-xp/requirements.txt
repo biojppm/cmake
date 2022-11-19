@@ -8,7 +8,7 @@ markupsafe
 Frozen-Flask
 requests
 mmh3
-bokeh<=3.0
+bokeh<3.0
 selenium
 matplotlib
 prettytable
