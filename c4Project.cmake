@@ -1328,6 +1328,7 @@ endfunction()
 #
 # # require subproject c4core, as a remote proj
 # c4_require_subproject(c4core REMOTE
+#     IMPORTED_DIR c4core_download_dir  # this variable will contain where c4core was downloaded to
 #     GIT_REPOSITORY https://github.com/biojppm/c4core
 #     GIT_TAG master
 #     )
@@ -1339,6 +1340,8 @@ function(c4_require_subproject subproj)
         _ARGS1
             SUBDIRECTORY   # the subproject is located in the given directory name and
                            # will be added via add_subdirectory()
+            IMPORTED_DIR   # path to the location where the proj was
+                           # found or downloaded to (for REMOTE projects)
         _ARGSN
             REMOTE         # the subproject is located in a remote repo/url
                            # and will be added via c4_import_remote_proj(),
@@ -1354,6 +1357,11 @@ function(c4_require_subproject subproj)
         _DEPRECATE
             INTERFACE
     )
+    #
+    if((NOT _REMOTE) AND (NOT _SUBDIRECTORY))
+        c4_err("a project must be imported either in REMOTE or SUBDIRECTORY mode")
+    endif()
+    #
     list(APPEND _${_c4_uprefix}_deps ${subproj})
     c4_setg(_${_c4_uprefix}_deps ${_${_c4_uprefix}_deps})
     c4_dbg("-----------------------------------------------")
@@ -1376,9 +1384,6 @@ function(c4_require_subproject subproj)
         # TODO check version compatibility
     else() #elseif(NOT _${subproj}_available)
         c4_dbg("required subproject ${subproj} is unknown. Importing...")
-        if(_EXCLUDE_FROM_ALL)
-            set(excl EXCLUDE_FROM_ALL)
-        endif()
         # forward c4 compile flags
         string(TOUPPER ${subproj} usubproj)
         c4_setg(${usubproj}_CXX_FLAGS_FWD "${${_c4_uprefix}CXX_FLAGS}")
@@ -1386,16 +1391,25 @@ function(c4_require_subproject subproj)
         c4_setg(${usubproj}_CXX_LINKER_FLAGS_FWD "${${_c4_uprefix}CXX_LINKER_FLAGS}")
         # root dir
         set(_r ${CMAKE_CURRENT_BINARY_DIR}/subprojects/${subproj})
+        # forward import settings
+        set(_more_options OVERRIDE ${_OVERRIDE})
+        if(_EXCLUDE_FROM_ALL)
+            list(APPEND _more_options EXCLUDE_FROM_ALL)
+        endif()
+        # do it!
         if(_REMOTE)
             c4_log("importing subproject ${subproj} (REMOTE)... ${_REMOTE}")
             _c4_mark_subproject_imported(${subproj} ${_r}/src ${_r}/build ${_INCORPORATE})
-            c4_import_remote_proj(${subproj} ${_r} REMOTE ${_REMOTE} OVERRIDE ${_OVERRIDE} ${excl})
+            c4_import_remote_proj(${subproj} ${_r} REMOTE ${_REMOTE} ${_more_options})
             _c4_get_subproject_property(${subproj} SRC_DIR _srcdir)
-            c4_dbg("finished importing subproject ${subproj} (REMOTE, SRC_DIR=${_srcdir}).")
+            c4_log("finished importing subproject ${subproj} (REMOTE, SRC_DIR=${_srcdir}).")
+            if(_IMPORTED_DIR)
+                set(${_IMPORTED_DIR} ${_srcdir} PARENT_SCOPE)
+            endif()
         elseif(_SUBDIRECTORY)
             c4_log("importing subproject ${subproj} (SUBDIRECTORY)... ${_SUBDIRECTORY}")
             _c4_mark_subproject_imported(${subproj} ${_SUBDIRECTORY} ${_r}/build ${_INCORPORATE})
-            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build OVERRIDE ${_OVERRIDE} ${excl})
+            c4_add_subproj(${subproj} ${_SUBDIRECTORY} ${_r}/build ${_more_options})
             set(_srcdir ${_SUBDIRECTORY})
             c4_dbg("finished importing subproject ${subproj} (SUBDIRECTORY=${_SUBDIRECTORY}).")
         else()
@@ -1508,14 +1522,13 @@ endfunction()
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 
-#
-#
 function(c4_import_remote_proj name dir)
     _c4_handle_args(_ARGS ${ARGN}
         _ARGS0
             EXCLUDE_FROM_ALL
         _ARGS1
-            SUBDIR     # path to the subdirectory where the CMakeLists file is to be found.
+            SUBDIR       # path to the subdirectory where the CMakeLists file is to be found.
+            IMPORTED_DIR # path to the location where the proj was found or downloaded to
         _ARGSN
             OVERRIDE   # a list of variable name+value pairs
                        # these variables will be set with c4_override()
@@ -1531,6 +1544,12 @@ function(c4_import_remote_proj name dir)
     )
     set(srcdir_in_out "${dir}")
     c4_download_remote_proj(${name} srcdir_in_out ${_REMOTE})
+    if(_IMPORTED_DIR)
+        if("${srcdir_in_out}" STREQUAL "")
+            c4_err("srcdir is empty")
+        endif()
+        set(${_IMPORTED_DIR} ${srcdir_in_out} PARENT_SCOPE)
+    endif()
     if(_SUBDIR)
         set(srcdir_in_out "${srcdir_in_out}/${_SUBDIR}")
     endif()
