@@ -779,19 +779,33 @@ set(_C4_PEDANTIC_FLAGS_CLANG
     -Wall
     -Wextra
     -pedantic
+    -Wpedantic
     -Wshadow # warn the user if a variable declaration shadows one from a parent context
     -Wnon-virtual-dtor # warn the user if a class with virtual functions has a non-virtual destructor. This helps
                        # catch hard to track down memory errors
     #-Wold-style-cast # warn for c-style casts
     -Wcast-align # warn for potential performance problem casts
+    -Wcast-qual
     -Wunused # warn on anything being unused
+    -Wunused-function
+    -Wunused-variable
+    -Wunused-const-variable
     -Woverloaded-virtual # warn if you overload (not override) a virtual function
     -Wpedantic # warn if non-standard C++ is used
     -Wconversion # warn on type conversions that may lose data
     -Wsign-conversion # warn on sign conversions
-    -Wdouble-promotion # warn if float is implicit promoted to double
+    -Wdouble-promotion # warn if float is implicitly promoted to double
     -Wfloat-equal # warn if comparing floats
+    -Wempty-body
     -Wformat=2 # warn on security issues around functions that format output (ie printf)
+    -Wformat-security
+    -Wignored-attributes
+    # only available for C files:
+    $<$<COMPILE_LANGUAGE:C>:-Wbad-function-cast>
+    $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wold-style-definition>
+    $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+    $<$<COMPILE_LANGUAGE:C>:-Wpointer-sign>
     )
 
 set(_C4_PEDANTIC_FLAGS_GCC ${_C4_PEDANTIC_FLAGS_CLANG}
@@ -799,18 +813,37 @@ set(_C4_PEDANTIC_FLAGS_GCC ${_C4_PEDANTIC_FLAGS_CLANG}
     -Wuseless-cast # where you perform a cast to the same type
     )
 
-if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0))
-    list(APPEND _C4_PEDANTIC_FLAGS_GCC
-        -Wnull-dereference # warn if a null dereference is detected
-        -Wmisleading-indentation # where indentation implies blocks where blocks do not exist
-        -Wduplicated-cond # where if-else chain has duplicated conditions
+if(CMAKE_CXX_COMPILER_ID STREQUAL "")
+    message(FATAL_ERROR "project() must be called before including this file")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_GCC
+            -Wnull-dereference # warn if a null dereference is detected
+            -Wmisleading-indentation # where indentation implies blocks where blocks do not exist
+            -Wduplicated-cond # where if-else chain has duplicated conditions
+            -Waddress-of-packed-member
+            $<$<COMPILE_LANGUAGE:C>:-Wabsolute-value>
         )
-endif()
-
-if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0))
-    list(APPEND _C4_PEDANTIC_FLAGS_GCC
-        -Wduplicated-branches # where if-else branches have duplicated code
+    endif()
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_GCC
+            -Wduplicated-branches # where if-else branches have duplicated code
         )
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_CLANG
+            -Wself-assign
+            -Wparentheses-equality
+            -Wgnu-variable-sized-type-not-at-end
+            -Winconsistent-missing-override
+            -Wbitfield-constant-conversion
+            -Wexcess-initializers
+            -Wsometimes-uninitialized
+            -Wextern-initializer
+            -Wmissing-braces
+        )
+    endif()
 endif()
 
 
