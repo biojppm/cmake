@@ -53,7 +53,10 @@ inline void *align(size_t __align, size_t __size, void*& __ptr, size_t& __space)
         return __ptr = reinterpret_cast<void*>(__aligned);
     }
 }
+
+#if __GNUC__ == 4 && __GNUC_MINOR__ == 8
 typedef long double max_align_t ;
+#endif
 
 }
 #else // __cplusplus
