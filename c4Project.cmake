@@ -806,7 +806,7 @@ set(_C4_PEDANTIC_FLAGS_MSVC
     $<$<VERSION_GREATER:${MSVC_VERSION},1900>:/permissive-> # standards conformance mode for MSVC compiler (only vs2017+)
     )
 
-set(_C4_PEDANTIC_FLAGS_CLANG
+set(_C4_PEDANTIC_FLAGS_COMMON
     -Wall
     -Wextra
     -pedantic
@@ -820,7 +820,6 @@ set(_C4_PEDANTIC_FLAGS_CLANG
     -Wunused # warn on anything being unused
     -Wunused-function
     -Wunused-variable
-    -Wunused-const-variable
     -Woverloaded-virtual # warn if you overload (not override) a virtual function
     -Wpedantic # warn if non-standard C++ is used
     -Wconversion # warn on type conversions that may lose data
@@ -830,7 +829,6 @@ set(_C4_PEDANTIC_FLAGS_CLANG
     -Wempty-body
     -Wformat=2 # warn on security issues around functions that format output (ie printf)
     -Wformat-security
-    -Wignored-attributes
     # only available for C files:
     $<$<COMPILE_LANGUAGE:C>:-Wbad-function-cast>
     $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
@@ -839,9 +837,10 @@ set(_C4_PEDANTIC_FLAGS_CLANG
     $<$<COMPILE_LANGUAGE:C>:-Wpointer-sign>
     )
 
-set(_C4_PEDANTIC_FLAGS_GCC ${_C4_PEDANTIC_FLAGS_CLANG}
-    -Wlogical-op # where logical operations are used where bitwise were probably wanted
-    -Wuseless-cast # where you perform a cast to the same type
+set(_C4_PEDANTIC_FLAGS_CLANG ${_C4_PEDANTIC_FLAGS_COMMON})
+set(_C4_PEDANTIC_FLAGS_GCC ${_C4_PEDANTIC_FLAGS_COMMON}
+    -Wlogical-op # logical operations are used where bitwise were probably wanted
+    -Wuseless-cast # cast to the same type
     )
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "")
@@ -849,16 +848,26 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
         list(APPEND _C4_PEDANTIC_FLAGS_GCC
+            -Wunused-const-variable
+            -Wignored-attributes
             -Wnull-dereference # warn if a null dereference is detected
             -Wmisleading-indentation # where indentation implies blocks where blocks do not exist
             -Wduplicated-cond # where if-else chain has duplicated conditions
-            -Waddress-of-packed-member
             $<$<COMPILE_LANGUAGE:C>:-Wabsolute-value>
         )
     endif()
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 7.0)
         list(APPEND _C4_PEDANTIC_FLAGS_GCC
             -Wduplicated-branches # where if-else branches have duplicated code
+        )
+    endif()
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 8.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_GCC
+        )
+    endif()
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 9.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_GCC
+            -Waddress-of-packed-member
         )
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
@@ -869,10 +878,14 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL Clang)
             -Wgnu-variable-sized-type-not-at-end
             -Winconsistent-missing-override
             -Wbitfield-constant-conversion
-            -Wexcess-initializers
             -Wsometimes-uninitialized
             -Wextern-initializer
             -Wmissing-braces
+        )
+    endif()
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 11.0)
+        list(APPEND _C4_PEDANTIC_FLAGS_CLANG
+            -Wexcess-initializers
         )
     endif()
 endif()
