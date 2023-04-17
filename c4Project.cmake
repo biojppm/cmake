@@ -16,9 +16,9 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+include(CMakeDependentOption)
 include(ConfigurationTypes)
 include(CreateSourceGroup)
-include(c4SanitizeTarget)
 include(c4StaticAnalysis)
 include(PrintVar)
 include(c4CatSources)
@@ -363,7 +363,7 @@ function(c4_project)
     if("${C4_DEV}" STREQUAL "")
         option(C4_DEV "enable development targets for all c4 projects" OFF)
     endif()
-    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, sanitize, static analysis, coverage" ${C4_DEV})
+    option(${_c4_uprefix}DEV "enable development targets: tests, benchmarks, static analysis, coverage" ${C4_DEV})
 
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/test")
         cmake_dependent_option(${_c4_uprefix}BUILD_TESTS "build unit tests" ON ${_c4_uprefix}DEV OFF)
@@ -383,8 +383,8 @@ function(c4_project)
     if(_c4_is_root_proj)
         c4_setup_coverage()
     endif()
+    c4_setup_sanitize()
     c4_setup_valgrind(${_c4_uprefix}DEV)
-    c4_setup_sanitize(${_c4_uprefix}DEV)
     c4_setup_static_analysis(${_c4_uprefix}DEV)
     c4_setup_doxygen(${_c4_uprefix}DEV)
 
@@ -433,6 +433,89 @@ function(c4_project)
 endfunction(c4_project)
 
 
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+
+macro(c4_setup_sanitize)
+    if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+        set(_c4_enable_sanitize ON)
+        if(NOT ((CMAKE_CXX_COMPILER_ID MATCHES ".*Clang") OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")))
+            set(_c4_enable_sanitize OFF)
+        endif()
+        if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
+            set(_c4_enable_sanitize OFF)
+        endif()
+        if(_c4_enable_sanitize)
+            if("${CMAKE_BUILD_TYPE}" STREQUAL "")
+                set(CMAKE_BUILD_TYPE Release)
+            endif()
+            if(CMAKE_C_COMPILER_ID STREQUAL "GNU")  # is there coverage?
+                set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE
+                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Coverage tsan asan lsan msan ubsan" FORCE)
+            else()
+                set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE
+                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel tsan asan lsan msan ubsan" FORCE)
+            endif()
+            _c4_add_sanitizer_build_type(AddressSanitizer ASAN
+                # https://clang.llvm.org/docs/AddressSanitizer.html
+                "-fsanitize=address -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-address-use-after-scope"
+            )
+            _c4_add_sanitizer_build_type(LeakSanitizer LSAN
+                # https://clang.llvm.org/docs/LeakSanitizer.html
+                "-fsanitize=leak -g -O1 -fno-omit-frame-pointer"
+            )
+            if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+                _c4_add_sanitizer_build_type(MemorySanitizer MSAN
+                    # https://clang.llvm.org/docs/MemorySanitizer.html
+                    "-fsanitize=memory -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-memory-track-origins=2"
+                )
+            endif()
+            _c4_add_sanitizer_build_type(ThreadSanitizer TSAN
+                # https://clang.llvm.org/docs/ThreadSanitizer.html
+                "-fsanitize=thread -g -O1"
+            )
+            _c4_add_sanitizer_build_type(UndefinedBehaviorSanitizer UBSAN
+                # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
+                "-fsanitize=undefined -g -O1 -fno-omit-frame-pointer"
+                # these flags exist only in the CLANG ubsan
+                CLANG "-fsanitize=implicit-conversion -fsanitize=local-bounds"
+            )
+        endif()
+    endif()
+endmacro()
+
+
+function(_c4_add_sanitizer_build_type sanitizer build_type _sanflags)
+    # add compiler-specific flags
+    cmake_parse_arguments("" "" "" "GCC CLANG" ${ARGN})
+    if((CMAKE_C_COMPILER_ID STREQUAL "Clang") OR (CMAKE_C_COMPILER_ID STREQUAL "GNU"))
+        set(_sanflags "${_sanflags} ${_CLANG}")
+    elseif (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+        set(_sanflags "${_sanflags} ${_GCC}")
+    endif()
+    # force an error exit when any problem is detected:
+    set(_sanflags "${_sanflags} -fno-sanitize-recover=all")
+    set(CMAKE_C_FLAGS_${build_type} "${_sanflags}" CACHE
+        STRING "Flags used by the C compiler on ${sanitizer} builds." FORCE)
+    set(CMAKE_CXX_FLAGS_${build_type} "${_sanflags}" CACHE
+        STRING "Flags used by the C++ compiler on ${sanitizer} builds." FORCE)
+    # need to link using the compiler, and not ld
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" upper)
+    if("${upper}" STREQUAL "${build_type}")
+        set(CMAKE_LINKER ${CMAKE_CXX_COMPILER} CACHE FILEPATH "Linker" FORCE)
+        set(SANITIZER_ENVIRONMENT "${upper}_OPTIONS=print_stacktrace=1" PARENT_SCOPE)
+    endif()
+    # this is not needed because we're using the C compiler to link,
+    # and CMAKE_C_FLAGS will be used with it:
+    #set(CMAKE_EXE_LINKER_FLAGS_${build_type} "${_sanflags}" CACHE
+    #    STRING "Flags used by the linker on ${sanitizer} builds." FORCE)
+endfunction()
+
+
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
 # cmake: VERSION argument in project() does not accept semantic versioning
 # see: https://gitlab.kitware.com/cmake/cmake/-/issues/16716
 macro(_c4_handle_semantic_version version)
@@ -526,17 +609,6 @@ function(c4_add_dev_targets)
 endfunction()
 
 
-function(_c4_get_san_targets target result)
-    _c4_get_tgt_prop(san_targets ${target} C4_SAN_TARGETS)
-    if(NOT san_targets)
-        #c4_err("${target} must have at least itself in its sanitized target list")
-        set(${result} ${target} PARENT_SCOPE)
-    else()
-        set(${result} ${san_targets} PARENT_SCOPE)
-    endif()
-endfunction()
-
-
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
 # -----------------------------------------------------------------------------
@@ -623,18 +695,6 @@ function(c4_target_compile_flags target)
         set(mode BEFORE)
         c4_log("${target}: adding compile flags BEFORE: ${flags}")
     endif()
-    _c4_get_san_targets(${target} san_targets)
-    foreach(st ${san_targets})
-        if(_PUBLIC)
-            target_compile_options(${st} ${mode} PUBLIC ${flags})
-        elseif(_PRIVATE)
-            target_compile_options(${st} ${mode} PRIVATE ${flags})
-        elseif(_INTERFACE)
-            target_compile_options(${st} ${mode} INTERFACE ${flags})
-        else()
-            c4_err("${target}: must have one of PUBLIC, PRIVATE or INTERFACE")
-        endif()
-    endforeach()
 endfunction()
 
 
@@ -673,18 +733,6 @@ function(c4_target_definitions target)
         set(mode BEFORE)
         c4_log("${target}: adding definitions BEFORE: ${flags}")
     endif()
-    _c4_get_san_targets(${target} san_targets)
-    foreach(st ${san_targets})
-        if(_PUBLIC)
-            target_compile_definitions(${st} ${mode} PUBLIC ${flags})
-        elseif(_PRIVATE)
-            target_compile_definitions(${st} ${mode} PRIVATE ${flags})
-        elseif(_INTERFACE)
-            target_compile_definitions(${st} ${mode} INTERFACE ${flags})
-        else()
-            c4_err("${target}: must have one of PUBLIC, PRIVATE or INTERFACE")
-        endif()
-    endforeach()
 endfunction()
 
 
@@ -713,23 +761,6 @@ function(c4_target_remove_compile_flags target)
     if(NOT flags)
         return()
     endif()
-    _c4_get_san_targets(${target} san_targets)
-    foreach(st ${san_targets})
-        if(_PUBLIC OR (NOT _INTERFACE))
-            get_target_property(co ${st} COMPILE_OPTIONS)
-            if(co)
-                _c4_remove_entries_from_list("${flags}" co)
-                set_target_properties(${st} PROPERTIES COMPILE_OPTIONS "${co}")
-            endif()
-        endif()
-        if(_INTERFACE OR (NOT _PUBLIC))
-            get_target_property(ico ${st} INTERFACE_COMPILE_OPTIONS)
-            if(ico)
-                _c4_remove_entries_from_list("${flags}" ico)
-                set_target_properties(${st} PROPERTIES INTERFACE_COMPILE_OPTIONS "${ico}")
-            endif()
-        endif()
-    endforeach()
 endfunction()
 
 
@@ -1804,7 +1835,7 @@ function(c4_add_target target)
                         # should be resolved. when empty,
                         # use CMAKE_CURRENT_SOURCE_DIR
         FOLDER          # IDE folder to group the target in
-        SANITIZERS      # outputs the list of sanitize targets in this var
+        SANITIZERS      # (deprecated) outputs the list of sanitize targets in this var
         SOURCE_TRANSFORM  # WIP
     )
     set(optnarg
@@ -1823,6 +1854,9 @@ function(c4_add_target target)
     #
     if(_SANITIZE)
         c4_err("SANITIZE is deprecated")
+    endif()
+    if(_SANITIZERS)
+        c4_err("SANITIZERS is deprecated")
     endif()
 
     if(${_LIBRARY})
@@ -1860,7 +1894,6 @@ function(c4_add_target target)
     create_source_group("" "${_SOURCE_ROOT}" "${allsrc}")
     # is the target name prefixed with the project prefix?
     string(REGEX MATCH "${_c4_prefix}::.*" target_is_prefixed "${target}")
-    if(NOT ${_c4_uprefix}SANITIZE_ONLY)
         if(${_EXECUTABLE})
             c4_dbg("adding executable: ${target}")
             if(WIN32)
@@ -1868,11 +1901,11 @@ function(c4_add_target target)
                     list(APPEND _MORE_ARGS WIN32)
                 endif()
             endif()
-	    add_executable(${target} ${_MORE_ARGS})
+            add_executable(${target} ${_MORE_ARGS})
             if(NOT target_is_prefixed)
                 add_executable(${_c4_prefix}::${target} ALIAS ${target})
             endif()
-	    set(src_mode PRIVATE)
+            set(src_mode PRIVATE)
             set(tgt_type PUBLIC)
             set(compiled_target ON)
             set_target_properties(${target} PROPERTIES VERSION ${${_c4_prefix}_VERSION})
@@ -2043,40 +2076,11 @@ function(c4_add_target target)
         endif()
 
         if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
-          (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
-          (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+           (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
+           (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
             c4_dbg("${target}: adding compat include path")
             target_include_directories(${target} PUBLIC $<BUILD_INTERFACE:${_c4_project_dir}/compat>)
         endif()
-
-    endif(NOT ${_c4_uprefix}SANITIZE_ONLY)
-
-    if(compiled_target)
-        if(${_c4_uprefix}SANITIZE)
-            c4_sanitize_target(${target}
-                ${_what}   # LIBRARY or EXECUTABLE
-                SOURCES ${allsrc}
-                INC_DIRS ${_INC_DIRS} ${_PUBLIC_INC_DIRS} ${_INTERFACE_INC_DIRS} ${_PRIVATE_INC_DIRS}
-                LIBS ${_LIBS} ${_PUBLIC_LIBS} ${_INTERFACE_LIBS} ${_PRIVATE_LIBS}
-                DEFS ${_DEFS} ${_PUBLIC_DEFS} ${_INTERFACE_DEFS} ${_PRIVATE_DEFS}
-                CFLAGS ${_CFLAGS} ${_PUBLIC_CFLAGS} ${_INTERFACE_CFLAGS} ${_PRIVATE_CFLAGS}
-                OUTPUT_TARGET_NAMES san_targets
-                FOLDER "${_FOLDER}"
-                )
-        endif()
-
-        if(NOT ${_c4_uprefix}SANITIZE_ONLY)
-            list(INSERT san_targets 0 ${target})
-        endif()
-
-        if(_SANITIZERS)
-            set(${_SANITIZERS} ${san_targets} PARENT_SCOPE)
-        endif()
-
-        _c4_set_tgt_prop(${target} C4_SAN_TARGETS "${san_targets}")
-    else()
-        _c4_set_tgt_prop(${target} C4_SAN_TARGETS "${target}")
-    endif()
 
     # gather dlls so that they can be automatically copied to the target directory
     if(_DLLS)
@@ -2861,7 +2865,7 @@ ${ARGN}
             c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
                 REMOTE
                   GIT_REPOSITORY https://github.com/onqtam/doctest.git
-                  GIT_TAG 2.4.6 #GIT_SHALLOW ON
+                  GIT_TAG v2.4.11 #GIT_SHALLOW ON
                 OVERRIDE
                   DOCTEST_WITH_TESTS OFF
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
@@ -2889,57 +2893,19 @@ function(c4_add_test target)
     if(CMAKE_CROSSCOMPILING)
         set(cmd_pfx ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
-    if(NOT ${uprefix}SANITIZE_ONLY)
-        if(${CMAKE_VERSION} VERSION_LESS "3.16.0")
-            add_test(NAME ${target}
-                COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
-                ${_WORKING_DIRECTORY})
-        else()
-            add_test(NAME ${target}
-                COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
-                ${_WORKING_DIRECTORY}
-                COMMAND_EXPAND_LISTS)
-        endif()
-    endif()
-    #
-    if("${CMAKE_BUILD_TYPE}" STREQUAL "Coverage")
-        add_dependencies(${_c4_lprefix}test-build ${target})
-        return()
-    endif()
-    #
-    set(sanitized_targets)
-    foreach(s asan msan tsan ubsan)
-        set(t ${target}-${s})
-        if(TARGET ${t})
-            list(APPEND sanitized_targets ${s})
-        endif()
-    endforeach()
-    if(sanitized_targets)
-        add_custom_target(${target}-all)
-        add_dependencies(${target}-all ${target})
-        add_dependencies(${_c4_lprefix}test-build ${target}-all)
-        _c4_set_target_folder(${target}-all test/${target})
+    if(${CMAKE_VERSION} VERSION_LESS "3.16.0")
+        add_test(NAME ${target}
+            COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
+            ${_WORKING_DIRECTORY})
     else()
-        add_dependencies(${_c4_lprefix}test-build ${target})
+        add_test(NAME ${target}
+            COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
+            ${_WORKING_DIRECTORY}
+            COMMAND_EXPAND_LISTS)
     endif()
-    if(sanitized_targets)
-        foreach(s asan msan tsan ubsan)
-            set(t ${target}-${s})
-            if(TARGET ${t})
-                add_dependencies(${target}-all ${t})
-                c4_sanitize_get_target_command("${cmd_pfx};$<TARGET_FILE:${t}>" ${s} cmd)
-                #c4_log("adding test: ${t}")
-                add_test(NAME ${t}
-                    COMMAND ${cmd} ${_ARGS}
-                    ${_WORKING_DIRECTORY}
-                    COMMAND_EXPAND_LISTS)
-            endif()
-        endforeach()
-    endif()
+    add_dependencies(${_c4_lprefix}test-build ${target})
     if(NOT CMAKE_CROSSCOMPILING)
-        if(NOT ${_c4_uprefix}SANITIZE_ONLY)
-            c4_add_valgrind(${target} ${ARGN})
-        endif()
+        c4_add_valgrind(${target} ${ARGN})
     endif()
     if(${_c4_uprefix}LINT)
         c4_static_analysis_add_tests(${target})  # this will not actually run the executable
@@ -3734,7 +3700,6 @@ function(c4_separate_list input_list output_string)
     endforeach()
     set(${output_string} ${s} PARENT_SCOPE)
 endfunction()
-
 
 
 #------------------------------------------------------------------------------
