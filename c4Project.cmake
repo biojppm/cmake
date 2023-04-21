@@ -489,13 +489,28 @@ endmacro()
 function(_c4_add_sanitizer_build_type sanitizer build_type _sanflags)
     # add compiler-specific flags
     cmake_parse_arguments("" "" "" "GCC CLANG" ${ARGN})
-    if((CMAKE_C_COMPILER_ID STREQUAL "Clang") OR (CMAKE_C_COMPILER_ID STREQUAL "GNU"))
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
         set(_sanflags "${_sanflags} ${_CLANG}")
-    elseif (CMAKE_C_COMPILER_ID STREQUAL "MSVC")
+    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         set(_sanflags "${_sanflags} ${_GCC}")
     endif()
     # force an error exit when any problem is detected:
     set(_sanflags "${_sanflags} -fno-sanitize-recover=all")
+    # add a suppression file
+    set(do_it ON)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        if(${sanitizer} STREQUAL MemorySanitizer)
+            set(do_it ON)
+        else()
+            set(do_it OFF)
+        endif()
+    endif()
+    if(do_it)
+        set(supprfile ${CMAKE_BINARY_DIR}/c4_suppressions_${sanitizer}.txt)
+        file(WRITE ${supprfile})
+        set(_sanflags "${_sanflags} -fsanitize-ignorelist=${supprfile}")
+    endif()
+    # set the compile flags
     set(CMAKE_C_FLAGS_${build_type} "${_sanflags}" CACHE
         STRING "Flags used by the C compiler on ${sanitizer} builds." FORCE)
     set(CMAKE_CXX_FLAGS_${build_type} "${_sanflags}" CACHE
@@ -510,6 +525,14 @@ function(_c4_add_sanitizer_build_type sanitizer build_type _sanflags)
     # and CMAKE_C_FLAGS will be used with it:
     #set(CMAKE_EXE_LINKER_FLAGS_${build_type} "${_sanflags}" CACHE
     #    STRING "Flags used by the linker on ${sanitizer} builds." FORCE)
+endfunction()
+
+
+function(c4_add_sanitizer_suppression sanitizer suppression)
+    set(supprfile ${CMAKE_BINARY_DIR}/c4_suppressions_${sanitizer}.txt)
+    file(APPEND ${supprfile} "#
+${suppression}
+")
 endfunction()
 
 
@@ -1417,7 +1440,7 @@ function(c4_require_subproject subproj)
         _ARGS1
             SUBDIRECTORY   # the subproject is located in the given directory name and
                            # will be added via add_subdirectory()
-            IMPORTED_DIR   # path to the location where the proj was
+            IMPORTED_DIR   # [output] path to the location where the proj was
                            # found or downloaded to (for REMOTE projects)
         _ARGSN
             REMOTE         # the subproject is located in a remote repo/url
@@ -1605,7 +1628,7 @@ function(c4_import_remote_proj name dir)
             EXCLUDE_FROM_ALL
         _ARGS1
             SUBDIR       # path to the subdirectory where the CMakeLists file is to be found.
-            IMPORTED_DIR # path to the location where the proj was found or downloaded to
+            IMPORTED_DIR # [output] path to the location where the proj was found or downloaded to
         _ARGSN
             OVERRIDE   # a list of variable name+value pairs
                        # these variables will be set with c4_override()
@@ -2884,7 +2907,12 @@ ${ARGN}
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
                 SET_FOLDER_TARGETS ext doctest_with_main
                 EXCLUDE_FROM_ALL
+                IMPORTED_DIR _doctestdir
                 )
+            # there is an unitialized access
+            c4_add_sanitizer_suppression(MemorySanitizer "[memory]
+fun:*doctest*
+")
         endif()
     endif()
 endfunction(c4_setup_testing)
