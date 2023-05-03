@@ -3533,6 +3533,7 @@ function(c4_setup_benchmarking)
         #
         if((CMAKE_CXX_COMPILER_ID STREQUAL GNU) OR (CMAKE_COMPILER_IS_GNUCC))
             target_compile_options(benchmark PRIVATE -Wno-deprecated-declarations)
+            target_compile_options(benchmark PRIVATE -Wno-unused-const-variable)
             target_compile_options(benchmark PRIVATE -Wno-restrict)
         endif()
         #
