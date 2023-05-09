@@ -650,7 +650,14 @@ macro(c4_optional_compile_flags_dev tag desc)
             GCC_CLANG    # flags common to gcc and clang
         _DEPRECATE
     )
+    if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.22)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0127 NEW)
+    endif()
     cmake_dependent_option(${_c4_uprefix}${tag} "${desc}" ON ${_c4_uprefix}DEV OFF)
+    if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.22)
+        cmake_policy(POP)
+    endif()
     set(optname ${_c4_uprefix}${tag})
     if(${optname})
         c4_dbg("${optname} is enabled. Adding flags...")
@@ -3214,12 +3221,17 @@ function(c4_setup_valgrind umbrella_option)
         if("${C4_VALGRIND}" STREQUAL "")
             option(C4_VALGRIND "enable valgrind tests (all subprojects)" ON)
         endif()
-        if("${C4_VALGRIND_SGCHECK}" STREQUAL "")
-            option(C4_VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool (all subprojects)" OFF)
+        if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.22)
+            cmake_policy(PUSH)
+            cmake_policy(SET CMP0127 NEW)
         endif()
         cmake_dependent_option(${_c4_uprefix}VALGRIND "enable valgrind tests" ${C4_VALGRIND} ${umbrella_option} OFF)
-        cmake_dependent_option(${_c4_uprefix}VALGRIND_SGCHECK "enable valgrind tests with the exp-sgcheck tool" ${C4_VALGRIND_SGCHECK} ${umbrella_option} OFF)
-        set(${_c4_uprefix}VALGRIND_OPTIONS "--gen-suppressions=all --error-exitcode=10101" CACHE STRING "options for valgrind tests")
+        if(${CMAKE_VERSION} VERSION_GREATER_EQUAL 3.22)
+            cmake_policy(POP)
+        endif()
+        if(${_c4_uprefix}VALGRIND)
+            set(${_c4_uprefix}VALGRIND_OPTIONS "--gen-suppressions=all --error-exitcode=10101" CACHE STRING "options for valgrind tests")
+        endif()
     endif()
 endfunction(c4_setup_valgrind)
 
@@ -3243,15 +3255,6 @@ function(c4_add_valgrind target_name)
         separate_arguments(_vg_opts UNIX_COMMAND "${${_c4_uprefix}VALGRIND_OPTIONS}")
         add_test(NAME ${target_name}-valgrind
             COMMAND valgrind ${_vg_opts} $<TARGET_FILE:${target_name}> ${_ARGS}
-            ${_WORKING_DIRECTORY}
-            COMMAND_EXPAND_LISTS)
-    endif()
-    if(${_c4_uprefix}VALGRIND_SGCHECK)
-        # stack and global array overrun detector
-        # http://valgrind.org/docs/manual/sg-manual.html
-        separate_arguments(_sg_opts UNIX_COMMAND "--tool=exp-sgcheck ${${_c4_uprefix}VALGRIND_OPTIONS}")
-        add_test(NAME ${target_name}-sgcheck
-            COMMAND valgrind ${_sg_opts} $<TARGET_FILE:${target_name}> ${_ARGS}
             ${_WORKING_DIRECTORY}
             COMMAND_EXPAND_LISTS)
     endif()
