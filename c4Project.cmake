@@ -459,26 +459,26 @@ macro(c4_setup_sanitize)
             endif()
             _c4_add_sanitizer_build_type(AddressSanitizer ASAN
                 # https://clang.llvm.org/docs/AddressSanitizer.html
-                "-fsanitize=address -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-address-use-after-scope"
+                "-fsanitize=address -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-address-use-after-scope -DC4_ASAN"
             )
             _c4_add_sanitizer_build_type(LeakSanitizer LSAN
                 # https://clang.llvm.org/docs/LeakSanitizer.html
-                "-fsanitize=leak -g -O1 -fno-omit-frame-pointer"
+                "-fsanitize=leak -g -O1 -fno-omit-frame-pointer -DC4_LSAN"
             )
             if(NOT (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
                 _c4_add_sanitizer_build_type(MemorySanitizer MSAN
                     # https://clang.llvm.org/docs/MemorySanitizer.html
-                    "-fsanitize=memory -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-memory-track-origins=2"
+                    "-fsanitize=memory -g -O1 -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-memory-track-origins=2 -DC4_MSAN"
                 )
             endif()
             _c4_add_sanitizer_build_type(ThreadSanitizer TSAN
                 # https://clang.llvm.org/docs/ThreadSanitizer.html
-                "-fsanitize=thread -g -O1"
+                "-fsanitize=thread -g -O1 -DC4_TSAN"
             )
             _c4_add_sanitizer_build_type(UndefinedBehaviorSanitizer UBSAN
                 # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
-                "-fsanitize=undefined -g -O1 -fno-omit-frame-pointer"
-                # these flags exist only in the CLANG ubsan
+                "-fsanitize=undefined -g -O1 -fno-omit-frame-pointer -DC4_UBSAN"
+                # these flags added only in the CLANG ubsan
                 CLANG "-fsanitize=implicit-conversion -fsanitize=local-bounds"
             )
         endif()
