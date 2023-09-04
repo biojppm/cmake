@@ -2150,13 +2150,6 @@ function(c4_add_target target)
             target_compile_options(${target} PRIVATE ${_PRIVATE_CFLAGS})
         endif()
 
-        if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
-           (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
-           (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
-            c4_dbg("${target}: adding compat include path")
-            target_include_directories(${target} PUBLIC $<BUILD_INTERFACE:${_c4_project_dir}/compat>)
-        endif()
-
     # gather dlls so that they can be automatically copied to the target directory
     if(_DLLS)
         c4_append_transitive_property(${target} _C4_DLLS "${_DLLS}")
