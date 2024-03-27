@@ -3306,13 +3306,16 @@ function(c4_setup_coverage)
         GENHTML_ARGS  # options to pass to genhtml
     )
     # defaults for the macro arguments
-    set(_genhtml_args "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
     set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
     endif()
+    set(_lcov_args " -v -v --debug ")
+    set(_genhtml_args "--compat split_crc --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
-    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml")
+    set(${_c4_uprefix}COVERAGE_LCOV_ARGS "${_lcov_args}" CACHE STRING "arguments to pass to lcov")
+    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml"
+        FORCE)
     set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;ext;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
@@ -3320,6 +3323,7 @@ function(c4_setup_coverage)
     _c4_handle_arg(INCLUDE ${${_c4_uprefix}COVERAGE_INCLUDE})
     _c4_handle_arg(EXCLUDE ${${_c4_uprefix}COVERAGE_EXCLUDE})
     _c4_handle_arg(EXCLUDE_ABS ${${_c4_uprefix}COVERAGE_EXCLUDE_ABS} "${CMAKE_BINARY_DIR}")
+    _c4_handle_arg(LCOV_ARGS ${${_c4_uprefix}COVERAGE_LCOV_ARGS})
     _c4_handle_arg(GENHTML_ARGS ${${_c4_uprefix}COVERAGE_GENHTML_ARGS})
     #
     function(_c4cov_transform_filters var reldir)
@@ -3345,13 +3349,29 @@ function(c4_setup_coverage)
     find_program(LCOV lcov)
     find_program(GENHTML genhtml)
     find_program(CTEST ctest)
-    if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
-        c4_err("Coverage tools not available:
-    gcov: ${GCOV}
-    lcov: ${LCOV}
-    genhtml: ${GENHTML}
+    if(GCOV)
+        execute_process(COMMAND ${GCOV} --version OUTPUT_VARIABLE rv)
+        string(REPLACE "\n" ";" rv "${rv}")
+        list(GET rv 0 GCOV_VERSION)
+    endif()
+    if(LCOV)
+        execute_process(COMMAND ${LCOV} --version OUTPUT_VARIABLE rv)
+        string(REPLACE "\n" "" LCOV_VERSION "${rv}")
+    endif()
+    if(GENHTML)
+        execute_process(COMMAND ${GENHTML} --version OUTPUT_VARIABLE rv)
+        string(REPLACE "\n" "" GENHTML_VERSION "${rv}")
+    endif()
+    c4_log("Coverage:
+    gcov: ${GCOV}   ${GCOV_VERSION}
+    lcov: ${LCOV}   ${LCOV_VERSION}
+    genhtml: ${GENHTML}   ${GENHTML_VERSION}
     ctest: ${CTEST}
-    --coverage flags: ${_COVFLAGS}")
+    gcc coverage flags: ${_COVFLAGS}
+    lcov args: ${_LCOV_ARGS}
+    genhtml args: ${_GENHTML_ARGS}")
+    if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
+        c4_err("Coverage tools not available")
     endif()
     #
     add_configuration_type(Coverage
@@ -3369,15 +3389,16 @@ function(c4_setup_coverage)
     set(bd "${CMAKE_BINARY_DIR}")
     set(coverage_result ${bd}/lcov/index.html)
     set(lcov_result ${bd}/coverage3-final_filtered.lcov)
+    separate_arguments(_LCOV_ARGS NATIVE_COMMAND ${_LCOV_ARGS})
     separate_arguments(_GENHTML_ARGS NATIVE_COMMAND ${_GENHTML_ARGS})
     add_custom_command(OUTPUT ${coverage_result} ${lcov_result}
         COMMAND echo "cd ${CMAKE_BINARY_DIR}"
-        COMMAND ${LCOV} -q --zerocounters --directory .
-        COMMAND ${LCOV} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage0-before.lcov --initial
+        COMMAND ${LCOV} ${_LCOV_ARGS} -q --zerocounters --directory .
+        COMMAND ${LCOV} ${_LCOV_ARGS} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage0-before.lcov --initial
         COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run || echo "Failed running the tests. Proceeding with coverage, but results may be affected or even empty."
-        COMMAND ${LCOV} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage1-after.lcov
-        COMMAND ${LCOV} -q --add-tracefile ${bd}/coverage0-before.lcov --add-tracefile ${bd}/coverage1-after.lcov --output-file ${bd}/coverage2-final.lcov
-        COMMAND ${LCOV} -q --remove ${bd}/coverage2-final.lcov ${_EXCLUDE} ${EXCLUDE_ABS} --output-file ${bd}/coverage3-final_filtered.lcov
+        COMMAND ${LCOV} ${_LCOV_ARGS} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage1-after.lcov
+        COMMAND ${LCOV} ${_LCOV_ARGS} -q --add-tracefile ${bd}/coverage0-before.lcov --add-tracefile ${bd}/coverage1-after.lcov --output-file ${bd}/coverage2-final.lcov
+        COMMAND ${LCOV} ${_LCOV_ARGS} -q --remove ${bd}/coverage2-final.lcov ${_EXCLUDE} ${EXCLUDE_ABS} --output-file ${bd}/coverage3-final_filtered.lcov
         COMMAND ${GENHTML} ${bd}/coverage3-final_filtered.lcov -o ${bd}/lcov ${_GENHTML_ARGS}
         COMMAND echo "Coverage report: ${coverage_result}"
         DEPENDS ${_c4_lprefix}test-build
