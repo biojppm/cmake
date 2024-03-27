@@ -3311,7 +3311,7 @@ function(c4_setup_coverage)
         set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
     endif()
     set(_lcov_args " -v -v --debug ")
-    set(_genhtml_args "--compat split_crc --title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
+    set(_genhtml_args "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
     set(${_c4_uprefix}COVERAGE_LCOV_ARGS "${_lcov_args}" CACHE STRING "arguments to pass to lcov")
     set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml"
