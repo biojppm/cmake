@@ -1,7 +1,7 @@
 #ifndef _C4_GCC_4_8_HPP_
 #define _C4_GCC_4_8_HPP_
 
-#if __GNUC__ == 4 && __GNUC_MINOR__ >= 8
+#if defined(__GNUC__) && (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)
 /* STL polyfills for old GNU compilers */
 
 _Pragma("GCC diagnostic ignored \"-Wshadow\"")
@@ -67,6 +67,6 @@ typedef long double max_align_t ;
 
 #endif // __cplusplus
 
-#endif // __GNUC__ == 4 && __GNUC_MINOR__ >= 8
+#endif // defined(__GNUC__) && __GNUC__ == 4 && __GNUC_MINOR__ >= 8
 
 #endif // _C4_GCC_4_8_HPP_
