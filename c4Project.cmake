@@ -2901,11 +2901,21 @@ ${ARGN}
     if(_GTEST)
         c4_log("testing requires googletest")
         if(NOT TARGET gtest)
+            # support for old gcc-4.8 and 4.9
+            if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
+                    (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
+                    (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+                set(GCC4 ON)
+            endif()
+            if(GCC4)
+                set(_gtest_tag release-1.12.1)  # release-1.12.1 is the LAST release supporting C++11
+            else()
+                set(_gtest_tag v1.14.0)  # this requires c++14, does not compile in gcc 4.8
+            endif()
             c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
                 REMOTE
                   GIT_REPOSITORY https://github.com/google/googletest.git
-                  # this is the latest release to support C++11
-                  GIT_TAG release-1.12.1 #GIT_SHALLOW ON
+                  GIT_TAG ${_gtest_tag} #GIT_SHALLOW ON
                 OVERRIDE
                   BUILD_GTEST ON
                   BUILD_GMOCK OFF
@@ -2915,10 +2925,8 @@ ${ARGN}
                 SET_FOLDER_TARGETS ext gtest gtest_main
                 EXCLUDE_FROM_ALL
                 )
-            # old gcc-4.8 support
-            if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
-              (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
-              (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+            # support for old gcc-4.8 and 4.9
+            if(GCC4)
                 _c4_get_subproject_property(gtest SRC_DIR _gtest_patch_src_dir)
                 apply_patch("${_c4_project_dir}/compat/gtest_gcc-4.8.patch"
                   "${_gtest_patch_src_dir}"
