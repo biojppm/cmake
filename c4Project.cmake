@@ -452,10 +452,10 @@ macro(c4_setup_sanitize)
             endif()
             if(CMAKE_C_COMPILER_ID STREQUAL "GNU")  # is there coverage?
                 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE
-                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Coverage tsan asan lsan msan ubsan" FORCE)
+                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel Coverage tsan asan lsan msan ubsan fuzz" FORCE)
             else()
                 set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE} CACHE
-                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel tsan asan lsan msan ubsan" FORCE)
+                    STRING "Choose the type of build, options are: None Debug Release RelWithDebInfo MinSizeRel tsan asan lsan msan ubsan fuzz" FORCE)
             endif()
             _c4_add_sanitizer_build_type(AddressSanitizer ASAN
                 # https://clang.llvm.org/docs/AddressSanitizer.html
@@ -481,6 +481,10 @@ macro(c4_setup_sanitize)
                 # these flags added only in the CLANG ubsan
                 CLANG "-fsanitize=implicit-conversion -fsanitize=local-bounds"
             )
+            _c4_add_fuzz_build_type(FUZZ
+                "-g -O0 -fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize-address-use-after-scope -DC4_ASAN -DC4_UBSAN"
+                CLANG "-fsanitize=implicit-conversion -fsanitize=local-bounds"
+            )
         endif()
     endif()
 endmacro()
@@ -492,7 +496,7 @@ function(_c4_add_sanitizer_build_type sanitizer build_type _sanflags)
     if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
         set(_sanflags "${_sanflags} ${_CLANG}")
     elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-        set(_sanflags "${_sanflags} ${_GCC}")
+        set(_sanflags "${_sanflags} ${_MSVC}")
     endif()
     # force an error exit when any problem is detected:
     set(_sanflags "${_sanflags} -fno-sanitize-recover=all")
@@ -527,6 +531,30 @@ function(_c4_add_sanitizer_build_type sanitizer build_type _sanflags)
     #    STRING "Flags used by the linker on ${sanitizer} builds." FORCE)
 endfunction()
 
+function(_c4_add_fuzz_build_type build_type _fuzzflags)
+    # add compiler-specific flags
+    cmake_parse_arguments("" "" "" "GCC CLANG" ${ARGN})
+    if((CMAKE_CXX_COMPILER_ID STREQUAL "Clang") OR (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+        set(_fuzzflags "${_fuzzflags} ${_CLANG}")
+    elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(_fuzzflags "${_fuzzflags} ${_MSVC}")
+    endif()
+    # set the compile flags
+    set(CMAKE_C_FLAGS_${build_type} "${_fuzzflags}" CACHE
+        STRING "Flags used by the C compiler on fuzz builds." FORCE)
+    set(CMAKE_CXX_FLAGS_${build_type} "${_fuzzflags}" CACHE
+        STRING "Flags used by the C++ compiler on fuzz builds." FORCE)
+    # need to link using the compiler, and not ld
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" upper)
+    if("${upper}" STREQUAL "${build_type}")
+        set(CMAKE_LINKER ${CMAKE_CXX_COMPILER} CACHE FILEPATH "Linker" FORCE)
+        set(FUZZR_ENVIRONMENT "${upper}_OPTIONS=print_stacktrace=1" PARENT_SCOPE)
+    endif()
+    # this is not needed because we're using the C compiler to link,
+    # and CMAKE_C_FLAGS will be used with it:
+    #set(CMAKE_EXE_LINKER_FLAGS_${build_type} "${_fuzzflags}" CACHE
+    #    STRING "Flags used by the linker on fuzz builds." FORCE)
+endfunction()
 
 function(c4_add_sanitizer_suppression sanitizer suppression)
     set(supprfile ${CMAKE_BINARY_DIR}/c4_suppressions_${sanitizer}.txt)
