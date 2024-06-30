@@ -8,6 +8,7 @@ markupsafe
 Frozen-Flask
 requests
 mmh3
+numpy==1.23.1
 bokeh<3.0
 selenium
 matplotlib
