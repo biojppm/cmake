@@ -3579,13 +3579,18 @@ function(c4_setup_benchmarking)
     _c4_set_target_folder(bm-run "/bm")
     # download google benchmark
     if(NOT TARGET benchmark)
+        set(with_exceptions OFF)
+        if(MSVC)
+            set(with_exceptions ON)
+        endif()
         c4_import_remote_proj(googlebenchmark ${CMAKE_CURRENT_BINARY_DIR}/ext/googlebenchmark
           REMOTE
             GIT_REPOSITORY https://github.com/google/benchmark.git
-            GIT_TAG main GIT_SHALLOW ON
+            GIT_TAG main
+            GIT_SHALLOW ON
           OVERRIDE
             BENCHMARK_ENABLE_TESTING OFF
-            BENCHMARK_ENABLE_EXCEPTIONS OFF
+            BENCHMARK_ENABLE_EXCEPTIONS ${with_exceptions}
             BENCHMARK_ENABLE_LTO OFF
           SET_FOLDER_TARGETS ext benchmark benchmark_main
           EXCLUDE_FROM_ALL
