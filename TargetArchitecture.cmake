@@ -30,6 +30,10 @@ function(c4_get_architecture_defines output_var)
         set(defines __riscv32__)
     elseif("${arch}" STREQUAL "s390x")
         set(defines __s390x__)
+    elseif("${arch}" STREQUAL "loongarch64")
+        set(defines __loongarch64__)
+    elseif("${arch}" STREQUAL "loongarch32")
+        set(defines __loongarch32__)
     else()
         message(FATAL_ERROR "unknown target architecture: ${arch}")
     endif()
@@ -94,6 +98,10 @@ function(c4_get_target_cpu_architecture output_var)
    #endif
 #elif defined(__s390x__) || defined(__zarch__)
     #error cmake_ARCH s390x
+#elif defined(__loongarch64)
+    #error cmake_ARCH loongarch64
+#elif defined(__loongarch32)
+    #error cmake_ARCH loongarch32
 #endif
 #error cmake_ARCH unknown
 ")
