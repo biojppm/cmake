@@ -3305,26 +3305,29 @@ function(c4_setup_coverage)
         EXCLUDE       # patterns to exclude in the coverage, relative to CMAKE_SOURCE_DIR
         EXCLUDE_ABS   # absolute paths to exclude in the coverage
         GENHTML_ARGS  # options to pass to genhtml
+        LCOV_ARGS     # options to pass to lcov
     )
     # defaults for the macro arguments
-    set(covflags "-g -O0 --coverage") #set(covflags "-g -O0 -fprofile-arcs -ftest-coverage")
+    set(covflags "-g -O0 --coverage")
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         set(covflags "${covflags} -fprofile-arcs -ftest-coverage -fno-inline -fno-inline-small-functions -fno-default-inline")
     endif()
-    set(_lcov_args " -v -v --debug ")
-    set(_genhtml_args "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'")
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
-    set(${_c4_uprefix}COVERAGE_LCOV_ARGS "${_lcov_args}" CACHE STRING "arguments to pass to lcov")
-    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "${_genhtml_args}" CACHE STRING "arguments to pass to genhtml"
-        FORCE)
+    set(${_c4_uprefix}COVERAGE_LCOV_ARGS " " CACHE STRING "extra flags to pass to lcov")
+    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'" CACHE STRING "arguments to pass to genhtml" FORCE)
     set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;ext;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
+    option(${_c4_uprefix}COVERAGE_LCOV_IGNORE_ERR "suppress lcov errors" ON)
+    option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
+    option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
+    #
+    # get the arguments, or default them
     _c4_handle_arg(COVFLAGS ${${_c4_uprefix}COVERAGE_FLAGS})
     _c4_handle_arg(INCLUDE ${${_c4_uprefix}COVERAGE_INCLUDE})
     _c4_handle_arg(EXCLUDE ${${_c4_uprefix}COVERAGE_EXCLUDE})
     _c4_handle_arg(EXCLUDE_ABS ${${_c4_uprefix}COVERAGE_EXCLUDE_ABS} "${CMAKE_BINARY_DIR}")
-    _c4_handle_arg(LCOV_ARGS ${${_c4_uprefix}COVERAGE_LCOV_ARGS})
+    _c4_handle_arg(LCOV_ARGS "") # default to nothing
     _c4_handle_arg(GENHTML_ARGS ${${_c4_uprefix}COVERAGE_GENHTML_ARGS})
     #
     function(_c4cov_transform_filters var reldir)
@@ -3369,25 +3372,19 @@ function(c4_setup_coverage)
         CXX_FLAGS ${_COVFLAGS}
         )
     #
-    set(${_c4_uprefix}COVERAGE_LCOV_FLAGS "" CACHE STRING "extra flags to pass to lcov")
-    option(${_c4_uprefix}COVERAGE_LCOV_IGNORE_ERR "suppress lcov errors" ON)
-    option(${_c4_uprefix}COVERAGE_CODECOV "enable target to submit coverage to codecov.io" OFF)
-    option(${_c4_uprefix}COVERAGE_COVERALLS "enable target to submit coverage to coveralls.io" OFF)
-    #
     c4_dbg("adding coverage targets")
     #
     set(sd "${CMAKE_SOURCE_DIR}")
     set(bd "${CMAKE_BINARY_DIR}")
     set(coverage_result ${bd}/lcov/index.html)
     set(lcov_result ${bd}/coverage3-final_filtered.lcov)
-    set(lcov_flags ${${_c4_uprefix}COVERAGE_LCOV_FLAGS})
+    set(lcov_flags "${_LCOV_ARGS} ${${_c4_uprefix}COVERAGE_LCOV_ARGS}")
+    #string(APPEND lcov_flags " -v -v --debug")
     if(${_c4_uprefix}COVERAGE_LCOV_IGNORE_ERR)
-        list(APPEND lcov_flags
-            --ignore-errors gcov,gcov
-            # this is only available in recent lcov versions:
-            #--ignore-errors mismatch,mismatch
-            #--ignore-errors unused,unused
-        )
+        string(APPEND lcov_flags " --ignore-errors gcov,gcov")
+        # this is only available in recent lcov versions:
+        #string(APPEND lcov_flags " --ignore-errors mismatch,mismatch")
+        #string(APPEND lcov_flags " --ignore-errors unused,unused")
     endif()
     c4_log("Coverage:
     gcov: ${GCOV}   ${GCOV_VERSION}
@@ -3395,12 +3392,13 @@ function(c4_setup_coverage)
     genhtml: ${GENHTML}   ${GENHTML_VERSION}
     ctest: ${CTEST}
     gcc coverage flags: ${_COVFLAGS}
-    lcov args: ${_LCOV_ARGS} ${lcov_flags}
+    lcov args: ${lcov_flags}
     genhtml args: ${_GENHTML_ARGS}")
     if(NOT (GCOV AND LCOV AND GENHTML AND CTEST))
         c4_err("Coverage tools not available")
     endif()
     #
+    separate_arguments(lcov_flags NATIVE_COMMAND ${lcov_flags})
     separate_arguments(_GENHTML_ARGS NATIVE_COMMAND ${_GENHTML_ARGS})
     add_custom_target(${_c4_lprefix}coverage
         BYPRODUCTS ${coverage_result} ${lcov_result}
