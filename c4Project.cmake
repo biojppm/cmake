@@ -891,6 +891,7 @@ set(_C4_PEDANTIC_FLAGS_COMMON
     -Wempty-body
     -Wformat=2 # warn on security issues around functions that format output (ie printf)
     -Wformat-security
+    -Wundef
     # only available for C files:
     $<$<COMPILE_LANGUAGE:C>:-Wbad-function-cast>
     $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>
