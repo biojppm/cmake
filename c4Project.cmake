@@ -1757,7 +1757,7 @@ function(c4_download_remote_proj name candidate_dir)
     c4_log("downloading remote project: ${name} -> \"${srcdir}\" (dir=${dir})...")
     #
     file(WRITE ${dir}/dl/CMakeLists.txt "
-cmake_minimum_required(VERSION 2.8.2)
+cmake_minimum_required(VERSION 3.7)
 project(${_c4_lcprefix}-download-${name} NONE)
 
 # this project only downloads ${name}
@@ -2691,12 +2691,14 @@ include(CMakeFindDependencyMacro)
         set(case ${CMAKE_CURRENT_BINARY_DIR}/export_cases/${cfg_dst})
         file(MAKE_DIRECTORY ${case})
         #
+        file(TO_CMAKE_PATH "${targets_file}" _targets_file_normalized)
+        file(TO_CMAKE_PATH "${cfg_dst}" _cfg_dst_normalized)
         install(EXPORT "${_TARGET}"
-            FILE "${targets_file}"
+            FILE "${_targets_file_normalized}"
             NAMESPACE "${_NAMESPACE}"
-            DESTINATION "${cfg_dst}")
+            DESTINATION "${_cfg_dst_normalized}")
         export(EXPORT ${_TARGET}
-            FILE "${targets_file}"
+            FILE "${_targets_file_normalized}"
             NAMESPACE "${_NAMESPACE}")
         #
         # Config files
@@ -2743,7 +2745,8 @@ check_required_components(${_c4_lcprefix})
             VERSION ${${_c4_uprefix}VERSION}
             COMPATIBILITY AnyNewerVersion
         )
-        install(FILES ${cfg} ${cfg_ver} DESTINATION ${cfg_dst})
+        file(TO_CMAKE_PATH "${cfg_dst}" _cfg_dst_normalized)
+        install(FILES ${cfg} ${cfg_ver} DESTINATION ${_cfg_dst_normalized})
     endmacro(__c4_install_exports)
     #
     # To install the exports:
@@ -2864,19 +2867,6 @@ function(c4_setup_testing)
         _c4_set_target_folder(test-build "/test")
         _c4_set_target_folder(test-verbose "/test")
     endif()
-    if(NOT TARGET test)
-        # add a test target. To prevent a warning, we need to set up a policy,
-        # and also suppress the resulting warning from suppressing the warning.
-        set(_depr_old_val ${CMAKE_WARN_DEPRECATED})
-        set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "" FORCE)  # https://stackoverflow.com/questions/67432538/cannot-set-cmake-warn-deprecated-inside-the-cmakelists-txt
-        cmake_policy(PUSH)
-        cmake_policy(SET CMP0037 OLD)  # target name "test" is reserved for CTesting
-        add_custom_target(test)
-        _c4_set_target_folder(test "/test")
-        cmake_policy(POP)
-        set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "${_depr_old_val}" FORCE)
-        unset(_depr_old_val)
-    endif()
     function(_def_runner runner)
         set(echo "
 CWD=${CMAKE_CURRENT_BINARY_DIR}
@@ -2894,7 +2884,6 @@ ${ARGN}
     endfunction()
     _def_runner(${_c4_lprefix}test-run ${CMAKE_CTEST_COMMAND} --output-on-failure ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
     _def_runner(${_c4_lprefix}test-run-verbose ${CMAKE_CTEST_COMMAND} -VV ${${_c4_uprefix}CTEST_OPTIONS} -C $<CONFIG>)
-    add_dependencies(test ${_c4_lprefix}test-run)
     add_dependencies(test-verbose ${_c4_lprefix}test-run-verbose)
     add_dependencies(test-build ${_c4_lprefix}test-build)
     #
