@@ -999,7 +999,7 @@ function(c4_set_default_pack_properties)
         endif()
     elseif("${_TYPE}" STREQUAL "EXECUTABLE")
         set(build_tag)
-    elseif()
+    else()
         c4_err("unknown TYPE: ${_TYPE}")
     endif()
     #
@@ -2053,7 +2053,7 @@ function(c4_add_target target)
                 PUBLIC    "${_PUBLIC_SOURCES};${_PUBLIC_HEADERS}"
                 INTERFACE "${_INTERFACE_SOURCES};${_INTERFACE_HEADERS}"
                 PRIVATE   "${_SOURCES};${_HEADERS};${_PRIVATE_SOURCES};${_PRIVATE_HEADERS}")
-        elseif()
+        else()
             c4_err("${target}: adding sources: invalid source mode")
         endif()
         _c4_set_tgt_prop(${target} C4_SOURCE_ROOT "${_SOURCE_ROOT}")
