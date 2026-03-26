@@ -577,6 +577,13 @@ macro(_c4_handle_semantic_version version)
     c4_setg(${prefix}_VERSION_PATCH ${_patch})
     c4_setg(${prefix}_VERSION_TWEAK "${_safe_tweak}")
     c4_setg(${prefix}_VERSION_TWEAK_FULL "${_tweak}")
+    c4_setg(${_c4_uprefix}VERSION_FULL ${version})
+    c4_setg(${_c4_uprefix}VERSION ${_safe_version})
+    c4_setg(${_c4_uprefix}VERSION_MAJOR ${_major})
+    c4_setg(${_c4_uprefix}VERSION_MINOR ${_minor})
+    c4_setg(${_c4_uprefix}VERSION_PATCH ${_patch})
+    c4_setg(${_c4_uprefix}VERSION_TWEAK "${_safe_tweak}")
+    c4_setg(${_c4_uprefix}VERSION_TWEAK_FULL "${_tweak}")
 endmacro()
 
 
