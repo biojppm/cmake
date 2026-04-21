@@ -3311,7 +3311,7 @@ function(c4_setup_coverage)
     endif()
     set(${_c4_uprefix}COVERAGE_FLAGS "${covflags}" CACHE STRING "coverage compilation flags")
     set(${_c4_uprefix}COVERAGE_LCOV_ARGS " " CACHE STRING "extra flags to pass to lcov")
-    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "--title ${_c4_lcprefix} --demangle-cpp --sort --function-coverage --branch-coverage --prefix '${CMAKE_SOURCE_DIR}' --prefix '${CMAKE_BINARY_DIR}'" CACHE STRING "arguments to pass to genhtml" FORCE)
+    set(${_c4_uprefix}COVERAGE_GENHTML_ARGS "--demangle-cpp --function-coverage --branch-coverage" CACHE STRING "arguments to pass to genhtml" FORCE)
     set(${_c4_uprefix}COVERAGE_INCLUDE src CACHE STRING "relative paths to include in the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE bm;build;extern;ext;src/c4/ext;test CACHE STRING "relative paths to exclude from the coverage, relative to CMAKE_SOURCE_DIR")
     set(${_c4_uprefix}COVERAGE_EXCLUDE_ABS /usr CACHE STRING "absolute paths to exclude from the coverage")
@@ -3330,7 +3330,7 @@ function(c4_setup_coverage)
     function(_c4cov_transform_filters var reldir)
         set(_filters)
         foreach(pat ${${var}})
-            list(APPEND _filters "'${reldir}${pat}/*'")
+            list(APPEND _filters "\"${reldir}${pat}/*\"")
         endforeach()
         set(${var} ${_filters} PARENT_SCOPE)
     endfunction()
@@ -3374,7 +3374,9 @@ function(c4_setup_coverage)
     set(sd "${CMAKE_SOURCE_DIR}")
     set(bd "${CMAKE_BINARY_DIR}")
     set(coverage_result ${bd}/lcov/index.html)
-    set(lcov_result ${bd}/coverage3-final_filtered.lcov)
+    set(lcov_dir lcov-tmp)
+    set(lcov_name result.lcov)
+    set(lcov_result ${bd}/${lcov_dir}/${lcov_name})
     set(lcov_flags "${_LCOV_ARGS} ${${_c4_uprefix}COVERAGE_LCOV_ARGS}")
     #string(APPEND lcov_flags " -v -v --debug")
     if(${_c4_uprefix}COVERAGE_LCOV_IGNORE_ERR)
@@ -3395,20 +3397,124 @@ function(c4_setup_coverage)
         c4_err("Coverage tools not available")
     endif()
     #
-    separate_arguments(lcov_flags NATIVE_COMMAND ${lcov_flags})
-    separate_arguments(_GENHTML_ARGS NATIVE_COMMAND ${_GENHTML_ARGS})
+    string(REPLACE ";" " " _EXCLUDE "${_EXCLUDE} ${_EXCLUDE_ABS}")
+    string(REPLACE "${bd}" "\$BINDIR" _EXCLUDE "${_EXCLUDE}") # do this before the srcdir
+    string(REPLACE "${sd}" "\$SRCDIR" _EXCLUDE "${_EXCLUDE}")
+    set(covenv "${CMAKE_BINARY_DIR}/coverage_env.sh")
+    set(covscript "${CMAKE_BINARY_DIR}/coverage_run.sh")
+    set(covdelta "${CMAKE_BINARY_DIR}/coverage_delta.sh")
+    function(_mkscript name contents)
+        file(WRITE "${name}" "${contents}")
+        execute_process(COMMAND chmod a+x "${name}")
+    endfunction()
+    _mkscript("${covenv}" "#!/bin/bash
+
+CMAKE=\${CMAKE:-${CMAKE_COMMAND}}
+
+SRCDIR=\${SRCDIR:-\"${sd}\"}
+BINDIR=\${BINDIR:-\"${bd}\"}
+
+TARGET_BUILD=\${TARGET:-${_c4_lprefix}test-build}
+TARGET_RUN=\${TARGET:-${_c4_lprefix}test-run}
+
+TITLE=\${TITLE:-${_c4_lcprefix}}
+
+LCOV=\${LCOV:-${LCOV}}
+LCOV_FLAGS=\${LCOV_FLAGS:- ${lcov_flags}}
+LCOV_FLAGS_EXTRA=\${LCOV_FLAGS_EXTRA:-}
+LCOV_ARGS=\"\$LCOV_FLAGS \$LCOV_FLAGS_EXTRA\"
+
+LCOV_EXCLUDE=\${LCOV_EXCLUDE:-${_EXCLUDE}}
+LCOV_EXCLUDE_EXTRA=\${LCOV_EXCLUDE_EXTRA:-}
+
+LCOV_DIFF=\${LCOV_DIFF:-lcov-diff}
+LCOV_DIFF_FLAGS=\${LCOV_DIFF_FLAGS:-}
+
+GENHTML=\${GENHTML:-${GENHTML}}
+GENHTML_DIRS=\${GENHTML_DIRS:- --prefix \"\$SRCDIR\" --prefix \"\$BINDIR\"}
+GENHTML_FLAGS=\${GENHTML_FLAGS:- ${_GENHTML_ARGS}}
+GENHTML_FLAGS_EXTRA=\${GENHTML_FLAGS_EXTRA:-}
+GENHTML_ARGS=\"\$GENHTML_FLAGS \$GENHTML_FLAGS_EXTRA --title \\\"\$TITLE\\\" \$GENHTML_DIRS\"
+")
+    _mkscript("${covscript}" "#!/bin/bash
+
+set -xeuo pipefail
+
+cd \$(dirname \$0)
+
+source coverage_env.sh
+
+#COV_ID=\${COV_ID:-\$(git rev-parse --short HEAD)}
+COV_ID=\${COV_ID:-}
+LCOVDIR=\${LCOVDIR:-\"\$BINDIR/${lcov_dir}\$COV_ID\"}
+RESULT_LCOV=\${RESULT_LCOV:-\"\$LCOVDIR/${lcov_name}\"}
+RESULT_GENHTML=\${RESULT_GENHTML:-\"\$BINDIR/lcov\$COV_ID\"}
+
+mkdir -p \"\$LCOVDIR\"
+
+\$CMAKE --build \"\$BINDIR\" --target \$TARGET_BUILD --parallel
+
+\$LCOV \$LCOV_ARGS -q --zerocounters --directory .
+\$LCOV \$LCOV_ARGS -q --no-external --capture --base-directory \"\$SRCDIR\" --directory . --initial --output-file \"\$LCOVDIR\"/tmp0before.lcov
+
+\$CMAKE --build \"\$BINDIR\" --target \$TARGET_RUN --parallel \\
+    || echo \"Error: failed running the target. Proceeding with coverage, but results may be affected or even empty.\"
+
+\$LCOV \$LCOV_ARGS -q --no-external --capture --base-directory \"\$SRCDIR\" --directory . --output-file \"\$LCOVDIR\"/tmp1after.lcov
+\$LCOV \$LCOV_ARGS -q --add-tracefile \"\$LCOVDIR\"/tmp0before.lcov --add-tracefile \"\$LCOVDIR\"/tmp1after.lcov --output-file \"\$LCOVDIR\"/tmp2final.lcov
+\$LCOV \$LCOV_ARGS -q --remove \"\$LCOVDIR/tmp2final.lcov\" \$LCOV_EXCLUDE \$LCOV_EXCLUDE_EXTRA --output-file \"\$RESULT_LCOV\"
+
+\$GENHTML \"\$RESULT_LCOV\" -o \"\$RESULT_GENHTML\" \$GENHTML_ARGS
+
+set +e
+
+echo \"Success! Coverage report at: \"
+echo \"    \$RESULT_GENHTML/index.html\"
+")
+    _mkscript("${covdelta}" "#!/bin/bash
+
+set -xeuo pipefail
+
+BEFORE=\$(realpath \"\$1\")
+AFTER=\$(realpath \"\$2\")
+
+[ -f \"\$BEFORE\" ] || (echo \"\$BEFORE: file not found\" ; exit 1)
+[ -f \"\$AFTER\" ] || (echo \"\$AFTER: file not found\" ; exit 1)
+
+cd \$(dirname \$0)
+
+source coverage_env.sh
+
+DELTA=\${DELTA:-delta01}
+
+LCOVDIR=\${LCOVDIR:-\"\$BINDIR/lcov-tmp\"}
+mkdir -p \"\$LCOVDIR\"
+
+d01=\"\$LCOVDIR/\$DELTA.0_to_1\"
+d10=\"\$LCOVDIR/\$DELTA.1_to_0\"
+del=\"\$LCOVDIR/\$DELTA\"
+
+\$LCOV \$LCOV_ARGS -q --subtract \"\$BEFORE\" --output-file \"\$d01.lcov\" \"\$AFTER\"
+\$LCOV \$LCOV_ARGS -q --subtract \"\$AFTER\"  --output-file \"\$d10.lcov\" \"\$BEFORE\"
+\$LCOV \$LCOV_ARGS -q --add-tracefile \"\$d01.lcov\" --add-tracefile \"\$d10.lcov\" --output-file \"\$del.lcov\"
+
+\$GENHTML \"\$d01.lcov\" -o \"\$DELTA.0_to_1.genhtml\" \$GENHTML_ARGS --ignore-errors inconsistent,corrupt,category,range
+\$GENHTML \"\$d10.lcov\" -o \"\$DELTA.1_to_0.genhtml\" \$GENHTML_ARGS --ignore-errors inconsistent,corrupt,category,range
+\$GENHTML \"\$del.lcov\" -o \"\$DELTA.genhtml\" \$GENHTML_ARGS --ignore-errors inconsistent,corrupt,category,range
+
+set +e
+
+cat <<EOF
+Success! Coverage reports at:
+    \$DELTA.0_to_1.genhtml/index.html
+    \$DELTA.1_to_0.genhtml/index.html
+    \$DELTA.genhtml/index.html
+EOF
+")
     add_custom_target(${_c4_lprefix}coverage
         BYPRODUCTS ${coverage_result} ${lcov_result}
-        COMMAND echo "cd ${CMAKE_BINARY_DIR}"
-        COMMAND ${LCOV} ${lcov_flags} -q --zerocounters --directory .
-        COMMAND ${LCOV} ${lcov_flags} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage0-before.lcov --initial
-        COMMAND ${CMAKE_COMMAND} --build . --target ${_c4_lprefix}test-run || echo "Failed running the tests. Proceeding with coverage, but results may be affected or even empty."
-        COMMAND ${LCOV} ${lcov_flags} -q --no-external --capture --base-directory "${sd}" --directory . --output-file ${bd}/coverage1-after.lcov
-        COMMAND ${LCOV} ${lcov_flags} -q --add-tracefile ${bd}/coverage0-before.lcov --add-tracefile ${bd}/coverage1-after.lcov --output-file ${bd}/coverage2-final.lcov
-        COMMAND ${LCOV} ${lcov_flags} -q --remove ${bd}/coverage2-final.lcov ${_EXCLUDE} ${EXCLUDE_ABS} --output-file ${bd}/coverage3-final_filtered.lcov
-        COMMAND ${GENHTML} ${lcov_result} -o ${bd}/lcov ${_GENHTML_ARGS}
-        COMMAND echo "Coverage report: ${coverage_result}"
-        DEPENDS ${_c4_lprefix}test-build
+        COMMAND "${covscript}"
+        #DEPENDS ${_c4_lprefix}test-build
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "${_c4_prefix} coverage: LCOV report at ${coverage_result}"
         #VERBATIM
