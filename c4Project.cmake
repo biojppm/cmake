@@ -16,6 +16,7 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+include(GNUInstallDirs)
 include(CMakeDependentOption)
 include(ConfigurationTypes)
 include(CreateSourceGroup)
@@ -2792,9 +2793,9 @@ endfunction()
 
 
 macro(_c4_setup_install_vars)
-    set(_RUNTIME_INSTALL_DIR   bin/)
-    set(_ARCHIVE_INSTALL_DIR   lib/)
-    set(_LIBRARY_INSTALL_DIR   lib/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
+    set(_RUNTIME_INSTALL_DIR   ${CMAKE_INSTALL_BINDIR}/)
+    set(_ARCHIVE_INSTALL_DIR   ${CMAKE_INSTALL_LIBDIR}/)
+    set(_LIBRARY_INSTALL_DIR   ${CMAKE_INSTALL_LIBDIR}/) # TODO on Windows, ARCHIVE and LIBRARY dirs must be different to prevent name clashes
     set(_INCLUDE_INSTALL_DIR   include/)
     set(_OBJECTS_INSTALL_DIR   obj/)
     set(_SYSCONFIG_INSTALL_DIR etc/${_c4_lcprefix}/)
