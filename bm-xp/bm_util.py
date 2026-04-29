@@ -142,6 +142,10 @@ def dump_json(data, filename):
 def load_json(filename):
     with open(filename, "r") as f:
         try:
-            return munch.munchify(json.load(f))
+            j = json.load(f)
         except Exception as exc:
-            raise Exception(f"could not load file: {filename}: {exc}")
+            raise Exception(f"could not load json file: {filename}: {exc}")
+        try:
+            return munch.munchify(j)
+        except Exception as exc:
+            raise Exception(f"could not munch json: {filename}: {exc}")

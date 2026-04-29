@@ -11,12 +11,17 @@ from dataclasses import dataclass
 
 from munch import Munch, munchify
 
+import numpy
+numpy.bool8 = numpy.bool
 import bokeh.io as bki
 import bokeh.models as bkm
 import bokeh.plotting as bkp
 import bokeh.transform as bkt
 import bokeh.layouts as bkl
-from bokeh.models.markers import marker_types as bk_markers
+try:
+    from bokeh.models.markers import marker_types as bk_markers
+except:
+    from bokeh.core.enums import MarkerType as bk_markers
 # https://docs.bokeh.org/en/latest/docs/reference/palettes.html
 from bokeh.palettes import d3 as bk_palette_d3
 bk_palette = bk_palette_d3['Category20c'][20]
@@ -155,7 +160,8 @@ def plot_benchmark_panel_as_lines(bm_panel: BenchmarkPanel, title: str,
                    #background_fill_color="#fafafa",
                    x_axis_label=kwargs.xlabel,
                    y_axis_label=kwargs.ylabel,
-                   plot_width=kwargs.width,
+                   #plot_width=kwargs.width,
+                   width=kwargs.width,
                    )
     # plot with matplotlib (to export png)
     plt.title(title)
