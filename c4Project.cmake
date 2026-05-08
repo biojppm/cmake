@@ -914,7 +914,7 @@ set(_C4_PEDANTIC_FLAGS_GCC ${_C4_PEDANTIC_FLAGS_COMMON}
     -Wuseless-cast # cast to the same type
     )
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "")
+if((NOT CMAKE_CXX_COMPILER_ID) OR (CMAKE_CXX_COMPILER_ID STREQUAL ""))
     message(FATAL_ERROR "project() must be called before including this file")
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL GNU)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 6.0)
