@@ -1738,7 +1738,7 @@ function(c4_download_remote_proj name candidate_dir)
         endif()
     endif()
     #
-    # try to find an existing version (downloaded by some other project)
+    # try to find an existing version
     set(out "${dir}")
     _c4_find_cached_proj(${name} out)
     if(NOT ("${out}" STREQUAL "${dir}"))
@@ -2929,10 +2929,17 @@ ${ARGN}
     if(_DOCTEST)
         c4_log("testing requires doctest")
         if(NOT TARGET doctest)
-            c4_import_remote_proj(doctest ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest
+            set(doctestversion 2.5.2)
+            # starting on v2.5.0, doctest dropped support for gcc 4.x,
+            # so fall back to 2.4.12 when using gcc 4
+            # see https://github.com/doctest/doctest/issues/1112
+            if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
+                set(doctestversion 2.4.12)
+            endif()
+            c4_import_remote_proj(doctest-${doctestversion} ${CMAKE_CURRENT_BINARY_DIR}/ext/doctest-${doctestversion}
                 REMOTE
                   GIT_REPOSITORY https://github.com/onqtam/doctest.git
-                  GIT_TAG v2.4.12 #GIT_SHALLOW ON
+                  GIT_TAG v${doctestversion} GIT_SHALLOW ON
                 OVERRIDE
                   DOCTEST_WITH_TESTS OFF
                   DOCTEST_WITH_MAIN_IN_STATIC_LIB ON
