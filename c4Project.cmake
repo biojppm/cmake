@@ -1951,7 +1951,7 @@ function(c4_add_target target)
         c4_err("must be either LIBRARY or EXECUTABLE")
     endif()
 
-    _c4_handle_arg(SHARED_MACRO ${_c4_uprefix}MACRO)
+    _c4_handle_arg(SHARED_MACRO ${_c4_uprefix}SHARED)
     _c4_handle_arg(SHARED_EXPORTS ${_c4_uprefix}EXPORTS)
     _c4_handle_arg_or_fallback(SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
     function(_c4_transform_to_full_path list all)
