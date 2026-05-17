@@ -2959,6 +2959,7 @@ function(c4_add_test target)
     _c4_handle_args(_ARGS ${ARGN}
       _ARGS0  # zero-value macro arguments
       _ARGS1  # one-value macro arguments
+        SUFFIX
         WORKING_DIRECTORY
       _ARGSN  # multi-value macro arguments
         ARGS
@@ -2972,11 +2973,11 @@ function(c4_add_test target)
         set(cmd_pfx ${CMAKE_CROSSCOMPILING_EMULATOR})
     endif()
     if(${CMAKE_VERSION} VERSION_LESS "3.16.0")
-        add_test(NAME ${target}
+        add_test(NAME ${target}${_SUFFIX}
             COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
             ${_WORKING_DIRECTORY})
     else()
-        add_test(NAME ${target}
+        add_test(NAME ${target}${_SUFFIX}
             COMMAND ${cmd_pfx} "$<TARGET_FILE:${target}>" ${_ARGS}
             ${_WORKING_DIRECTORY}
             COMMAND_EXPAND_LISTS)
