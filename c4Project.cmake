@@ -2898,11 +2898,21 @@ ${ARGN}
     if(_GTEST)
         c4_log("testing requires googletest")
         if(NOT TARGET gtest)
-            c4_import_remote_proj(gtest ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
+            set(gtestversion 1.17.0)
+            set(gtesttag v${gtestversion})
+            # required: fall back when using c++11
+            if(CMAKE_CXX_STANDARD VERSION_LESS_EQUAL 11)
+                set(gtestversion 1.12.1)
+                set(gtesttag release-${gtestversion})
+            # required: fall back when using c++14
+            elseif(CMAKE_CXX_STANDARD VERSION_LESS_EQUAL 14)
+                set(gtestversion 1.16.0)
+                set(gtesttag v${gtestversion})
+            endif()
+            c4_import_remote_proj(gtest-${gtestversion} ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
                 REMOTE
                   GIT_REPOSITORY https://github.com/google/googletest.git
-                  # this is the latest release to support C++11
-                  GIT_TAG release-1.12.1 #GIT_SHALLOW ON
+                  GIT_TAG ${gtesttag} GIT_SHALLOW ON
                 OVERRIDE
                   BUILD_GTEST ON
                   BUILD_GMOCK OFF
