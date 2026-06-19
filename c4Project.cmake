@@ -2932,6 +2932,8 @@ ${ARGN}
                   "${_gtest_patch_src_dir}/.gtest_gcc-4.8.patch")
                 unset(_gtest_patch_src_dir)
                 target_compile_options(gtest PUBLIC -include ${_c4_project_dir}/compat/c4/gcc-4.8.hpp)
+            elseif(MSVC AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+                target_compile_options(gtest PRIVATE -Wno-character-conversion)
             endif()
         endif()
     endif()
