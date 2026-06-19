@@ -2906,7 +2906,10 @@ ${ARGN}
                 set(gtesttag release-${gtestversion})
             # required: fall back when using c++14
             elseif(CMAKE_CXX_STANDARD VERSION_LESS_EQUAL 14)
-                set(gtestversion 1.16.0)
+                # note: they claim that v1.16.0 supports c++14, but
+                # that's not the case. The earliest version that we have
+                # seen working with for c++14 is this one:
+                set(gtestversion 1.14.0)
                 set(gtesttag v${gtestversion})
             endif()
             c4_import_remote_proj(gtest-${gtestversion} ${CMAKE_CURRENT_BINARY_DIR}/ext/gtest
@@ -2926,7 +2929,7 @@ ${ARGN}
             if((CMAKE_CXX_COMPILER_ID STREQUAL "GNU") AND
               (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 4.8) AND
               (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0))
-                _c4_get_subproject_property(gtest SRC_DIR _gtest_patch_src_dir)
+                _c4_get_subproject_property(gtest-${gtestversion} SRC_DIR _gtest_patch_src_dir)
                 apply_patch("${_c4_project_dir}/compat/gtest_gcc-4.8.patch"
                   "${_gtest_patch_src_dir}"
                   "${_gtest_patch_src_dir}/.gtest_gcc-4.8.patch")
