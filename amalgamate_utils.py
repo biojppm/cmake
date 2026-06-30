@@ -61,6 +61,7 @@ class injcode:
 
 
 class onlyif:
+    """"""
     def __init__(self, condition, obj):
         self.condition = condition
         self.obj = obj
@@ -91,12 +92,10 @@ def catfiles(filenames, rootdir,
         if to_inject.get(incl) is None:
             if guard is None:
                 guard = incguard(incl)
-            return f"""// amalgamate: removed include of
-// {incl}
-//{line}
-#if !defined({guard}) && !defined(_{guard})
+            return f"""//{line}   // amalgamate: remove include
+#if !defined({guard})
 #error "amalgamate: file {incl} must have been included at this point"
-#endif /* {guard} */\n
+#endif /* {guard} */
 """
         else:
             entry = to_inject[incl]
@@ -113,7 +112,10 @@ def catfiles(filenames, rootdir,
                 s += line
         return s
     def append_cpp(filename):
-        return f"""#ifdef {definition_macro}
+        if definition_macro is None:
+            return append_file(filename)
+        else:
+            return f"""#ifdef {definition_macro}
 {append_file(filename)}
 #endif /* {definition_macro} */
 """
@@ -163,12 +165,16 @@ def catfiles(filenames, rootdir,
                 else:
                     out += append_file(filename)
             out += footer(entry)
-    return f"""#ifndef {result_incguard}
+    if result_incguard is not None:
+        out = f"""#pragma once
+#ifndef {result_incguard}
 #define {result_incguard}
 
 {out}
 #endif /* {result_incguard} */
 """
+    return out
+
 
 def include_only_first(file_contents: str):
     rx = [
@@ -191,7 +197,7 @@ def include_only_first(file_contents: str):
                         c_version = f"{incl[1:]}.h"
                         already_included[c_version] = line
                 else:
-                    line = f"//included above:\n//{line}"
+                    line = f"//{line}  // amalgamate: included above"
                 break
         out += line
         out += "\n"
@@ -203,19 +209,22 @@ def mkparser(**bool_args):
     parser = argparse.ArgumentParser()
     parser.add_argument("output", default=None, nargs='?', help="output file. defaults to stdout")
     for k, (default, help) in bool_args.items():
-        # https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-        feature = parser.add_mutually_exclusive_group(required=False)
         yes = '--' + k
         no = '--no-' + k
         if default:
-            yes_default = "this is the default"
-            no_default = f"the default is {yes}"
+            txt_default = f"the default is {yes}"
         else:
-            yes_default = f"the default is {no}"
-            no_default = "this is the default"
-        feature.add_argument(yes, dest=k, action='store_true', help=f"{help}. {yes_default}.")
-        feature.add_argument(no, dest=k, action='store_false', help=f"{help}. {no_default}.")
-        parser.set_defaults(**{k: default})
+            txt_default = f"the default is {no}"
+        if sys.version_info >= (3,9):
+            # https://stackoverflow.com/questions/9234258/in-python-argparse-is-it-possible-to-have-paired-no-something-something-arg
+            parser.add_argument(yes, default=default, action=argparse.BooleanOptionalAction,
+                                help=f"{help}. {txt_default}")
+        else:
+            # https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
+            feature = parser.add_mutually_exclusive_group(required=False)
+            feature.add_argument(yes, dest=k, action='store_true', help=f"{help}. {txt_default}.")
+            feature.add_argument(no, dest=k, action='store_false', help=f"{help}. {txt_default}.")
+            parser.set_defaults(**{k: default})
     return parser
 
 
