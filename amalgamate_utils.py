@@ -9,6 +9,12 @@ def dbg(*args, **kwargs):
         print("//", *args, **kwargs, file=sys.stderr)
 
 
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+
+# classes to specify amalgamation
+
 class cmtfile:
     """commented file"""
     def __init__(self, filename):
@@ -61,13 +67,17 @@ class injcode:
 
 
 class onlyif:
-    """"""
+    """include an object only if a condition is met"""
     def __init__(self, condition, obj):
         self.condition = condition
         self.obj = obj
     def __str__(self):
         return str(self.obj)
 
+
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 def catfiles(filenames, rootdir,
              include_regexes,
@@ -86,15 +96,31 @@ def catfiles(filenames, rootdir,
     def incguard(filename):
         return custom_include_guards.get(filename,
                                          f"{file_re.sub('_', filename).upper()}_")
-    def replace_include(rx, match, line, guard):
-        line = line.rstrip()
+    def is_guarded(icurr, lines, guard):
+        rx = re.compile(r'^\s*#\s*ifndef\s+{}.*'.format(guard))
+        iprev = icurr - 1
+        while iprev >= 0:
+            prev = lines[iprev]
+            iprev -= 1
+            if prev.startswith("//") or prev.startswith("/*"):
+                continue
+            if rx.match(prev):
+                return True
+            else:
+                break
+        return False
+    def replace_include(rx, match, line_idx, lines, guard):
+        line = lines[line_idx].rstrip()
         incl = match.group(1)
         if to_inject.get(incl) is None:
+            repl = f"//{line}   // amalgamate: remove include\n#error \"amalgamate: {incl} must have been amalgamated before this point\""
             if guard is None:
                 guard = incguard(incl)
-            return f"""//{line}   // amalgamate: remove include
-#if !defined({guard})
-#error "amalgamate: file {incl} must have been included at this point"
+            if is_guarded(line_idx, lines, guard):
+                return repl + "\n"
+            else:
+                return f"""#ifndef {guard}
+{repl}
 #endif /* {guard} */
 """
         else:
@@ -104,11 +130,12 @@ def catfiles(filenames, rootdir,
     def append_file(filename, guard=None):
         s = ""
         with open(filename, encoding="utf8") as f:
-            for line in f.readlines():
+            lines = list(f.readlines())
+            for i, line in enumerate(lines):
                 for rx in include_regexes:
                     match = rx.match(line)
                     if match:
-                        line = replace_include(rx, match, line, guard)
+                        line = replace_include(rx, match, i, lines, guard)
                 s += line
         return s
     def append_cpp(filename):
@@ -176,10 +203,13 @@ def catfiles(filenames, rootdir,
     return out
 
 
+# -----------------------------------------------------------------------------
+
 def include_only_first(file_contents: str):
+    """read the file contents, and remove repeated includes of the same file"""
     rx = [
-        re.compile(r'^\s*#\s*include "(.*?)".*'),
-        re.compile(r'^\s*#\s*include <(.*?)>.*'),
+        re.compile(r'^\s*#\s*include\s+"(.*?)".*'),
+        re.compile(r'^\s*#\s*include\s+<(.*?)>.*'),
     ]
     already_included = {}
     out = ""
@@ -204,6 +234,8 @@ def include_only_first(file_contents: str):
     return out
 
 
+# -----------------------------------------------------------------------------
+
 def mkparser(**bool_args):
     import argparse
     parser = argparse.ArgumentParser()
@@ -227,6 +259,8 @@ def mkparser(**bool_args):
             parser.set_defaults(**{k: default})
     return parser
 
+
+# -----------------------------------------------------------------------------
 
 def file_put_contents(filename: str, contents: str):
     if filename is None:
