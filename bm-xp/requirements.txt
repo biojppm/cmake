@@ -13,3 +13,4 @@ bokeh<3.0
 selenium
 matplotlib
 prettytable
+filelock

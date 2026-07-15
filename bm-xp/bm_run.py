@@ -169,69 +169,116 @@ class BenchmarkRun(Munch):
     @property
     def repetitions(self):
         for entry in self.benchmarks:
-            yield entry.repetitions
+            try:
+                yield entry.repetitions
+            except:
+                yield 0
 
     @property
     def repetition_indices(self):
         for entry in self.benchmarks:
-            yield entry.repetition_index
+            try:
+                yield entry.repetition_index
+            except:
+                yield 0
 
     @property
     def threads(self):
         for entry in self.benchmarks:
-            yield entry.threads
+            try:
+                yield entry.threads
+            except:
+                yield 0
 
     @property
     def iterations(self):
         for entry in self.benchmarks:
-            yield entry.iterations
+            try:
+                yield entry.iterations
+            except:
+                yield 0
 
     @property
     def real_time(self):
         for entry in self.benchmarks:
-            yield entry.real_time
+            try:
+                yield entry.real_time
+            except:
+                yield 0
 
     @property
     def cpu_time(self):
         for entry in self.benchmarks:
-            yield entry.cpu_time
+            try:
+                yield entry.cpu_time
+            except:
+                yield 0
 
     @property
     def real_time_ms(self):
         for entry in self.benchmarks:
             assert entry.time_unit == "ns"
-            yield entry.real_time / 1e6
+            try:
+                yield entry.real_time / 1e6
+            except:
+                yield 0.0
 
     @property
     def cpu_time_ms(self):
         for entry in self.benchmarks:
             assert entry.time_unit == "ns"
-            yield entry.cpu_time / 1e6
+            try:
+                yield entry.cpu_time / 1e6
+            except:
+                yield 0.0
 
     @property
     def time_unit(self):
         for entry in self.benchmarks:
-            yield entry.time_unit
+            try:
+                yield entry.time_unit
+            except:
+                yield 0
 
     @property
     def bytes_per_second(self):
         for entry in self.benchmarks:
-            yield entry.bytes_per_second
+            try:
+                yield entry.bytes_per_second
+            except:
+                yield 0
 
     @property
     def items_per_second(self):
         for entry in self.benchmarks:
-            yield entry.items_per_second
+            try:
+                yield entry.items_per_second
+            except:
+                yield 0
 
     @property
     def mega_bytes_per_second(self):
         for entry in self.benchmarks:
-            yield entry.bytes_per_second / 1e6
+            try:
+                yield entry.bytes_per_second / 1e6
+            except:
+                yield 0
 
     @property
     def mega_items_per_second(self):
         for entry in self.benchmarks:
-            yield entry.items_per_second / 1e6
+            try:
+                yield entry.items_per_second / 1e6
+            except:
+                yield 0
+
+    def get_name_index(self, name: str):
+        pos = None
+        for i, run_name in enumerate(self.run_names):
+            if run_name == name:
+                pos = i
+                break
+        return pos
 
 
 # ------------------------------------------------------------------------------
@@ -246,3 +293,27 @@ class BenchmarkPanel:
     @property
     def first_run(self):
         return first(self.runs)
+
+    @property
+    def all_entry_names(self):
+        entry_names = set()
+        for run in self.runs:
+            entry_names.update(list(run.run_names))
+        return list(entry_names)
+
+    def results_by_run_name(self, propname: str):
+        results = {}
+        for i, run in self.runs:
+            values = getattr(run, propname)
+            for entry_name in self.all_entry_names:
+                pos = run.get_name_index(entry_name)
+                if pos is None:
+                    raise Exception(f"{runname} not found in run[{i}]")
+                if results.get(runname) is None:
+                    results[runname] = []
+                results[runname].append({
+                    "val": values[pos],
+                    "run": i,
+                    "entry": pos
+                })
+        return results
